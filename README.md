@@ -1,4 +1,4 @@
-# 📸 사진 자동 자르기 (Photo Cropper) v7.0
+# 📸 사진 자동 자르기 (Photo Cropper) v7.1
 
 스캔된 사진이나 배경 위에 놓인 사진을 자동으로 감지하여 정확하게 자르는 Python 애플리케이션입니다.
 
@@ -6,10 +6,12 @@
 
 - **3단계+ 지능형 탐색 알고리즘**: 다양한 배경에서 높은 검출 성공률
 - **PyQt6 기반 현대적 UI**: 다크/라이트 테마 지원
+- **HiDPI 디스플레이 지원**: 고해상도 모니터에서도 선명한 UI
 - **실시간 미리보기**: 마우스 휠로 확대/축소, 드래그로 이동
-- **배치 처리**: 대량의 이미지를 한 번에 처리
+- **배치 처리**: 대량의 이미지를 한 번에 처리 (예상 시간 표시)
 - **드래그 앤 드롭**: 폴더나 이미지를 직접 끌어다 놓기
 - **다양한 출력 포맷**: JPG, PNG, WEBP 지원
+- **Toast 알림**: 작업 완료시 비침투적 알림
 
 ## 🛠️ 감지 알고리즘
 
@@ -103,6 +105,11 @@ photo_cropper/
 ├── ui/
 │   ├── main_window.py       # 메인 윈도우
 │   ├── widgets/             # UI 위젯들
+│   │   ├── preview_widget.py    # 미리보기
+│   │   ├── settings_panel.py    # 설정 패널
+│   │   ├── progress_dialog.py   # 진행률 다이얼로그
+│   │   ├── histogram_widget.py  # 히스토그램
+│   │   └── toast_widget.py      # Toast 알림
 │   └── styles/              # 테마 스타일시트
 └── utils/
     └── file_helpers.py      # 파일 유틸리티
@@ -114,6 +121,22 @@ photo_cropper/
 - **라이트 테마**: 밝은 환경에 적합한 밝은 색상
 
 툴바의 🌙 버튼 또는 보기 메뉴에서 테마 전환 가능
+
+## 🖥️ HiDPI 지원
+
+- Windows, macOS, Linux의 고해상도 디스플레이 자동 지원
+- Per-Monitor DPI awareness (Windows)
+- Qt6 네이티브 HiDPI 스케일링
+
+## 📦 빌드
+
+### PyInstaller로 실행 파일 생성
+
+```bash
+pyinstaller photo_cropper.spec
+```
+
+빌드된 파일은 `dist/PhotoCropper/` 폴더에 생성됩니다.
 
 ## 📝 지원 포맷
 
@@ -129,3 +152,11 @@ JPG, PNG, WEBP
 
 MIT License
 
+## 🔄 변경 이력
+
+### v7.1 (2025-12)
+- HiDPI 디스플레이 지원 추가
+- Toast 알림 시스템 추가
+- 진행률 다이얼로그에 예상 남은 시간 표시
+- 히스토그램 위젯 테마 연동
+- 코드 품질 개선 및 버그 수정
