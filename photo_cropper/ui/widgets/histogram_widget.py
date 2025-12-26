@@ -25,24 +25,9 @@ class HistogramWidget(QWidget):
         
         self._histograms = None  # List of (color, histogram_data)
         self._background_color = QColor(30, 30, 50)
-        self._is_dark_theme = True
         
         self.setMinimumHeight(100)
         self.setMaximumHeight(150)
-    
-    def set_theme(self, is_dark: bool):
-        """
-        Set theme for histogram background.
-        
-        Args:
-            is_dark: True for dark theme, False for light theme
-        """
-        self._is_dark_theme = is_dark
-        if is_dark:
-            self._background_color = QColor(30, 30, 50)
-        else:
-            self._background_color = QColor(248, 248, 250)
-        self.update()
     
     def set_image(self, image: np.ndarray):
         """
@@ -104,6 +89,8 @@ class HistogramWidget(QWidget):
         margin = 5
         
         # Find max value for normalization
+        if not self._histograms:
+            return
         max_val = max((np.max(hist) for _, hist in self._histograms), default=0)
         if max_val == 0:
             return

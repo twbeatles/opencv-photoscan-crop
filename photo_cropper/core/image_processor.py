@@ -21,7 +21,6 @@ from dataclasses import dataclass
 from enum import Enum
 
 from .settings import AlgorithmSettings, ProcessingSettings
-from ..utils.file_helpers import SUPPORTED_IMAGE_FORMATS
 
 logger = logging.getLogger(__name__)
 
@@ -59,8 +58,10 @@ class ImageProcessor:
         - Perspective transform for skewed photos
     """
     
-    # Reference to unified constant from file_helpers
-    SUPPORTED_FORMATS = SUPPORTED_IMAGE_FORMATS
+    SUPPORTED_FORMATS = (
+        '.png', '.jpg', '.jpeg', '.bmp', '.gif', 
+        '.tiff', '.tif', '.webp', '.heic', '.heif'
+    )
     
     def __init__(
         self, 
@@ -87,6 +88,27 @@ class ImageProcessor:
             self.algo = algorithm_settings
         if processing_settings:
             self.proc = processing_settings
+    
+    @staticmethod
+    def rotate_image(image: np.ndarray, angle: int) -> np.ndarray:
+        """
+        Rotate image by 90 degree increments.
+        
+        Args:
+            image: Input image array
+            angle: Rotation angle (90, 180, 270 or -90)
+            
+        Returns:
+            Rotated image array
+        """
+        angle = angle % 360
+        if angle == 90 or angle == -270:
+            return cv2.rotate(image, cv2.ROTATE_90_CLOCKWISE)
+        elif angle == 180 or angle == -180:
+            return cv2.rotate(image, cv2.ROTATE_180)
+        elif angle == 270 or angle == -90:
+            return cv2.rotate(image, cv2.ROTATE_90_COUNTERCLOCKWISE)
+        return image
     
     @staticmethod
     def load_image(image_path: str) -> Optional[np.ndarray]:
@@ -641,7 +663,6 @@ class ImageProcessor:
                 with open(output_path, mode='wb') as f:
                     encoded_img.tofile(f)
                 
-                import os
                 file_size = os.path.getsize(output_path) / 1024  # KB
                 return True, "저장 완료", file_size
             else:

@@ -18,6 +18,7 @@ from queue import Queue
 
 from .image_processor import ImageProcessor, CropResult
 from .settings import AppSettings
+from ..utils.file_helpers import SUPPORTED_IMAGE_FORMATS
 
 logger = logging.getLogger(__name__)
 
@@ -134,8 +135,7 @@ class BatchProcessor:
         valid_levels = {"info", "error", "warning", "success", "skip"}
         level = level if level in valid_levels else "info"
         
-        if self._on_log:
-            self._on_log(message, level)
+        self._safe_callback(self._on_log, message, level)
         
         if level == "error":
             logger.error(message)
@@ -144,11 +144,27 @@ class BatchProcessor:
         else:
             logger.info(message)
     
+    def _safe_callback(self, callback, *args, **kwargs):
+        """
+        Safely invoke a callback with exception handling.
+        
+        Args:
+            callback: Callback function to call
+            *args: Arguments to pass to callback
+            **kwargs: Keyword arguments to pass to callback
+        """
+        if callback is None:
+            return
+        try:
+            callback(*args, **kwargs)
+        except Exception as e:
+            logger.error(f"Callback error: {e}")
+    
     def _update_progress(self):
         """Send progress update through callback."""
-        if self._on_progress:
-            with self._lock:
-                self._on_progress(BatchProgress(**self._progress.__dict__))
+        with self._lock:
+            progress_copy = BatchProgress(**self._progress.__dict__)
+        self._safe_callback(self._on_progress, progress_copy)
     
     @property
     def is_running(self) -> bool:
@@ -196,7 +212,7 @@ class BatchProcessor:
         try:
             files = [
                 f for f in os.listdir(input_dir)
-                if f.lower().endswith(ImageProcessor.SUPPORTED_FORMATS)
+                if f.lower().endswith(SUPPORTED_IMAGE_FORMATS)
             ]
             return sorted(files)
         except Exception as e:
@@ -327,8 +343,7 @@ class BatchProcessor:
                 
                 self._update_progress()
                 
-                if self._on_file_complete:
-                    self._on_file_complete(result)
+                self._safe_callback(self._on_file_complete, result)
             
             # Completion
             self._log("=" * 50, "info")
@@ -355,8 +370,7 @@ class BatchProcessor:
             with self._lock:
                 self._progress.is_running = False
             
-            if self._on_complete:
-                self._on_complete(self.progress, self._results)
+            self._safe_callback(self._on_complete, self.progress, self._results)
     
     def _process_single_file(
         self,

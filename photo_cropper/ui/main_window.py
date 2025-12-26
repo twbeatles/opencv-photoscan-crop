@@ -14,22 +14,21 @@ from PyQt6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, 
     QSplitter, QMenuBar, QMenu, QToolBar, QStatusBar,
     QLabel, QPushButton, QLineEdit, QFileDialog,
-    QMessageBox, QGroupBox, QFrame, QApplication, QSizePolicy
+    QMessageBox, QGroupBox, QFrame, QApplication
 )
-from PyQt6.QtCore import Qt, QTimer, pyqtSlot
+from PyQt6.QtCore import Qt, QTimer, pyqtSlot, QSettings
 from PyQt6.QtGui import QAction, QKeySequence, QDragEnterEvent, QDropEvent
 
 from .widgets.settings_panel import SettingsPanel
 from .widgets.preview_widget import ImagePreviewWidget
 from .widgets.progress_dialog import ProgressDialog
 from .widgets.histogram_widget import HistogramWidget
-from .widgets.toast_widget import ToastWidget
 from .styles.themes import get_theme, get_available_themes
 
 from ..core.settings import AppSettings, SettingsManager
 from ..core.image_processor import ImageProcessor
 from ..core.batch_processor import BatchProcessor, BatchProgress, FileResult
-from ..utils.file_helpers import get_image_files, open_file_explorer, validate_directory
+from ..utils.file_helpers import get_image_files, open_file_explorer, validate_directory, SUPPORTED_IMAGE_FORMATS
 
 logger = logging.getLogger(__name__)
 
@@ -44,7 +43,6 @@ class MainWindow(QMainWindow):
         - Real-time preview
         - Batch processing with progress
         - Settings persistence
-        - HiDPI display support
     """
     
     VERSION = "7.1"
@@ -81,8 +79,8 @@ class MainWindow(QMainWindow):
         # Apply saved settings
         self._apply_settings(self._settings)
         
-        # Toast notification
-        self.toast = ToastWidget(self)
+        # Restore window geometry
+        self._restore_window_state()
         
         # Enable drag and drop
         self.setAcceptDrops(True)
@@ -90,8 +88,7 @@ class MainWindow(QMainWindow):
     def _setup_window(self):
         """Configure main window properties."""
         self.setWindowTitle(self.TITLE)
-        # Minimum size adjusted for HiDPI - use logical pixels
-        self.setMinimumSize(1000, 700)
+        self.setMinimumSize(1200, 800)
         self.resize(1400, 900)
         
         # Center on screen
@@ -170,6 +167,18 @@ class MainWindow(QMainWindow):
         retry_failed_action.triggered.connect(self._retry_failed_files)
         tools_menu.addAction(retry_failed_action)
         
+        # Refresh (F5)
+        refresh_action = QAction("새로고침", self)
+        refresh_action.setShortcut(QKeySequence("F5"))
+        refresh_action.triggered.connect(self._refresh_file_list)
+        tools_menu.addAction(refresh_action)
+        
+        # Rotate (Ctrl+R)
+        rotate_action = QAction("회전(&R)", self)
+        rotate_action.setShortcut(QKeySequence("Ctrl+R"))
+        rotate_action.triggered.connect(self._rotate_preview)
+        tools_menu.addAction(rotate_action)
+        
         # Help menu
         help_menu = menubar.addMenu("도움말(&H)")
         
@@ -213,8 +222,17 @@ class MainWindow(QMainWindow):
         output_btn.clicked.connect(self._open_output_folder)
         toolbar.addWidget(output_btn)
         
+        toolbar.addSeparator()
+        
+        # Rotate button
+        rotate_btn = QPushButton("🔄 회전")
+        rotate_btn.setToolTip("미리보기 이미지를 시계방향 90도 회전 (Ctrl+R)")
+        rotate_btn.clicked.connect(self._rotate_preview)
+        toolbar.addWidget(rotate_btn)
+        
         # Spacer
         spacer = QWidget()
+        from PyQt6.QtWidgets import QSizePolicy
         spacer.setSizePolicy(
             QSizePolicy.Policy.Expanding,
             QSizePolicy.Policy.Preferred
@@ -355,10 +373,6 @@ class MainWindow(QMainWindow):
         for name, action in self.theme_actions.items():
             action.setChecked(name == theme_name)
         
-        # Update histogram theme
-        is_dark = theme_name == "dark"
-        self.histogram_widget.set_theme(is_dark)
-        
         # Update settings
         if self._settings.ui.theme != theme_name:
             self._settings.ui.theme = theme_name
@@ -388,7 +402,7 @@ class MainWindow(QMainWindow):
             default_settings = self.settings_manager.get_default()
             self.settings_panel.settings = default_settings
             self._apply_settings(default_settings)
-            self.toast.show_toast("설정이 초기화되었습니다", "success")
+            self.statusbar.showMessage("설정이 초기화되었습니다", 3000)
     
     # ========================================
     # Folder Selection
@@ -455,7 +469,7 @@ class MainWindow(QMainWindow):
             elif os.path.isfile(path):
                 # Single image - load for preview
                 ext = os.path.splitext(path)[1].lower()
-                if ext in ImageProcessor.SUPPORTED_FORMATS:
+                if ext in SUPPORTED_IMAGE_FORMATS:
                     self._current_image_path = path
                     self._do_preview()
     
@@ -574,14 +588,18 @@ class MainWindow(QMainWindow):
     
     def _on_batch_complete(self, progress: BatchProgress, results: list):
         """Handle batch processing completion."""
-        message = f"완료: {progress.success}개 성공, {progress.failed}개 실패"
-        self.status_label.setText(message)
+        # Update progress dialog with completion
+        if self.progress_dialog is not None:
+            self.progress_dialog.update_progress(progress)
+            # Log final summary
+            self.progress_dialog.log_message(
+                f"처리 완료: {progress.success}개 성공, {progress.failed}개 실패, {progress.skipped}개 건너뜀",
+                "success" if progress.failed == 0 else "warning"
+            )
         
-        # Show toast notification
-        if progress.failed == 0:
-            self.toast.show_toast(message, "success")
-        else:
-            self.toast.show_toast(message, "warning")
+        self.status_label.setText(
+            f"완료: {progress.success}개 성공, {progress.failed}개 실패"
+        )
     
     def _retry_failed_files(self):
         """Retry failed files from last batch."""
@@ -664,9 +682,76 @@ class MainWindow(QMainWindow):
     
     def closeEvent(self, event):
         """Handle window close."""
+        # Check if processing is in progress
+        if self.batch_processor and self.batch_processor.is_running:
+            reply = QMessageBox.question(
+                self, "종료 확인",
+                "현재 처리 중입니다. 정말 종료하시겠습니까?\n진행 중인 작업이 취소됩니다.",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No
+            )
+            if reply == QMessageBox.StandardButton.No:
+                event.ignore()
+                return
+            # Cancel processing
+            self.batch_processor.request_stop()
+        
         # Save settings
         self._settings.last_input_path = self.input_path_edit.text()
         self._settings.last_output_path = self.output_path_edit.text()
         self.settings_manager.save(self._settings)
         
+        # Save window geometry
+        self._save_window_state()
+        
         event.accept()
+    
+    def _save_window_state(self):
+        """Save window geometry and state."""
+        settings = QSettings("PhotoCropper", "MainWindow")
+        settings.setValue("geometry", self.saveGeometry())
+        settings.setValue("windowState", self.saveState())
+    
+    def _restore_window_state(self):
+        """Restore window geometry and state."""
+        settings = QSettings("PhotoCropper", "MainWindow")
+        geometry = settings.value("geometry")
+        state = settings.value("windowState")
+        if geometry:
+            self.restoreGeometry(geometry)
+        if state:
+            self.restoreState(state)
+    
+    def _refresh_file_list(self):
+        """Refresh file list from input folder."""
+        input_path = self.input_path_edit.text()
+        if input_path and os.path.isdir(input_path):
+            files = get_image_files(input_path)
+            self.file_count_label.setText(f"파일: {len(files)}개")
+            self.status_label.setText(f"파일 목록 새로고침 완료: {len(files)}개 파일")
+            # Auto preview first file
+            if files:
+                self._current_image_path = files[0]
+                self._request_preview()
+    
+    def _rotate_preview(self):
+        """
+        Rotate the current preview image by 90 degrees clockwise.
+        """
+        if not self._current_image_path or not os.path.exists(self._current_image_path):
+            self.status_label.setText("회전할 이미지가 없습니다")
+            return
+        
+        # Load current image
+        image = self.image_processor.load_image(self._current_image_path)
+        if image is None:
+            self.status_label.setText("이미지를 불러올 수 없습니다")
+            return
+        
+        # Rotate image
+        rotated = self.image_processor.rotate_image(image, 90)
+        
+        # Update preview
+        self.preview_widget.set_original_image(rotated)
+        self.preview_widget.set_processed_image(None)
+        self.status_label.setText("이미지를 시계방향 90도 회전했습니다")

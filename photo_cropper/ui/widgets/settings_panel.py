@@ -12,11 +12,31 @@ from PyQt6.QtWidgets import (
     QComboBox, QPushButton, QFormLayout, QFrame
 )
 from PyQt6.QtCore import Qt, pyqtSignal
+from PyQt6.QtGui import QWheelEvent
 
 from ...core.settings import (
     AppSettings, AlgorithmSettings, ProcessingSettings, 
     OutputSettings, FilterSettings, UISettings
 )
+
+
+# Custom widgets that ignore wheel events to prevent accidental value changes
+class NoScrollSpinBox(QSpinBox):
+    """QSpinBox that ignores mouse wheel events."""
+    def wheelEvent(self, event: QWheelEvent):
+        event.ignore()
+
+
+class NoScrollDoubleSpinBox(QDoubleSpinBox):
+    """QDoubleSpinBox that ignores mouse wheel events."""
+    def wheelEvent(self, event: QWheelEvent):
+        event.ignore()
+
+
+class NoScrollComboBox(QComboBox):
+    """QComboBox that ignores mouse wheel events."""
+    def wheelEvent(self, event: QWheelEvent):
+        event.ignore()
 
 
 class SettingsPanel(QWidget):
@@ -100,7 +120,7 @@ class SettingsPanel(QWidget):
         ui_group = QGroupBox("🎨 인터페이스")
         ui_layout = QFormLayout(ui_group)
         
-        self.theme_combo = QComboBox()
+        self.theme_combo = NoScrollComboBox()
         self.theme_combo.addItems(["dark", "light"])
         self.theme_combo.currentTextChanged.connect(self._on_setting_changed)
         ui_layout.addRow("테마:", self.theme_combo)
@@ -172,14 +192,14 @@ class SettingsPanel(QWidget):
         self.use_clahe_check.stateChanged.connect(self._on_setting_changed)
         clahe_layout.addRow("CLAHE 사용:", self.use_clahe_check)
         
-        self.clahe_clip_spin = QDoubleSpinBox()
+        self.clahe_clip_spin = NoScrollDoubleSpinBox()
         self.clahe_clip_spin.setRange(0.1, 10.0)
         self.clahe_clip_spin.setSingleStep(0.1)
         self.clahe_clip_spin.setValue(2.0)
         self.clahe_clip_spin.valueChanged.connect(self._on_setting_changed)
         clahe_layout.addRow("클립 제한:", self.clahe_clip_spin)
         
-        self.clahe_grid_spin = QSpinBox()
+        self.clahe_grid_spin = NoScrollSpinBox()
         self.clahe_grid_spin.setRange(2, 32)
         self.clahe_grid_spin.setValue(8)
         self.clahe_grid_spin.valueChanged.connect(self._on_setting_changed)
@@ -198,7 +218,7 @@ class SettingsPanel(QWidget):
         
         scoring_row = QHBoxLayout()
         scoring_row.addWidget(QLabel("컨투어 스코어링:"))
-        self.scoring_combo = QComboBox()
+        self.scoring_combo = NoScrollComboBox()
         self.scoring_combo.addItems(["basic", "enhanced", "strict"])
         self.scoring_combo.setCurrentText("enhanced")
         self.scoring_combo.currentTextChanged.connect(self._on_setting_changed)
@@ -228,20 +248,20 @@ class SettingsPanel(QWidget):
         format_group = QGroupBox("💾 출력 형식")
         format_layout = QFormLayout(format_group)
         
-        self.format_combo = QComboBox()
+        self.format_combo = NoScrollComboBox()
         self.format_combo.addItems(["JPG", "PNG", "WEBP"])
         self.format_combo.currentTextChanged.connect(self._on_format_changed)
         format_layout.addRow("파일 형식:", self.format_combo)
         
         # Quality (JPG/WEBP)
-        self.quality_spin = QSpinBox()
+        self.quality_spin = NoScrollSpinBox()
         self.quality_spin.setRange(1, 100)
         self.quality_spin.setValue(95)
         self.quality_spin.valueChanged.connect(self._on_setting_changed)
         format_layout.addRow("JPG/WEBP 품질:", self.quality_spin)
         
         # PNG compression
-        self.png_compression_spin = QSpinBox()
+        self.png_compression_spin = NoScrollSpinBox()
         self.png_compression_spin.setRange(0, 9)
         self.png_compression_spin.setValue(6)
         self.png_compression_spin.setEnabled(False)
@@ -291,7 +311,7 @@ class SettingsPanel(QWidget):
         min_size_row = QHBoxLayout()
         min_size_row.addSpacing(24)
         min_size_row.addWidget(QLabel("최소 크기 (px):"))
-        self.min_size_spin = QSpinBox()
+        self.min_size_spin = NoScrollSpinBox()
         self.min_size_spin.setRange(50, 1000)
         self.min_size_spin.setValue(100)
         self.min_size_spin.valueChanged.connect(self._on_setting_changed)

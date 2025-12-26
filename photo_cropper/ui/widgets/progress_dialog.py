@@ -13,9 +13,9 @@ from PyQt6.QtWidgets import (
 )
 from PyQt6.QtCore import Qt, pyqtSignal, QTimer
 from PyQt6.QtGui import QFont
+import time
 
 from ...core.batch_processor import BatchProgress, FileResult, ProcessStatus
-import time
 
 
 class StatsWidget(QFrame):
@@ -77,7 +77,7 @@ class ProgressDialog(QDialog):
         
         self._is_cancelled = False
         self._is_complete = False
-        self._start_time: float = 0.0
+        self._start_time = None  # ETA 계산을 위한 시작 시간
         
         self._setup_ui()
     
@@ -107,14 +107,15 @@ class ProgressDialog(QDialog):
         self.percent_label.setFont(font)
         layout.addWidget(self.percent_label)
         
+        # ETA label
+        self.eta_label = QLabel("예상 남은 시간: 계산 중...")
+        self.eta_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.eta_label.setObjectName("subtitleLabel")
+        layout.addWidget(self.eta_label)
+        
         # Stats widget
         self.stats_widget = StatsWidget()
         layout.addWidget(self.stats_widget)
-        
-        # Time estimation label
-        self.time_label = QLabel("예상 남은 시간: 계산 중...")
-        self.time_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        layout.addWidget(self.time_label)
         
         # Log area
         log_group = QGroupBox("처리 로그")
@@ -150,11 +151,18 @@ class ProgressDialog(QDialog):
         Args:
             progress: BatchProgress object
         """
+        # Initialize start time on first update
+        if self._start_time is None and progress.is_running:
+            self._start_time = time.time()
+        
         # Update progress bar
         if progress.total > 0:
             percent = int(progress.percent)
             self.progress_bar.setValue(percent)
             self.percent_label.setText(f"{percent}%")
+            
+            # Calculate ETA
+            self._update_eta(progress)
         
         # Update current file
         if progress.current_file:
@@ -163,18 +171,45 @@ class ProgressDialog(QDialog):
         # Update stats
         self.stats_widget.update_stats(progress)
         
-        # Update time estimation
-        if progress.processed > 0 and progress.total > progress.processed:
-            elapsed = time.time() - self._start_time
-            rate = elapsed / progress.processed
-            remaining = rate * (progress.total - progress.processed)
-            self.time_label.setText(f"예상 남은 시간: {self._format_time(remaining)}")
-        elif progress.processed >= progress.total:
-            self.time_label.setText("완료!")
-        
         # Check if complete
         if not progress.is_running and progress.processed > 0:
             self._on_complete(progress)
+    
+    def _update_eta(self, progress: BatchProgress):
+        """
+        Calculate and update estimated time remaining.
+        
+        Args:
+            progress: Current batch progress
+        """
+        if self._start_time is None or progress.processed == 0:
+            self.eta_label.setText("예상 남은 시간: 계산 중...")
+            return
+        
+        elapsed = time.time() - self._start_time
+        if elapsed <= 0:
+            return
+        
+        # Calculate average time per file
+        avg_time_per_file = elapsed / progress.processed
+        remaining_files = progress.total - progress.processed
+        eta_seconds = avg_time_per_file * remaining_files
+        
+        # Format ETA
+        if eta_seconds < 60:
+            eta_str = f"{int(eta_seconds)}초"
+        elif eta_seconds < 3600:
+            minutes = int(eta_seconds // 60)
+            seconds = int(eta_seconds % 60)
+            eta_str = f"{minutes}분 {seconds}초"
+        else:
+            hours = int(eta_seconds // 3600)
+            minutes = int((eta_seconds % 3600) // 60)
+            eta_str = f"{hours}시간 {minutes}분"
+        
+        # Calculate processing speed
+        speed = progress.processed / elapsed
+        self.eta_label.setText(f"예상 남은 시간: {eta_str} ({speed:.1f} 파일/초)")
     
     def log_message(self, message: str, level: str = "info"):
         """
@@ -240,11 +275,13 @@ class ProgressDialog(QDialog):
         """Reset dialog for new processing session."""
         self._is_cancelled = False
         self._is_complete = False
+        self._start_time = None
         
         self.setWindowTitle("처리 중...")
         self.current_file_label.setText("대기 중...")
         self.progress_bar.setValue(0)
         self.percent_label.setText("0%")
+        self.eta_label.setText("예상 남은 시간: 계산 중...")
         self.log_text.clear()
         
         self.cancel_button.setEnabled(True)
@@ -253,20 +290,3 @@ class ProgressDialog(QDialog):
         
         # Reset stats
         self.stats_widget.update_stats(BatchProgress())
-        
-        # Reset time label
-        self.time_label.setText("예상 남은 시간: 계산 중...")
-        self._start_time = time.time()
-    
-    def _format_time(self, seconds: float) -> str:
-        """Format seconds into human readable time."""
-        if seconds < 60:
-            return f"{int(seconds)}초"
-        elif seconds < 3600:
-            minutes = int(seconds / 60)
-            secs = int(seconds % 60)
-            return f"{minutes}분 {secs}초"
-        else:
-            hours = int(seconds / 3600)
-            minutes = int((seconds % 3600) / 60)
-            return f"{hours}시간 {minutes}분"

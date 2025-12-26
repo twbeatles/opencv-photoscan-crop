@@ -6,12 +6,13 @@
 
 - **3단계+ 지능형 탐색 알고리즘**: 다양한 배경에서 높은 검출 성공률
 - **PyQt6 기반 현대적 UI**: 다크/라이트 테마 지원
-- **HiDPI 디스플레이 지원**: 고해상도 모니터에서도 선명한 UI
 - **실시간 미리보기**: 마우스 휠로 확대/축소, 드래그로 이동
-- **배치 처리**: 대량의 이미지를 한 번에 처리 (예상 시간 표시)
+- **배치 처리**: 대량의 이미지를 한 번에 처리 (예상 남은 시간 표시)
 - **드래그 앤 드롭**: 폴더나 이미지를 직접 끌어다 놓기
 - **다양한 출력 포맷**: JPG, PNG, WEBP 지원
-- **Toast 알림**: 작업 완료시 비침투적 알림
+- **이미지 회전**: 90도 단위 시계방향 회전 지원
+- **윈도우 상태 저장**: 크기, 위치 자동 저장/복원
+- **스크롤 안전 UI**: 마우스 휠로 설정값이 변경되지 않음
 
 ## 🛠️ 감지 알고리즘
 
@@ -71,7 +72,9 @@ python run.py
 | `Ctrl+O` | 입력 폴더 선택 |
 | `Ctrl+I` | 이미지 열기 |
 | `Ctrl+P` | 미리보기 |
+| `Ctrl+R` | 이미지 회전 (90도 시계방향) |
 | `Ctrl+E` | 출력 폴더 열기 |
+| `F5` | 파일 목록 새로고침 |
 | `F1` | 도움말 |
 | `Ctrl+Q` | 종료 |
 
@@ -79,39 +82,50 @@ python run.py
 
 ### 알고리즘 설정
 
-- **Canny 임계값**: 에지 감지 민감도 조절
-- **CLAHE**: 저대비 이미지 향상
+- **Canny 임계값**: 에지 감지 민감도 조절 (0-255)
+- **CLAHE**: 저대비 이미지 향상 (클립 제한, 그리드 크기 조절)
 - **다중 스케일**: 다양한 크기의 사진 감지
-- **코너 검출**: 추가적인 정확도 향상
+- **코너 검출**: 추가적인 정확도 향상 (4단계)
+- **컨투어 스코어링**: basic, enhanced, strict 모드
 
 ### 출력 설정
 
 - **출력 포맷**: JPG, PNG, WEBP
-- **품질 조절**: 포맷별 압축률/품질 설정
+- **품질 조절**: JPG/WEBP 품질 (1-100), PNG 압축 (0-9)
 - **그레이스케일 변환**: 흑백 출력
 - **노이즈 제거**: 스캔 노이즈 감소
 - **선명도 향상**: 출력 이미지 선명화
+
+### 필터 설정
+
+- **작은 이미지 건너뛰기**: 최소 크기 미만 이미지 제외
+- **이미 처리된 파일 건너뛰기**: `_cropped` 포함 파일 제외
 
 ## 📁 프로젝트 구조
 
 ```
 photo_cropper/
-├── __init__.py          # 패키지 초기화
-├── main.py              # 애플리케이션 진입점
+├── __init__.py              # 패키지 초기화
+├── main.py                  # 애플리케이션 진입점
 ├── core/
+│   ├── __init__.py
 │   ├── image_processor.py   # 핵심 이미지 처리 엔진
 │   ├── batch_processor.py   # 배치 처리 관리
 │   └── settings.py          # 설정 데이터클래스
 ├── ui/
+│   ├── __init__.py
 │   ├── main_window.py       # 메인 윈도우
-│   ├── widgets/             # UI 위젯들
-│   │   ├── preview_widget.py    # 미리보기
+│   ├── widgets/
+│   │   ├── __init__.py
 │   │   ├── settings_panel.py    # 설정 패널
-│   │   ├── progress_dialog.py   # 진행률 다이얼로그
-│   │   ├── histogram_widget.py  # 히스토그램
-│   │   └── toast_widget.py      # Toast 알림
-│   └── styles/              # 테마 스타일시트
+│   │   ├── preview_widget.py    # 미리보기 위젯
+│   │   ├── progress_dialog.py   # 진행 다이얼로그
+│   │   └── histogram_widget.py  # 히스토그램 위젯
+│   └── styles/
+│       ├── __init__.py
+│       └── themes.py        # 테마 스타일시트
 └── utils/
+    ├── __init__.py
     └── file_helpers.py      # 파일 유틸리티
 ```
 
@@ -121,22 +135,6 @@ photo_cropper/
 - **라이트 테마**: 밝은 환경에 적합한 밝은 색상
 
 툴바의 🌙 버튼 또는 보기 메뉴에서 테마 전환 가능
-
-## 🖥️ HiDPI 지원
-
-- Windows, macOS, Linux의 고해상도 디스플레이 자동 지원
-- Per-Monitor DPI awareness (Windows)
-- Qt6 네이티브 HiDPI 스케일링
-
-## 📦 빌드
-
-### PyInstaller로 실행 파일 생성
-
-```bash
-pyinstaller photo_cropper.spec
-```
-
-빌드된 파일은 `dist/PhotoCropper/` 폴더에 생성됩니다.
 
 ## 📝 지원 포맷
 
@@ -148,16 +146,42 @@ PNG, JPG, JPEG, BMP, GIF, TIFF, TIF, WEBP, HEIC, HEIF
 
 JPG, PNG, WEBP
 
+## 🔧 빌드 (PyInstaller)
+
+### Windows 실행 파일 생성
+
+```bash
+# PyInstaller 설치
+pip install pyinstaller
+
+# 빌드 실행
+pyinstaller photo_cropper.spec
+```
+
+빌드된 실행 파일은 `dist/PhotoCropper/` 폴더에 생성됩니다.
+
+## 📋 변경 이력
+
+### v7.1 (2024-12)
+- ✨ 이미지 회전 기능 추가 (Ctrl+R)
+- ✨ 파일 목록 새로고침 기능 (F5)
+- ✨ 배치 처리 중 예상 남은 시간(ETA) 표시
+- ✨ 윈도우 크기/위치 저장 및 복원
+- ✨ 처리 중 종료 확인 다이얼로그
+- 🐛 마우스 휠 스크롤 시 설정값 변경 방지
+- 🐛 콜백 예외 처리 강화
+- 🛠️ 코드 품질 개선 (상수 통합, 중복 제거)
+
+### v7.0
+- 초기 버전 출시
+- 3단계+ 지능형 탐색 알고리즘
+- PyQt6 기반 UI
+- 다크/라이트 테마
+
 ## 📄 라이선스
 
 MIT License
 
-## 🔄 변경 이력
+## 👨‍💻 기여
 
-### v7.1 (2025-12)
-- HiDPI 디스플레이 지원 추가
-- Toast 알림 시스템 추가
-- 진행률 다이얼로그에 예상 남은 시간 표시
-- 히스토그램 위젯 테마 연동
-- 코드 품질 개선 및 버그 수정
-
+버그 리포트나 기능 제안은 Issues에 등록해 주세요.
