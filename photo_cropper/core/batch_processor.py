@@ -403,6 +403,19 @@ class BatchProcessor:
                         message=f"크기 미달 ({w}x{h})"
                     )
         
+        # Skip already processed files
+        if self.settings.filter.skip_processed:
+            base_name = os.path.splitext(filename)[0]
+            ext = "." + self.settings.output.output_format.lower()
+            expected_output = os.path.join(output_dir, f"{base_name}_cropped{ext}")
+            if os.path.exists(expected_output):
+                self._log(f"  건너뜀: 이미 처리됨 - {base_name}_cropped{ext}", "skip")
+                return FileResult(
+                    filename=filename,
+                    status=ProcessStatus.SKIPPED,
+                    message="이미 처리됨"
+                )
+        
         # Backup
         if backup_dir:
             try:

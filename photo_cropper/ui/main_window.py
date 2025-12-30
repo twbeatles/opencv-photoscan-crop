@@ -23,6 +23,7 @@ from .widgets.settings_panel import SettingsPanel
 from .widgets.preview_widget import ImagePreviewWidget
 from .widgets.progress_dialog import ProgressDialog
 from .widgets.histogram_widget import HistogramWidget
+from .widgets.toast_notification import ToastManager
 from .styles.themes import get_theme, get_available_themes
 
 from ..core.settings import AppSettings, SettingsManager
@@ -45,8 +46,8 @@ class MainWindow(QMainWindow):
         - Settings persistence
     """
     
-    VERSION = "7.1"
-    TITLE = f"사진 자동 자르기 v{VERSION}"
+    VERSION = "7.2"
+    TITLE = f"📸 사진 자동 자르기 v{VERSION}"
     
     def __init__(self):
         super().__init__()
@@ -75,6 +76,9 @@ class MainWindow(QMainWindow):
         self._setup_toolbar()
         self._setup_central_widget()
         self._setup_statusbar()
+        
+        # Initialize Toast Manager
+        ToastManager.set_parent(self)
         
         # Apply saved settings
         self._apply_settings(self._settings)
@@ -325,6 +329,12 @@ class MainWindow(QMainWindow):
         
         self.statusbar.addPermanentWidget(QLabel("|"))
         
+        # Image info label
+        self.image_info_label = QLabel("이미지: -")
+        self.statusbar.addPermanentWidget(self.image_info_label)
+        
+        self.statusbar.addPermanentWidget(QLabel("|"))
+        
         self.file_count_label = QLabel("파일: 0개")
         self.statusbar.addPermanentWidget(self.file_count_label)
     
@@ -509,6 +519,22 @@ class MainWindow(QMainWindow):
         self.status_label.setText(f"미리보기 처리 중: {os.path.basename(self._current_image_path)}")
         QApplication.processEvents()
         
+        # Update image info in statusbar
+        try:
+            info = self.image_processor.get_image_info(self._current_image_path)
+            if info:
+                w, h, c = info
+                file_size_kb = os.path.getsize(self._current_image_path) / 1024
+                if file_size_kb >= 1024:
+                    size_str = f"{file_size_kb/1024:.1f} MB"
+                else:
+                    size_str = f"{file_size_kb:.0f} KB"
+                self.image_info_label.setText(f"📷 {w}×{h}px | {size_str}")
+            else:
+                self.image_info_label.setText("이미지: -")
+        except Exception:
+            self.image_info_label.setText("이미지: -")
+        
         # Get preview with contour
         original, overlay, message = self.image_processor.get_preview_with_contour(
             self._current_image_path
@@ -600,6 +626,18 @@ class MainWindow(QMainWindow):
         self.status_label.setText(
             f"완료: {progress.success}개 성공, {progress.failed}개 실패"
         )
+        
+        # Show toast notification
+        if progress.failed == 0:
+            ToastManager.success(f"✅ {progress.success}개 파일 처리 완료!")
+        else:
+            ToastManager.warning(f"⚠️ {progress.success}개 성공, {progress.failed}개 실패")
+        
+        # Auto-open output folder if enabled
+        if self._settings.ui.open_output_on_complete and not progress.is_cancelled:
+            output_path = self.output_path_edit.text()
+            if output_path and os.path.isdir(output_path):
+                open_file_explorer(output_path)
     
     def _retry_failed_files(self):
         """Retry failed files from last batch."""

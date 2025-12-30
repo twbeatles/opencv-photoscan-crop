@@ -11,10 +11,10 @@ import cv2
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, 
     QGraphicsView, QGraphicsScene, QGraphicsPixmapItem,
-    QSlider, QPushButton, QCheckBox, QFrame
+    QSlider, QPushButton, QCheckBox, QFrame, QSizePolicy
 )
 from PyQt6.QtCore import Qt, pyqtSignal, QPointF
-from PyQt6.QtGui import QPixmap, QImage, QPainter, QWheelEvent, QMouseEvent
+from PyQt6.QtGui import QPixmap, QImage, QPainter, QWheelEvent, QMouseEvent, QFont
 
 
 def numpy_to_qimage(image: np.ndarray) -> QImage:
@@ -192,10 +192,12 @@ class ImagePreviewWidget(QWidget):
         original_container = QFrame()
         original_container.setFrameStyle(QFrame.Shape.StyledPanel)
         original_layout = QVBoxLayout(original_container)
-        original_layout.setContentsMargins(0, 0, 0, 0)
-        original_label = QLabel("원본")
+        original_layout.setContentsMargins(8, 8, 8, 8)
+        original_layout.setSpacing(6)
+        original_label = QLabel("📷 원본")
         original_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         original_label.setObjectName("subtitleLabel")
+        original_label.setFont(QFont("Segoe UI", 10))
         original_layout.addWidget(original_label)
         original_layout.addWidget(self.original_view)
         views_layout.addWidget(original_container)
@@ -210,32 +212,55 @@ class ImagePreviewWidget(QWidget):
         processed_container = QFrame()
         processed_container.setFrameStyle(QFrame.Shape.StyledPanel)
         processed_layout = QVBoxLayout(processed_container)
-        processed_layout.setContentsMargins(0, 0, 0, 0)
-        processed_label = QLabel("처리 결과")
+        processed_layout.setContentsMargins(8, 8, 8, 8)
+        processed_layout.setSpacing(6)
+        processed_label = QLabel("✂️ 처리 결과")
         processed_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         processed_label.setObjectName("subtitleLabel")
+        processed_label.setFont(QFont("Segoe UI", 10))
         processed_layout.addWidget(processed_label)
         processed_layout.addWidget(self.processed_view)
         views_layout.addWidget(processed_container)
         
         layout.addLayout(views_layout)
         
-        # Controls
-        controls_layout = QHBoxLayout()
+        # Controls bar
+        controls_frame = QFrame()
+        controls_frame.setObjectName("statsFrame")
+        controls_layout = QHBoxLayout(controls_frame)
+        controls_layout.setContentsMargins(12, 8, 12, 8)
+        controls_layout.setSpacing(12)
         
-        self.contour_check = QCheckBox("검출 영역 표시")
+        self.contour_check = QCheckBox("🔲 검출 영역 표시")
         self.contour_check.setChecked(True)
         self.contour_check.stateChanged.connect(self._on_contour_toggle)
         controls_layout.addWidget(self.contour_check)
         
         controls_layout.addStretch()
         
+        # Zoom controls
+        zoom_icon = QLabel("🔍")
+        controls_layout.addWidget(zoom_icon)
+        
+        self.zoom_slider = QSlider(Qt.Orientation.Horizontal)
+        self.zoom_slider.setRange(10, 500)
+        self.zoom_slider.setValue(100)
+        self.zoom_slider.setFixedWidth(120)
+        self.zoom_slider.valueChanged.connect(self._on_zoom_slider_changed)
+        controls_layout.addWidget(self.zoom_slider)
+        
         self.zoom_label = QLabel("100%")
-        self.zoom_label.setMinimumWidth(50)
+        self.zoom_label.setMinimumWidth(55)
+        self.zoom_label.setFont(QFont("Segoe UI", 9, QFont.Weight.Bold))
         controls_layout.addWidget(self.zoom_label)
         
-        fit_btn = QPushButton("맞춤")
-        fit_btn.setMaximumWidth(60)
+        # Separator
+        sep = QLabel("|")
+        sep.setStyleSheet("color: #888888;")
+        controls_layout.addWidget(sep)
+        
+        fit_btn = QPushButton("📐 맞춤")
+        fit_btn.setMaximumWidth(80)
         fit_btn.clicked.connect(self._fit_all)
         controls_layout.addWidget(fit_btn)
         
@@ -244,7 +269,7 @@ class ImagePreviewWidget(QWidget):
         reset_btn.clicked.connect(self._reset_zoom)
         controls_layout.addWidget(reset_btn)
         
-        layout.addLayout(controls_layout)
+        layout.addWidget(controls_frame)
         
         # Connect zoom signals
         self.original_view.zoom_changed.connect(self._on_zoom_changed)
@@ -298,18 +323,39 @@ class ImagePreviewWidget(QWidget):
         self._update_original_display()
     
     def _on_zoom_changed(self, zoom: float):
-        """Handle zoom level change."""
-        self.zoom_label.setText(f"{int(zoom * 100)}%")
+        """Handle zoom level change from view."""
+        percent = int(zoom * 100)
+        self.zoom_label.setText(f"{percent}%")
+        # Sync slider without triggering signal
+        self.zoom_slider.blockSignals(True)
+        self.zoom_slider.setValue(min(500, max(10, percent)))
+        self.zoom_slider.blockSignals(False)
+    
+    def _on_zoom_slider_changed(self, value: int):
+        """Handle zoom slider change."""
+        zoom = value / 100.0
+        self.zoom_label.setText(f"{value}%")
+        # Apply zoom to both views
+        self.original_view.resetTransform()
+        self.original_view.scale(zoom, zoom)
+        self.original_view._zoom = zoom
+        self.processed_view.resetTransform()
+        self.processed_view.scale(zoom, zoom)
+        self.processed_view._zoom = zoom
     
     def _fit_all(self):
         """Fit all views."""
         self.original_view.fit_in_view()
         self.processed_view.fit_in_view()
+        # Update slider
+        self.zoom_slider.setValue(100)
     
     def _reset_zoom(self):
         """Reset all zooms."""
         self.original_view.reset_zoom()
         self.processed_view.reset_zoom()
+        # Update slider
+        self.zoom_slider.setValue(100)
     
     def clear(self):
         """Clear all images."""

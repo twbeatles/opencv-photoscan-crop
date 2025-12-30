@@ -99,6 +99,7 @@ class UISettings:
     show_contour_overlay: bool = True
     auto_preview: bool = True
     confirm_before_process: bool = True
+    open_output_on_complete: bool = False  # New: auto-open output folder after batch
 
 
 @dataclass

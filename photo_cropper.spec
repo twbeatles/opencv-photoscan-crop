@@ -1,18 +1,34 @@
 # -*- mode: python ; coding: utf-8 -*-
 """
-Photo Cropper v7.1 - PyInstaller Spec File
+Photo Cropper v7.2 - PyInstaller Spec File
 
 이 파일은 Photo Cropper를 Windows 실행 파일로 빌드하기 위한 PyInstaller 설정입니다.
 
 빌드 방법:
     pyinstaller photo_cropper.spec
 
+빌드 옵션:
+    - ONEFILE 모드: 단일 EXE 파일 생성 (기본값)
+    - ONEDIR 모드: 폴더에 분산된 파일 생성
+
 출력 위치:
-    dist/PhotoCropper/PhotoCropper.exe
+    dist/PhotoCropper.exe (ONEFILE 모드)
+    dist/PhotoCropper/ (ONEDIR 모드)
+
+v7.2 변경사항:
+    - 토스트 알림 위젯 추가
+    - UI/UX 개선사항 포함
 """
 
 import sys
 from PyInstaller.utils.hooks import collect_data_files, collect_submodules
+
+# =====================================
+# 빌드 모드 설정
+# =====================================
+# True = 단일 EXE 파일 (더 작은 크기, 시작 느림)
+# False = 폴더에 분산된 파일 (더 큰 크기, 시작 빠름)
+ONEFILE_MODE = True
 
 # 프로젝트 경로
 block_cipher = None
@@ -27,6 +43,24 @@ hidden_imports = [
     'numpy',
     'PIL',
     'PIL.Image',
+    # Photo Cropper 모듈
+    'photo_cropper',
+    'photo_cropper.core',
+    'photo_cropper.core.image_processor',
+    'photo_cropper.core.batch_processor',
+    'photo_cropper.core.settings',
+    'photo_cropper.ui',
+    'photo_cropper.ui.main_window',
+    'photo_cropper.ui.widgets',
+    'photo_cropper.ui.widgets.settings_panel',
+    'photo_cropper.ui.widgets.preview_widget',
+    'photo_cropper.ui.widgets.progress_dialog',
+    'photo_cropper.ui.widgets.histogram_widget',
+    'photo_cropper.ui.widgets.toast_notification',  # NEW v7.2
+    'photo_cropper.ui.styles',
+    'photo_cropper.ui.styles.themes',
+    'photo_cropper.utils',
+    'photo_cropper.utils.file_helpers',
 ]
 
 # 데이터 파일 수집
@@ -109,33 +143,64 @@ pyz = PYZ(
     cipher=block_cipher
 )
 
-exe = EXE(
-    pyz,
-    a.scripts,
-    [],
-    exclude_binaries=True,
-    name='PhotoCropper',
-    debug=False,
-    bootloader_ignore_signals=False,
-    strip=False,
-    upx=True,
-    console=False,  # GUI 앱이므로 콘솔 숨김
-    disable_windowed_traceback=False,
-    argv_emulation=False,
-    target_arch=None,
-    codesign_identity=None,
-    entitlements_file=None,
-    # 아이콘 설정 (아이콘 파일이 있는 경우 활성화)
-    # icon='assets/icon.ico',
-)
+if ONEFILE_MODE:
+    # =====================================
+    # ONEFILE 모드: 단일 EXE 파일
+    # =====================================
+    exe = EXE(
+        pyz,
+        a.scripts,
+        a.binaries,
+        a.zipfiles,
+        a.datas,
+        [],
+        name='PhotoCropper',
+        debug=False,
+        bootloader_ignore_signals=False,
+        strip=False,
+        upx=True,
+        upx_exclude=[],
+        runtime_tmpdir=None,
+        console=False,  # GUI 앱이므로 콘솔 숨김
+        disable_windowed_traceback=False,
+        argv_emulation=False,
+        target_arch=None,
+        codesign_identity=None,
+        entitlements_file=None,
+        # 아이콘 설정 (아이콘 파일이 있는 경우 활성화)
+        # icon='assets/icon.ico',
+    )
+else:
+    # =====================================
+    # ONEDIR 모드: 폴더에 분산된 파일
+    # =====================================
+    exe = EXE(
+        pyz,
+        a.scripts,
+        [],
+        exclude_binaries=True,
+        name='PhotoCropper',
+        debug=False,
+        bootloader_ignore_signals=False,
+        strip=False,
+        upx=True,
+        console=False,  # GUI 앱이므로 콘솔 숨김
+        disable_windowed_traceback=False,
+        argv_emulation=False,
+        target_arch=None,
+        codesign_identity=None,
+        entitlements_file=None,
+        # 아이콘 설정 (아이콘 파일이 있는 경우 활성화)
+        # icon='assets/icon.ico',
+    )
 
-coll = COLLECT(
-    exe,
-    a.binaries,
-    a.zipfiles,
-    a.datas,
-    strip=False,
-    upx=True,
-    upx_exclude=[],
-    name='PhotoCropper',
-)
+    coll = COLLECT(
+        exe,
+        a.binaries,
+        a.zipfiles,
+        a.datas,
+        strip=False,
+        upx=True,
+        upx_exclude=[],
+        name='PhotoCropper',
+    )
