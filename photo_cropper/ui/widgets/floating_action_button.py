@@ -4,117 +4,98 @@
 Floating Action Button for Photo Cropper v8.5.
 
 Material Design-inspired FAB with expandable menu.
+Fixed positioning and click handling.
 """
 
 import logging
-from typing import Optional, List, Callable, Tuple
+from typing import Optional, List, Callable
 
 from PyQt6.QtWidgets import (
     QWidget, QPushButton, QVBoxLayout, QHBoxLayout, QLabel,
-    QGraphicsOpacityEffect
+    QGraphicsDropShadowEffect, QSizePolicy
 )
 from PyQt6.QtCore import (
     Qt, pyqtSignal, QPropertyAnimation, QEasingCurve,
-    QPoint, QSize, QParallelAnimationGroup, QSequentialAnimationGroup
+    QPoint, QSize, QTimer
 )
-from PyQt6.QtGui import QColor, QPainter, QPen, QBrush, QFont, QIcon
+from PyQt6.QtGui import QColor
 
 logger = logging.getLogger(__name__)
 
 
-class FABAction:
-    """Represents a FAB menu action."""
+class FABMenuItem(QPushButton):
+    """Individual menu item button for the FAB."""
     
     def __init__(
         self,
-        name: str,
-        icon: str,  # emoji or text
+        icon: str,
         tooltip: str,
-        callback: Callable,
-        color: str = "#58a6ff"
-    ):
-        self.name = name
-        self.icon = icon
-        self.tooltip = tooltip
-        self.callback = callback
-        self.color = color
-
-
-class MiniActionButton(QPushButton):
-    """Small action button for FAB menu."""
-    
-    def __init__(
-        self,
-        action: FABAction,
+        color: str = "#58a6ff",
         parent: Optional[QWidget] = None
     ):
         super().__init__(parent)
         
-        self.action = action
-        self._setup_ui()
-    
-    def _setup_ui(self):
-        """Setup button UI."""
-        self.setFixedSize(48, 48)
-        self.setText(self.action.icon)
-        self.setToolTip(self.action.tooltip)
+        self.setFixedSize(44, 44)
+        self.setText(icon)
+        self.setToolTip(tooltip)
+        self.setCursor(Qt.CursorShape.PointingHandCursor)
         
         self.setStyleSheet(f"""
             QPushButton {{
-                background-color: {self.action.color};
+                background-color: {color};
                 color: white;
                 border: none;
-                border-radius: 24px;
-                font-size: 20px;
+                border-radius: 22px;
+                font-size: 18px;
             }}
             QPushButton:hover {{
-                background-color: {self._lighten_color(self.action.color)};
+                background-color: {self._adjust_color(color, 30)};
             }}
             QPushButton:pressed {{
-                background-color: {self._darken_color(self.action.color)};
+                background-color: {self._adjust_color(color, -30)};
             }}
         """)
         
-        self.clicked.connect(self.action.callback)
+        # Add shadow
+        shadow = QGraphicsDropShadowEffect(self)
+        shadow.setBlurRadius(8)
+        shadow.setColor(QColor(0, 0, 0, 80))
+        shadow.setOffset(0, 2)
+        self.setGraphicsEffect(shadow)
     
     @staticmethod
-    def _lighten_color(hex_color: str) -> str:
-        """Lighten a hex color."""
+    def _adjust_color(hex_color: str, amount: int) -> str:
+        """Lighten or darken a hex color."""
         hex_color = hex_color.lstrip('#')
-        r, g, b = int(hex_color[0:2], 16), int(hex_color[2:4], 16), int(hex_color[4:6], 16)
-        r = min(255, r + 30)
-        g = min(255, g + 30)
-        b = min(255, b + 30)
-        return f"#{r:02x}{g:02x}{b:02x}"
-    
-    @staticmethod
-    def _darken_color(hex_color: str) -> str:
-        """Darken a hex color."""
-        hex_color = hex_color.lstrip('#')
-        r, g, b = int(hex_color[0:2], 16), int(hex_color[2:4], 16), int(hex_color[4:6], 16)
-        r = max(0, r - 30)
-        g = max(0, g - 30)
-        b = max(0, b - 30)
+        r = max(0, min(255, int(hex_color[0:2], 16) + amount))
+        g = max(0, min(255, int(hex_color[2:4], 16) + amount))
+        b = max(0, min(255, int(hex_color[4:6], 16) + amount))
         return f"#{r:02x}{g:02x}{b:02x}"
 
 
-class ActionLabel(QWidget):
-    """Label shown next to mini action button."""
+class FABMenuRow(QWidget):
+    """A row containing label + button for the FAB menu."""
+    
+    clicked = pyqtSignal()
     
     def __init__(
         self,
-        text: str,
+        icon: str,
+        label_text: str,
+        color: str,
         parent: Optional[QWidget] = None
     ):
         super().__init__(parent)
         
         layout = QHBoxLayout(self)
-        layout.setContentsMargins(8, 4, 8, 4)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(10)
         
-        self.label = QLabel(text)
+        # Label (on left)
+        self.label = QLabel(label_text)
         self.label.setStyleSheet("""
             QLabel {
-                background-color: rgba(0, 0, 0, 0.8);
+                background-color: rgba(30, 30, 30, 0.9);
                 color: white;
                 padding: 6px 12px;
                 border-radius: 4px;
@@ -122,57 +103,64 @@ class ActionLabel(QWidget):
             }
         """)
         layout.addWidget(self.label)
+        
+        # Button (on right)
+        self.button = FABMenuItem(icon, label_text, color, self)
+        self.button.clicked.connect(self.clicked.emit)
+        layout.addWidget(self.button)
 
 
-class FloatingActionButton(QWidget):
+class QuickActionFAB(QWidget):
     """
     Floating Action Button with expandable menu.
     
-    Features:
-        - Main FAB button
-        - Expandable action menu
-        - Smooth animations
-        - Auto-position in parent widget
+    Fixed version with proper positioning and click handling.
     """
     
-    def __init__(
-        self,
-        parent: Optional[QWidget] = None,
-        position: str = "bottom-right"  # bottom-right, bottom-left, top-right, top-left
-    ):
+    # Signals
+    preview_requested = pyqtSignal()
+    process_requested = pyqtSignal()
+    rotate_requested = pyqtSignal()
+    fullscreen_requested = pyqtSignal()
+    settings_requested = pyqtSignal()
+    
+    def __init__(self, parent: Optional[QWidget] = None):
         super().__init__(parent)
         
-        self._position = position
         self._is_expanded = False
-        self._actions: List[FABAction] = []
-        self._action_widgets: List[Tuple[MiniActionButton, ActionLabel]] = []
+        self._menu_items: List[FABMenuRow] = []
         
+        # Make transparent but clickable
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
-        self.setWindowFlags(Qt.WindowType.FramelessWindowHint)
         
         self._setup_ui()
+        self._create_menu_items()
+        
+        # Install event filter on parent for repositioning
+        if parent:
+            parent.installEventFilter(self)
     
     def _setup_ui(self):
         """Setup FAB UI."""
-        # Main layout (vertical for stacking action buttons above main FAB)
+        # Main vertical layout
         self.main_layout = QVBoxLayout(self)
-        self.main_layout.setContentsMargins(10, 10, 10, 10)
-        self.main_layout.setSpacing(12)
+        self.main_layout.setContentsMargins(8, 8, 8, 8)
+        self.main_layout.setSpacing(8)
         self.main_layout.setAlignment(Qt.AlignmentFlag.AlignBottom | Qt.AlignmentFlag.AlignRight)
         
-        # Container for action buttons (hidden initially)
-        self.actions_container = QWidget()
-        self.actions_layout = QVBoxLayout(self.actions_container)
-        self.actions_layout.setContentsMargins(0, 0, 0, 0)
-        self.actions_layout.setSpacing(8)
-        self.actions_layout.setAlignment(Qt.AlignmentFlag.AlignRight)
-        self.actions_container.hide()
-        self.main_layout.addWidget(self.actions_container)
+        # Menu container (hidden initially)
+        self.menu_container = QWidget()
+        self.menu_layout = QVBoxLayout(self.menu_container)
+        self.menu_layout.setContentsMargins(0, 0, 0, 0)
+        self.menu_layout.setSpacing(6)
+        self.menu_layout.setAlignment(Qt.AlignmentFlag.AlignRight)
+        self.menu_container.hide()
+        self.main_layout.addWidget(self.menu_container)
         
         # Main FAB button
-        self.main_button = QPushButton()
+        self.main_button = QPushButton("+")
         self.main_button.setFixedSize(56, 56)
-        self.main_button.setText("+")
+        self.main_button.setCursor(Qt.CursorShape.PointingHandCursor)
         self.main_button.setStyleSheet("""
             QPushButton {
                 background: qlineargradient(x1:0, y1:0, x2:1, y2:1, 
@@ -180,7 +168,7 @@ class FloatingActionButton(QWidget):
                 color: white;
                 border: none;
                 border-radius: 28px;
-                font-size: 28px;
+                font-size: 26px;
                 font-weight: bold;
             }
             QPushButton:hover {
@@ -194,60 +182,44 @@ class FloatingActionButton(QWidget):
         """)
         self.main_button.clicked.connect(self._toggle_expand)
         
-        # Add shadow effect via stylesheet
+        # Add shadow to main button
+        shadow = QGraphicsDropShadowEffect(self.main_button)
+        shadow.setBlurRadius(15)
+        shadow.setColor(QColor(0, 0, 0, 100))
+        shadow.setOffset(0, 4)
+        self.main_button.setGraphicsEffect(shadow)
+        
         self.main_layout.addWidget(self.main_button, alignment=Qt.AlignmentFlag.AlignRight)
-        
-        self.setFixedSize(200, 400)  # Will be adjusted based on actions
     
-    def add_action(self, action: FABAction):
-        """Add an action to the FAB menu."""
-        self._actions.append(action)
-        self._rebuild_actions()
-    
-    def add_actions(self, actions: List[FABAction]):
-        """Add multiple actions to the FAB menu."""
-        self._actions.extend(actions)
-        self._rebuild_actions()
-    
-    def clear_actions(self):
-        """Clear all actions."""
-        self._actions.clear()
-        self._rebuild_actions()
-    
-    def _rebuild_actions(self):
-        """Rebuild action button widgets."""
-        # Clear existing
-        for btn, label in self._action_widgets:
-            btn.deleteLater()
-            label.deleteLater()
-        self._action_widgets.clear()
+    def _create_menu_items(self):
+        """Create the menu items."""
+        items = [
+            ("👁", "미리보기", "#238636", self.preview_requested),
+            ("▶", "변환 시작", "#1f6feb", self.process_requested),
+            ("↻", "회전", "#8957e5", self.rotate_requested),
+            ("⛶", "전체화면", "#f0883e", self.fullscreen_requested),
+        ]
         
-        # Clear layout
-        while self.actions_layout.count():
-            item = self.actions_layout.takeAt(0)
-            if item.widget():
-                item.widget().deleteLater()
+        for icon, label, color, signal in items:
+            row = FABMenuRow(icon, label, color, self.menu_container)
+            row.clicked.connect(signal.emit)
+            row.clicked.connect(self._collapse)
+            self.menu_layout.addWidget(row)
+            self._menu_items.append(row)
         
-        # Create new buttons
-        for action in self._actions:
-            row = QWidget()
-            row_layout = QHBoxLayout(row)
-            row_layout.setContentsMargins(0, 0, 0, 0)
-            row_layout.setSpacing(8)
-            
-            label = ActionLabel(action.tooltip, row)
-            row_layout.addWidget(label)
-            
-            btn = MiniActionButton(action, row)
-            btn.clicked.connect(self._collapse)  # Collapse on action click
-            row_layout.addWidget(btn)
-            
-            self.actions_layout.addWidget(row)
-            self._action_widgets.append((btn, label))
+        # Update size based on items
+        self._update_size()
+    
+    def _update_size(self):
+        """Update widget size based on content."""
+        # Calculate height: main button + menu items + margins
+        base_height = 56 + 16  # Main button + margins
+        menu_height = len(self._menu_items) * 56 if self._is_expanded else 0
         
-        # Adjust widget size
-        height = 80 + len(self._actions) * 60
-        self.setFixedHeight(height)
+        width = 220  # Fixed width for labels + buttons
+        height = base_height + menu_height + 50  # Extra padding
+        
+        self.setFixedSize(width, height + 200)  # Extra space for expanded menu
     
     def _toggle_expand(self):
         """Toggle expanded state."""
@@ -257,117 +229,50 @@ class FloatingActionButton(QWidget):
             self._expand()
     
     def _expand(self):
-        """Expand the FAB menu."""
+        """Expand the menu."""
         self._is_expanded = True
         self.main_button.setText("×")
-        
-        # Rotate animation for main button would go here
-        # For simplicity, just show the container
-        self.actions_container.show()
-        
-        # Animate opacity
-        for btn, label in self._action_widgets:
-            effect = QGraphicsOpacityEffect(btn)
-            btn.setGraphicsEffect(effect)
-            
-            anim = QPropertyAnimation(effect, b"opacity")
-            anim.setDuration(200)
-            anim.setStartValue(0)
-            anim.setEndValue(1)
-            anim.setEasingCurve(QEasingCurve.Type.OutCubic)
-            anim.start()
+        self.menu_container.show()
+        self._update_position()
     
     def _collapse(self):
-        """Collapse the FAB menu."""
+        """Collapse the menu."""
         self._is_expanded = False
         self.main_button.setText("+")
-        self.actions_container.hide()
+        self.menu_container.hide()
     
-    def position_in_parent(self):
-        """Position FAB in parent widget."""
-        if self.parent() is None:
+    def _update_position(self):
+        """Update FAB position in parent."""
+        if not self.parent():
             return
         
         parent = self.parent()
         margin = 20
         
-        if "right" in self._position:
-            x = parent.width() - self.width() - margin
-        else:
-            x = margin
+        # Position in bottom-right
+        x = parent.width() - self.width() - margin
+        y = parent.height() - self.height() + 150  # Offset because of extra height
         
-        if "bottom" in self._position:
-            y = parent.height() - self.height() - margin
-        else:
-            y = margin
-        
-        self.move(x, y)
+        self.move(max(0, x), max(0, y))
     
-    def set_visible_animated(self, visible: bool):
-        """Show/hide with animation."""
-        if visible:
-            self.show()
-            # Could add slide-in animation here
-        else:
-            self._collapse()
-            self.hide()
+    def eventFilter(self, obj, event):
+        """Handle parent resize events."""
+        from PyQt6.QtCore import QEvent
+        if event.type() == QEvent.Type.Resize:
+            # Delay position update
+            QTimer.singleShot(10, self._update_position)
+        return super().eventFilter(obj, event)
+    
+    def showEvent(self, event):
+        """Handle show event."""
+        super().showEvent(event)
+        QTimer.singleShot(100, self._update_position)
+    
+    def resizeEvent(self, event):
+        """Handle resize."""
+        super().resizeEvent(event)
+        self._update_position()
 
 
-class QuickActionFAB(FloatingActionButton):
-    """
-    Pre-configured FAB with common quick actions for Photo Cropper.
-    """
-    
-    # Signals
-    preview_requested = pyqtSignal()
-    process_requested = pyqtSignal()
-    rotate_requested = pyqtSignal()
-    settings_requested = pyqtSignal()
-    fullscreen_requested = pyqtSignal()
-    
-    def __init__(self, parent: Optional[QWidget] = None):
-        super().__init__(parent, "bottom-right")
-        
-        self._setup_actions()
-    
-    def _setup_actions(self):
-        """Setup default quick actions."""
-        actions = [
-            FABAction(
-                name="preview",
-                icon="👁",
-                tooltip="미리보기 (Ctrl+P)",
-                callback=lambda: self.preview_requested.emit(),
-                color="#238636"
-            ),
-            FABAction(
-                name="process",
-                icon="▶",
-                tooltip="변환 시작",
-                callback=lambda: self.process_requested.emit(),
-                color="#1f6feb"
-            ),
-            FABAction(
-                name="rotate",
-                icon="↻",
-                tooltip="회전 (Ctrl+R)",
-                callback=lambda: self.rotate_requested.emit(),
-                color="#8957e5"
-            ),
-            FABAction(
-                name="fullscreen",
-                icon="⛶",
-                tooltip="전체화면 (F11)",
-                callback=lambda: self.fullscreen_requested.emit(),
-                color="#f0883e"
-            ),
-            FABAction(
-                name="settings",
-                icon="⚙",
-                tooltip="설정",
-                callback=lambda: self.settings_requested.emit(),
-                color="#8b949e"
-            ),
-        ]
-        
-        self.add_actions(actions)
+# Keep old class name for compatibility
+FloatingActionButton = QuickActionFAB

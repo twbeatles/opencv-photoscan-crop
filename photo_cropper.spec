@@ -113,7 +113,7 @@ exe = EXE(
     name='SmartPhotoCropper_v85',
     debug=False,
     bootloader_ignore_signals=False,
-    strip=True,           # 심볼 제거 (크기 감소)
+    strip=False,          # Windows에서는 strip 불가 (Linux/macOS 전용)
     upx=True,             # UPX 압축 (설치 필요: https://upx.github.io/)
     upx_exclude=[
         'vcruntime140.dll',

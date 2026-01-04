@@ -464,13 +464,14 @@ class MainWindow(QMainWindow):
         """Setup floating action button for quick actions (v8.5)."""
         self.fab = QuickActionFAB(self)
         
-        # Add quick action handlers
-        self.fab.add_action("preview", "미리보기", self._request_preview)
-        self.fab.add_action("process", "변환 시작", self._start_processing)
-        self.fab.add_action("compare", "Before/After", self._show_compare_dialog)
-        self.fab.add_action("fullscreen", "전체화면 (F11)", self._show_fullscreen)
-        self.fab.add_action("undo", "실행 취소", self._undo)
-        self.fab.add_action("redo", "다시 실행", self._redo)
+        # Connect QuickActionFAB signals to handlers
+        self.fab.preview_requested.connect(self._request_preview)
+        self.fab.process_requested.connect(self._start_processing)
+        self.fab.rotate_requested.connect(self._rotate_preview)
+        self.fab.fullscreen_requested.connect(self._show_fullscreen)
+        
+        # Position FAB in bottom-right corner
+        self.fab.show()
     
     def _show_fullscreen(self):
         """Show fullscreen preview of current image (v8.5)."""
@@ -544,6 +545,30 @@ class MainWindow(QMainWindow):
         # Check theme change
         if settings.ui.theme != self._get_current_theme():
             self._set_theme(settings.ui.theme)
+        
+        # v8.5: Auto-save settings with debounce (2 seconds)
+        self._schedule_auto_save()
+    
+    def _schedule_auto_save(self):
+        """Schedule auto-save with debounce to prevent excessive saves."""
+        # Create timer if not exists
+        if not hasattr(self, '_auto_save_timer'):
+            self._auto_save_timer = QTimer()
+            self._auto_save_timer.setSingleShot(True)
+            self._auto_save_timer.timeout.connect(self._do_auto_save)
+        
+        # Restart timer (debounce)
+        self._auto_save_timer.start(2000)  # 2 second delay
+    
+    def _do_auto_save(self):
+        """Perform auto-save of settings."""
+        self._settings.last_input_path = self.input_path_edit.text()
+        self._settings.last_output_path = self.output_path_edit.text()
+        
+        if self.settings_manager.save(self._settings):
+            self.status_label.setText("✓ 설정 자동 저장됨")
+        else:
+            self.status_label.setText("⚠ 설정 저장 실패")
     
     def _set_theme(self, theme_name: str):
         """Apply theme stylesheet."""
