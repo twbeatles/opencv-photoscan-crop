@@ -1,15 +1,21 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Batch Processor for Photo Cropper.
+Batch Processor for Photo Cropper v8.0.
 
-Handles batch image processing with progress tracking and cancellation support.
+Handles batch image processing with:
+- Multithreading support (ThreadPoolExecutor)
+- Progress tracking and cancellation
+- Processing log integration
+- Advanced image processing features
 """
 
 import os
 import shutil
 import logging
 import threading
+import traceback
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 from typing import Optional, List, Dict, Any, Callable
 from dataclasses import dataclass
@@ -18,7 +24,9 @@ from queue import Queue
 
 from .image_processor import ImageProcessor, CropResult
 from .settings import AppSettings
-from ..utils.file_helpers import SUPPORTED_IMAGE_FORMATS
+from ..utils.file_helpers import SUPPORTED_IMAGE_FORMATS, get_image_files, classify_failed_files
+from ..utils.processing_log import ProcessingLogger, get_processing_logger
+from ..utils.naming_rules import NamingRule, NamingRuleEngine
 
 logger = logging.getLogger(__name__)
 
@@ -55,6 +63,8 @@ class BatchProgress:
     current_file: str = ""
     is_running: bool = False
     is_cancelled: bool = False
+    avg_time_per_file_ms: float = 0.0
+    total_time_ms: float = 0.0
     
     @property
     def percent(self) -> float:
@@ -69,6 +79,14 @@ class BatchProgress:
         if self.processed == 0:
             return 0.0
         return (self.success / self.processed) * 100
+    
+    @property
+    def eta_seconds(self) -> float:
+        """Estimated time remaining in seconds."""
+        if self.processed == 0 or self.avg_time_per_file_ms == 0:
+            return 0.0
+        remaining = self.total - self.processed
+        return (remaining * self.avg_time_per_file_ms) / 1000
 
 
 class BatchProcessor:
@@ -105,11 +123,41 @@ class BatchProcessor:
         self._results: List[FileResult] = []
         self._failed_files: List[str] = []
         
+        # Processing logger
+        self._processing_logger: Optional[ProcessingLogger] = None
+        
+        # Naming rule engine
+        self._naming_engine: Optional[NamingRuleEngine] = None
+        
+        # Thread pool for multithreading - dynamic based on CPU cores
+        self._executor: Optional[ThreadPoolExecutor] = None
+        self._thread_count = self._calculate_optimal_threads()
+        
+        # Time tracking for ETA
+        self._processing_times: List[float] = []
+        self._start_time: Optional[float] = None
+        
+        # Advanced processor (lazy init)
+        self._advanced_processor = None
+        
         # Callbacks
         self._on_progress: Optional[Callable[[BatchProgress], None]] = None
         self._on_file_complete: Optional[Callable[[FileResult], None]] = None
         self._on_log: Optional[Callable[[str, str], None]] = None
         self._on_complete: Optional[Callable[[BatchProgress, List[FileResult]], None]] = None
+    
+    def _calculate_optimal_threads(self) -> int:
+        """Calculate optimal thread count based on CPU cores and settings."""
+        import os
+        
+        # Get configured thread count from settings
+        if hasattr(self.settings, 'performance') and self.settings.performance.thread_count > 0:
+            return min(self.settings.performance.thread_count, os.cpu_count() or 4)
+        
+        # Auto-calculate: use CPU count but cap at 8 for I/O bound operations
+        cpu_count = os.cpu_count() or 4
+        return min(max(2, cpu_count - 1), 8)  # Leave one core free, max 8
+
     
     def set_callbacks(
         self,
@@ -144,7 +192,7 @@ class BatchProcessor:
         else:
             logger.info(message)
     
-    def _safe_callback(self, callback, *args, **kwargs):
+    def _safe_callback(self, callback: Optional[Callable], *args, **kwargs):
         """
         Safely invoke a callback with exception handling.
         
@@ -159,6 +207,16 @@ class BatchProcessor:
             callback(*args, **kwargs)
         except Exception as e:
             logger.error(f"Callback error: {e}")
+            logger.debug(traceback.format_exc())
+            
+    def cleanup(self):
+        """Clean up resources and stop threads."""
+        self.request_stop()
+        if self._executor:
+            self._executor.shutdown(wait=False)
+        if self._processing_thread and self._processing_thread.is_alive():
+            # Thread join is blocking, avoid if calling from UI thread
+            pass
     
     def _update_progress(self):
         """Send progress update through callback."""

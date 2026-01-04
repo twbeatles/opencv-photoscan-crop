@@ -32,29 +32,27 @@ class StatCard(QFrame):
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(12, 8, 12, 8)
+        layout.setContentsMargins(0, 16, 0, 16)
         layout.setSpacing(4)
         
-        # Icon and value row
-        value_layout = QHBoxLayout()
-        value_layout.setSpacing(6)
-        
+        # Icon
         icon_label = QLabel(icon)
-        icon_label.setFont(QFont("Segoe UI Emoji", 14))
-        value_layout.addWidget(icon_label)
+        icon_label.setFont(QFont("Segoe UI Emoji", 20))
+        icon_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        layout.addWidget(icon_label)
         
+        # Value
         self.value_label = QLabel("0")
-        self.value_label.setFont(QFont("Segoe UI", 16, QFont.Weight.Bold))
-        self.value_label.setStyleSheet(f"color: {color};")
-        value_layout.addWidget(self.value_label)
-        value_layout.addStretch()
-        
-        layout.addLayout(value_layout)
+        self.value_label.setFont(QFont("Segoe UI", 18, QFont.Weight.Bold))
+        self.value_label.setStyleSheet(f"color: {color}; margin-top: 4px;")
+        self.value_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        layout.addWidget(self.value_label)
         
         # Label
         self.label_text = QLabel(label)
-        self.label_text.setFont(QFont("Segoe UI", 9))
+        self.label_text.setFont(QFont("Segoe UI", 10))
         self.label_text.setStyleSheet("color: #888888;")
+        self.label_text.setAlignment(Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(self.label_text)
     
     def set_value(self, value):
@@ -127,85 +125,95 @@ class ProgressDialog(QDialog):
     def _setup_ui(self):
         """Setup UI components."""
         layout = QVBoxLayout(self)
-        layout.setSpacing(12)
+        layout.setContentsMargins(24, 24, 24, 24)
+        layout.setSpacing(20)
         
-        # Header with current file
+        # 1. Header with Current File (Glass Card)
         header_frame = QFrame()
         header_frame.setObjectName("statsFrame")
         header_layout = QVBoxLayout(header_frame)
-        header_layout.setContentsMargins(16, 12, 16, 12)
+        header_layout.setContentsMargins(20, 20, 20, 20)
+        header_layout.setSpacing(10)
         
-        self.current_file_label = QLabel("⏳ 대기 중...")
+        title_label = QLabel("🚀 일괄 처리 진행 중")
+        title_label.setObjectName("titleLabel")
+        title_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        header_layout.addWidget(title_label)
+        
+        self.current_file_label = QLabel("준비 중...")
         self.current_file_label.setFont(QFont("Segoe UI", 11))
         self.current_file_label.setWordWrap(True)
+        self.current_file_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.current_file_label.setStyleSheet("color: #8b949e;")
         header_layout.addWidget(self.current_file_label)
         
         layout.addWidget(header_frame)
         
-        # Progress bar with percentage
-        progress_frame = QFrame()
-        progress_layout = QVBoxLayout(progress_frame)
+        # 2. Progress Section
+        progress_container = QWidget()
+        progress_layout = QVBoxLayout(progress_container)
         progress_layout.setContentsMargins(0, 0, 0, 0)
         progress_layout.setSpacing(8)
         
+        # Percentage & ETA Row
+        info_row = QHBoxLayout()
+        self.percent_label = QLabel("0%")
+        self.percent_label.setFont(QFont("Segoe UI", 24, QFont.Weight.Bold))
+        self.percent_label.setStyleSheet("color: #58a6ff;")
+        info_row.addWidget(self.percent_label)
+        
+        info_row.addStretch()
+        
+        self.eta_label = QLabel("⏱️ 계산 중...")
+        self.eta_label.setFont(QFont("Segoe UI", 10))
+        self.eta_label.setStyleSheet("color: #8b949e;")
+        info_row.addWidget(self.eta_label)
+        progress_layout.addLayout(info_row)
+        
+        # Progress Bar
         self.progress_bar = QProgressBar()
-        self.progress_bar.setMinimum(0)
-        self.progress_bar.setMaximum(100)
-        self.progress_bar.setValue(0)
+        self.progress_bar.setMinimumHeight(16)
         self.progress_bar.setTextVisible(False)
-        self.progress_bar.setMinimumHeight(20)
         progress_layout.addWidget(self.progress_bar)
         
-        # Progress percentage and ETA row
-        progress_info_layout = QHBoxLayout()
+        layout.addWidget(progress_container)
         
-        self.percent_label = QLabel("0%")
-        self.percent_label.setFont(QFont("Segoe UI", 18, QFont.Weight.Bold))
-        progress_info_layout.addWidget(self.percent_label)
-        
-        progress_info_layout.addStretch()
-        
-        self.eta_label = QLabel("⏱️ 예상 남은 시간: 계산 중...")
-        self.eta_label.setFont(QFont("Segoe UI", 10))
-        self.eta_label.setObjectName("subtitleLabel")
-        progress_info_layout.addWidget(self.eta_label)
-        
-        progress_layout.addLayout(progress_info_layout)
-        layout.addWidget(progress_frame)
-        
-        # Stats widget
+        # 3. Stats Grid
         self.stats_widget = StatsWidget()
         layout.addWidget(self.stats_widget)
         
-        # Log area with improved styling
+        # 4. Logs (Collapsible look)
         log_group = QGroupBox("📋 처리 로그")
         log_layout = QVBoxLayout(log_group)
-        log_layout.setContentsMargins(8, 16, 8, 8)
+        log_layout.setContentsMargins(12, 24, 12, 12)
         
         self.log_text = QTextEdit()
         self.log_text.setReadOnly(True)
         self.log_text.setFont(QFont("Consolas", 9))
-        self.log_text.setMinimumHeight(180)
+        self.log_text.setStyleSheet("border: none; background-color: transparent;")
         log_layout.addWidget(self.log_text)
         
-        layout.addWidget(log_group)
+        layout.addWidget(log_group, 1) # Give it stretch
         
-        # Buttons with improved styling
+        # 5. Buttons
         button_layout = QHBoxLayout()
-        button_layout.setSpacing(12)
-        button_layout.addStretch()
+        button_layout.setSpacing(16)
         
-        self.cancel_button = QPushButton("❌ 취소")
-        self.cancel_button.setObjectName("primaryButton")
-        self.cancel_button.setMinimumWidth(100)
+        self.cancel_button = QPushButton("작업 취소")
+        self.cancel_button.setObjectName("primaryButton") # Red/Warning style logic can be applied if needed
+        self.cancel_button.setStyleSheet("""
+            QPushButton { background-color: #cf222e; border: 1px solid rgba(27,31,36,0.15); }
+            QPushButton:hover { background-color: #a40e26; }
+        """)
+        self.cancel_button.setMinimumHeight(40)
         self.cancel_button.clicked.connect(self._on_cancel)
         button_layout.addWidget(self.cancel_button)
         
-        self.close_button = QPushButton("✅ 닫기")
-        self.close_button.setObjectName("successButton")
-        self.close_button.setMinimumWidth(100)
+        self.close_button = QPushButton("닫기")
+        self.close_button.setMinimumHeight(40)
         self.close_button.clicked.connect(self.accept)
         self.close_button.setEnabled(False)
+        self.close_button.hide() # Hide until complete
         button_layout.addWidget(self.close_button)
         
         layout.addLayout(button_layout)
@@ -309,17 +317,20 @@ class ProgressDialog(QDialog):
         """Handle processing completion."""
         self._is_complete = True
         
-        # Update UI
-        self.cancel_button.setEnabled(False)
+        # Update UI: Switch buttons
+        self.cancel_button.setVisible(False)
+        self.close_button.setVisible(True)
         self.close_button.setEnabled(True)
         self.close_button.setFocus()
         
         if progress.is_cancelled:
             self.setWindowTitle("⛔ 처리 중단됨")
             self.current_file_label.setText("⛔ 작업이 취소되었습니다")
+            self.current_file_label.setStyleSheet("color: #e94560; font-weight: bold;")
         else:
             self.setWindowTitle("✅ 처리 완료")
             self.current_file_label.setText("🎉 모든 작업이 완료되었습니다!")
+            self.current_file_label.setStyleSheet("color: #00c880; font-weight: bold;")
         
         self.progress_bar.setValue(100)
         self.percent_label.setText("완료! ✨")
@@ -352,10 +363,18 @@ class ProgressDialog(QDialog):
         
         self.setWindowTitle("🔄 처리 중...")
         self.current_file_label.setText("⏳ 대기 중...")
+        self.current_file_label.setStyleSheet("color: #8b949e;")
+        
         self.progress_bar.setValue(0)
         self.percent_label.setText("0%")
         self.eta_label.setText("⏱️ 예상 남은 시간: 계산 중...")
         self.log_text.clear()
+        
+        # Reset buttons
+        self.cancel_button.setVisible(True)
+        self.cancel_button.setEnabled(True)
+        self.cancel_button.setText("작업 취소")
+        self.close_button.setVisible(False)
         
         self.cancel_button.setEnabled(True)
         self.cancel_button.setText("❌ 취소")

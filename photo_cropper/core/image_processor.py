@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Enhanced Image Processor for Photo Cropper.
+Enhanced Image Processor for Photo Cropper v8.0.
 
 Provides advanced CV algorithms for automatic photo detection and cropping:
 - Multi-scale Canny edge detection
@@ -9,6 +9,7 @@ Provides advanced CV algorithms for automatic photo detection and cropping:
 - Adaptive threshold for textured backgrounds
 - Gradient analysis (Sobel)
 - Enhanced contour scoring
+- v8.0: Advanced processing (deskew, color correct, perspective, etc.)
 """
 
 import os
@@ -20,7 +21,8 @@ from typing import Optional, Tuple, List
 from dataclasses import dataclass
 from enum import Enum
 
-from .settings import AlgorithmSettings, ProcessingSettings
+from .settings import AlgorithmSettings, ProcessingSettings, AdvancedProcessingSettings
+from .advanced_processing import AdvancedImageProcessor, GPUAccelerator
 
 logger = logging.getLogger(__name__)
 
@@ -66,7 +68,8 @@ class ImageProcessor:
     def __init__(
         self, 
         algorithm_settings: Optional[AlgorithmSettings] = None,
-        processing_settings: Optional[ProcessingSettings] = None
+        processing_settings: Optional[ProcessingSettings] = None,
+        advanced_settings: Optional[AdvancedProcessingSettings] = None
     ):
         """
         Initialize image processor.
@@ -74,20 +77,28 @@ class ImageProcessor:
         Args:
             algorithm_settings: Algorithm configuration
             processing_settings: Post-processing configuration
+            advanced_settings: v8.0 Advanced processing settings
         """
         self.algo = algorithm_settings or AlgorithmSettings()
         self.proc = processing_settings or ProcessingSettings()
+        self.advanced = advanced_settings or AdvancedProcessingSettings()
+        
+        # v8.0: Advanced processor
+        self._advanced_processor = AdvancedImageProcessor()
     
     def update_settings(
         self,
         algorithm_settings: Optional[AlgorithmSettings] = None,
-        processing_settings: Optional[ProcessingSettings] = None
+        processing_settings: Optional[ProcessingSettings] = None,
+        advanced_settings: Optional[AdvancedProcessingSettings] = None
     ):
         """Update processor settings."""
         if algorithm_settings:
             self.algo = algorithm_settings
         if processing_settings:
             self.proc = processing_settings
+        if advanced_settings:
+            self.advanced = advanced_settings
     
     @staticmethod
     def rotate_image(image: np.ndarray, angle: int) -> np.ndarray:
@@ -407,16 +418,21 @@ class ImageProcessor:
             orig = image.copy()
             
             # Resize for processing (performance optimization)
+            # Resize for processing (performance optimization)
+            # Use a fixed size for detection to ensure consistent performance regardless of input size
+            target_dim = 1000
             max_dim = max(height, width)
-            if max_dim > 2000:
-                ratio = height / 1000.0
-            else:
-                ratio = height / 500.0
             
-            new_height = int(height / ratio)
-            new_width = int(width / ratio)
-            image_resized = cv2.resize(image, (new_width, new_height))
-            image_area = new_height * new_width
+            if max_dim > 1500: # Only resize if significantly larger
+                ratio = max_dim / target_dim
+                new_width = int(width / ratio)
+                new_height = int(height / ratio)
+                image_resized = cv2.resize(image, (new_width, new_height), interpolation=cv2.INTER_LINEAR)
+            else:
+                ratio = 1.0
+                image_resized = image
+            
+            image_area = image_resized.shape[0] * image_resized.shape[1]
             
             # Apply CLAHE for better contrast
             if self.algo.use_clahe:
@@ -548,6 +564,12 @@ class ImageProcessor:
             
             cropped_size = (warped.shape[1], warped.shape[0])
             
+            # Cleanup large variables
+            del gray
+            if 'edges' in locals(): del edges
+            if 'thresh' in locals(): del thresh
+            if 'image_resized' in locals() and image_resized is not image: del image_resized
+            
             return CropResult(
                 success=True,
                 image=warped,
@@ -559,6 +581,9 @@ class ImageProcessor:
             )
             
         except MemoryError:
+            # Force garbage collection on memory error
+            import gc
+            gc.collect()
             return CropResult(False, message="메모리 부족 - 이미지가 너무 큽니다.")
         except Exception as e:
             logger.error(f"Image processing error: {traceback.format_exc()}")
@@ -617,6 +642,40 @@ class ImageProcessor:
                     [-strength/4, -strength/4, -strength/4]
                 ])
                 result = cv2.filter2D(result, -1, kernel)
+        
+        # ========================================
+        # v8.0 Advanced Processing
+        # ========================================
+        
+        # Auto deskew
+        if self.advanced.auto_deskew:
+            result, _ = self._advanced_processor.auto_deskew(result)
+        
+        # Auto color correction
+        if self.advanced.auto_color_correct:
+            result = self._advanced_processor.auto_color_correct(
+                result, 
+                method=self.advanced.color_correct_method
+            )
+        
+        # Enhanced denoise
+        if self.advanced.enhanced_denoise:
+            result = self._advanced_processor.denoise_enhanced(
+                result,
+                strength=self.advanced.enhanced_denoise_strength
+            )
+        
+        # Old photo restoration
+        if self.advanced.restore_old_photo:
+            result = self._advanced_processor.restore_old_photo(result)
+        
+        # Enhanced sharpening
+        if self.advanced.enhanced_sharpen:
+            result = self._advanced_processor.sharpen(result)
+        
+        # Auto crop borders
+        if self.advanced.auto_crop_borders:
+            result = self._advanced_processor.auto_crop_borders(result)
         
         return result
     

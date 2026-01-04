@@ -11,7 +11,13 @@ import logging
 from PyQt6.QtWidgets import QApplication
 from PyQt6.QtCore import Qt
 
-from .ui.main_window import MainWindow
+try:
+    from .ui.main_window import MainWindow
+except ImportError:
+    # If run directly not as a module
+    import os
+    sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    from photo_cropper.ui.main_window import MainWindow
 
 
 def setup_logging():
@@ -38,7 +44,7 @@ def main():
     # Create application
     app = QApplication(sys.argv)
     app.setApplicationName("Photo Cropper")
-    app.setApplicationVersion("7.0")
+    app.setApplicationVersion("8.5")
     app.setOrganizationName("PhotoCropper")
     
     # Set default font for Korean text

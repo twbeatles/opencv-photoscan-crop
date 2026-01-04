@@ -99,18 +99,170 @@ class UISettings:
     show_contour_overlay: bool = True
     auto_preview: bool = True
     confirm_before_process: bool = True
-    open_output_on_complete: bool = False  # New: auto-open output folder after batch
+    open_output_on_complete: bool = False  # Auto-open output folder after batch
+
+
+@dataclass
+class AdvancedProcessingSettings:
+    """Advanced image processing settings for v8.0."""
+    # Auto corrections
+    auto_deskew: bool = False
+    auto_color_correct: bool = False
+    color_correct_method: str = "gray_world"  # gray_world, white_patch, histogram
+    
+    # Perspective
+    perspective_correct: bool = False
+    
+    # Enhanced processing
+    enhanced_denoise: bool = False
+    enhanced_denoise_strength: int = 10
+    restore_old_photo: bool = False
+    
+    # Sharpening
+    enhanced_sharpen: bool = False
+    sharpen_strength: float = 1.0
+    
+    # Border removal
+    auto_crop_borders: bool = False
+    border_color: str = "auto"  # auto, white, black
+
+
+@dataclass
+class FileManagementSettings:
+    """File management settings for v8.0."""
+    # Recursive processing
+    recursive_search: bool = False
+    
+    # Naming rules
+    use_naming_rules: bool = False
+    naming_prefix: str = ""
+    naming_suffix: str = "_cropped"
+    naming_use_counter: bool = False
+    naming_counter_padding: int = 3
+    naming_use_date: bool = False
+    naming_date_format: str = "%Y%m%d"
+    naming_preserve_original: bool = True
+    
+    # Failed file handling
+    move_failed_files: bool = False
+    failed_folder_name: str = "_failed"
+    copy_failed_instead_of_move: bool = True
+    
+    # Logging
+    enable_logging: bool = True
+    log_format: str = "json"  # json, csv
+    log_directory: str = ""  # Empty = output directory
+
+
+@dataclass
+class PerformanceSettings:
+    """Performance and optimization settings for v8.0."""
+    # GPU acceleration
+    use_gpu: bool = False
+    gpu_device_id: int = 0
+    
+    # Multithreading
+    enable_multithreading: bool = True
+    thread_count: int = 4  # 0 = auto (CPU count)
+    
+    # Memory management
+    max_image_size_mb: int = 100  # Skip images larger than this
+    downscale_large_images: bool = True
+    downscale_threshold_mp: float = 50.0  # Megapixels
+
+
+@dataclass
+class WatermarkSettings:
+    """Watermark settings for v8.5."""
+    # Enable
+    enabled: bool = False
+    
+    # Text watermark
+    text: str = ""
+    text_font_scale: float = 1.0
+    text_color_r: int = 255
+    text_color_g: int = 255
+    text_color_b: int = 255
+    text_shadow: bool = True
+    
+    # Image watermark
+    image_path: str = ""
+    image_scale: float = 0.2
+    
+    # Common settings
+    position: str = "bottom_right"  # top_left, top_center, top_right, etc.
+    opacity: float = 0.5
+    margin: int = 20
+    
+    # Tiled watermark
+    tiled: bool = False
+    tile_spacing: int = 200
+    tile_angle: float = -45
+
+
+@dataclass
+class ResizeSettings:
+    """Resize settings for v8.5."""
+    enabled: bool = False
+    mode: str = "none"  # none, fit, fill, stretch, width, height, percentage, max_dimension
+    width: int = 0
+    height: int = 0
+    percentage: float = 100.0
+    max_dimension: int = 0
+    maintain_aspect: bool = True
+    upscale_allowed: bool = False
+    jpeg_compatible: bool = False  # Ensure dimensions are multiples of 8
+
+
+@dataclass
+class WatchModeSettings:
+    """Folder watch mode settings for v8.5."""
+    enabled: bool = False
+    watch_path: str = ""
+    output_path: str = ""
+    recursive: bool = False
+    auto_process: bool = True
+    debounce_ms: int = 500
+    
+    # Scheduler
+    scheduler_enabled: bool = False
+    schedule_type: str = "interval"  # once, daily, interval, hourly
+    schedule_time: str = "00:00"  # HH:MM format for daily/once
+    schedule_interval_minutes: int = 60
+
+
+@dataclass 
+class MultiPhotoSettings:
+    """Multi-photo detection settings for v8.5."""
+    enabled: bool = False
+    min_photos: int = 1
+    max_photos: int = 20
+    min_area_ratio: float = 0.02
+    max_area_ratio: float = 0.8
+    merge_distance: int = 50
+    separate_output_folders: bool = False
 
 
 @dataclass
 class AppSettings:
     """Complete application settings."""
-    # Sub-settings
+    # Core settings
     algorithm: AlgorithmSettings = field(default_factory=AlgorithmSettings)
     processing: ProcessingSettings = field(default_factory=ProcessingSettings)
     output: OutputSettings = field(default_factory=OutputSettings)
     filter: FilterSettings = field(default_factory=FilterSettings)
     ui: UISettings = field(default_factory=UISettings)
+    
+    # v8.0 settings
+    advanced: AdvancedProcessingSettings = field(default_factory=AdvancedProcessingSettings)
+    file_management: FileManagementSettings = field(default_factory=FileManagementSettings)
+    performance: PerformanceSettings = field(default_factory=PerformanceSettings)
+    
+    # v8.5 settings
+    watermark: WatermarkSettings = field(default_factory=WatermarkSettings)
+    resize: ResizeSettings = field(default_factory=ResizeSettings)
+    watch_mode: WatchModeSettings = field(default_factory=WatchModeSettings)
+    multi_photo: MultiPhotoSettings = field(default_factory=MultiPhotoSettings)
     
     # Path settings
     last_input_path: str = ""
@@ -125,6 +277,13 @@ class AppSettings:
             "output": asdict(self.output),
             "filter": asdict(self.filter),
             "ui": asdict(self.ui),
+            "advanced": asdict(self.advanced),
+            "file_management": asdict(self.file_management),
+            "performance": asdict(self.performance),
+            "watermark": asdict(self.watermark),
+            "resize": asdict(self.resize),
+            "watch_mode": asdict(self.watch_mode),
+            "multi_photo": asdict(self.multi_photo),
             "last_input_path": self.last_input_path,
             "last_output_path": self.last_output_path,
             "create_backup": self.create_backup,
@@ -158,12 +317,56 @@ class AppSettings:
         except TypeError:
             ui = UISettings()
         
+        # v8.0 settings
+        try:
+            advanced = AdvancedProcessingSettings(**data.get("advanced", {}))
+        except TypeError:
+            advanced = AdvancedProcessingSettings()
+        
+        try:
+            file_management = FileManagementSettings(**data.get("file_management", {}))
+        except TypeError:
+            file_management = FileManagementSettings()
+        
+        try:
+            performance = PerformanceSettings(**data.get("performance", {}))
+        except TypeError:
+            performance = PerformanceSettings()
+        
+        # v8.5 settings
+        try:
+            watermark = WatermarkSettings(**data.get("watermark", {}))
+        except TypeError:
+            watermark = WatermarkSettings()
+        
+        try:
+            resize = ResizeSettings(**data.get("resize", {}))
+        except TypeError:
+            resize = ResizeSettings()
+        
+        try:
+            watch_mode = WatchModeSettings(**data.get("watch_mode", {}))
+        except TypeError:
+            watch_mode = WatchModeSettings()
+        
+        try:
+            multi_photo = MultiPhotoSettings(**data.get("multi_photo", {}))
+        except TypeError:
+            multi_photo = MultiPhotoSettings()
+        
         return cls(
             algorithm=algorithm,
             processing=processing,
             output=output,
             filter=filter_settings,
             ui=ui,
+            advanced=advanced,
+            file_management=file_management,
+            performance=performance,
+            watermark=watermark,
+            resize=resize,
+            watch_mode=watch_mode,
+            multi_photo=multi_photo,
             last_input_path=data.get("last_input_path", ""),
             last_output_path=data.get("last_output_path", ""),
             create_backup=data.get("create_backup", False),

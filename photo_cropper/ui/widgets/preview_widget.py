@@ -11,10 +11,12 @@ import cv2
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, 
     QGraphicsView, QGraphicsScene, QGraphicsPixmapItem,
-    QSlider, QPushButton, QCheckBox, QFrame, QSizePolicy
+    QSlider, QPushButton, QCheckBox, QFrame, QSizePolicy,
+    QSplitter,
+    QGraphicsTextItem, QGraphicsDropShadowEffect
 )
 from PyQt6.QtCore import Qt, pyqtSignal, QPointF
-from PyQt6.QtGui import QPixmap, QImage, QPainter, QWheelEvent, QMouseEvent, QFont
+from PyQt6.QtGui import QPixmap, QImage, QPainter, QWheelEvent, QMouseEvent, QFont, QColor, QBrush, QPen
 
 
 def numpy_to_qimage(image: np.ndarray) -> QImage:
@@ -173,14 +175,46 @@ class ImagePreviewWidget(QWidget):
         self._show_contour = True
         
         self._setup_ui()
+        self.show_placeholder()
     
+    def show_placeholder(self):
+        """Show placeholder text in empty views."""
+        for scene in [self.original_scene, self.processed_scene]:
+            scene.clear()
+            
+            # Add icon and text
+            text_item = QGraphicsTextItem("📷\n이미지를 열거나\n드래그하세요")
+            font = QFont("Segoe UI", 14)
+            font.setBold(True)
+            text_item.setFont(font)
+            text_item.setDefaultTextColor(QColor("#8b949e"))
+            
+            # Center text
+            rect = text_item.boundingRect()
+            text_item.setPos(-rect.width() / 2, -rect.height() / 2)
+            
+            scene.addItem(text_item)
+            
+        # Reset items references
+        self.original_pixmap_item = QGraphicsPixmapItem()
+        self.processed_pixmap_item = QGraphicsPixmapItem()
+        
+        self.original_scene.addItem(self.original_pixmap_item)
+        self.processed_scene.addItem(self.processed_pixmap_item)
+
     def _setup_ui(self):
         """Setup UI components."""
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         
         # Graphics views container
-        views_layout = QHBoxLayout()
+        # Main Vertical Splitter (Image Area / Controls)
+        self._main_splitter = QSplitter(Qt.Orientation.Vertical)
+        self._main_splitter.setHandleWidth(4)
+        
+        # Graphics views container (Resizable Splitter)
+        self._splitter = QSplitter(Qt.Orientation.Horizontal)
+        self._splitter.setHandleWidth(4)
         
         # Original image view
         self.original_scene = QGraphicsScene()
@@ -200,7 +234,8 @@ class ImagePreviewWidget(QWidget):
         original_label.setFont(QFont("Segoe UI", 10))
         original_layout.addWidget(original_label)
         original_layout.addWidget(self.original_view)
-        views_layout.addWidget(original_container)
+        # views_layout.addWidget(original_container)
+        self._splitter.addWidget(original_container)
         
         # Processed image view
         self.processed_scene = QGraphicsScene()
@@ -220,18 +255,23 @@ class ImagePreviewWidget(QWidget):
         processed_label.setFont(QFont("Segoe UI", 10))
         processed_layout.addWidget(processed_label)
         processed_layout.addWidget(self.processed_view)
-        views_layout.addWidget(processed_container)
+        # views_layout.addWidget(processed_container)
+        self._splitter.addWidget(processed_container)
         
-        layout.addLayout(views_layout)
+        # Set initial sizes (equal)
+        self._splitter.setStretchFactor(0, 1)
+        self._splitter.setStretchFactor(1, 1)
+        
+        self._main_splitter.addWidget(self._splitter)
         
         # Controls bar
         controls_frame = QFrame()
         controls_frame.setObjectName("statsFrame")
         controls_layout = QHBoxLayout(controls_frame)
-        controls_layout.setContentsMargins(12, 8, 12, 8)
-        controls_layout.setSpacing(12)
+        controls_layout.setContentsMargins(2, 2, 2, 2)
+        controls_layout.setSpacing(6)
         
-        self.contour_check = QCheckBox("🔲 검출 영역 표시")
+        self.contour_check = QCheckBox("🔲 영역")
         self.contour_check.setChecked(True)
         self.contour_check.stateChanged.connect(self._on_contour_toggle)
         controls_layout.addWidget(self.contour_check)
@@ -245,12 +285,12 @@ class ImagePreviewWidget(QWidget):
         self.zoom_slider = QSlider(Qt.Orientation.Horizontal)
         self.zoom_slider.setRange(10, 500)
         self.zoom_slider.setValue(100)
-        self.zoom_slider.setFixedWidth(120)
+        self.zoom_slider.setFixedWidth(100)
         self.zoom_slider.valueChanged.connect(self._on_zoom_slider_changed)
         controls_layout.addWidget(self.zoom_slider)
         
         self.zoom_label = QLabel("100%")
-        self.zoom_label.setMinimumWidth(55)
+        self.zoom_label.setMinimumWidth(40)
         self.zoom_label.setFont(QFont("Segoe UI", 9, QFont.Weight.Bold))
         controls_layout.addWidget(self.zoom_label)
         
@@ -259,21 +299,31 @@ class ImagePreviewWidget(QWidget):
         sep.setStyleSheet("color: #888888;")
         controls_layout.addWidget(sep)
         
-        fit_btn = QPushButton("📐 맞춤")
-        fit_btn.setMaximumWidth(80)
+        fit_btn = QPushButton("맞춤")
+        fit_btn.setMaximumWidth(50)
         fit_btn.clicked.connect(self._fit_all)
         controls_layout.addWidget(fit_btn)
         
         reset_btn = QPushButton("1:1")
-        reset_btn.setMaximumWidth(50)
+        reset_btn.setMaximumWidth(40)
         reset_btn.clicked.connect(self._reset_zoom)
         controls_layout.addWidget(reset_btn)
         
-        layout.addWidget(controls_frame)
+        self._main_splitter.addWidget(controls_frame)
+        
+        # Set main splitter stretch (Max space for image)
+        self._main_splitter.setStretchFactor(0, 1)
+        self._main_splitter.setStretchFactor(1, 0)
+        self._main_splitter.setCollapsible(1, True)
+        
+        layout.addWidget(self._main_splitter)
         
         # Connect zoom signals
         self.original_view.zoom_changed.connect(self._on_zoom_changed)
         self.processed_view.zoom_changed.connect(self._on_zoom_changed)
+        
+        # Initialize placeholder
+        self.show_placeholder()
     
     def set_original_image(self, image: np.ndarray, contour_overlay: np.ndarray = None):
         """
@@ -358,12 +408,12 @@ class ImagePreviewWidget(QWidget):
         self.zoom_slider.setValue(100)
     
     def clear(self):
-        """Clear all images."""
+        """Clear all images and show placeholder."""
         self._original_image = None
         self._processed_image = None
         self._contour_overlay = None
-        self.original_pixmap_item.setPixmap(QPixmap())
-        self.processed_pixmap_item.setPixmap(QPixmap())
+        
+        self.show_placeholder()
     
     @property
     def show_contour(self) -> bool:

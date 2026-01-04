@@ -1,34 +1,55 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Main Window for Photo Cropper PyQt6 Application.
+Main Window for Photo Cropper v8.5 PyQt6 Application.
 
 Provides the main application window with all UI components.
+v8.5 Features:
+    - Keyboard navigation (arrows, Enter, Space)
+    - Before/After comparison
+    - Crop editor
+    - Settings presets
+    - Thumbnail grid view
+    - Fullscreen preview (F11)
+    - Floating action button
+    - Undo/Redo history
+    - Folder watch mode
+    - Multi-language support
 """
 
 import os
 import logging
-from typing import Optional
+from typing import Optional, List
 
 from PyQt6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, 
     QSplitter, QMenuBar, QMenu, QToolBar, QStatusBar,
     QLabel, QPushButton, QLineEdit, QFileDialog,
-    QMessageBox, QGroupBox, QFrame, QApplication
+    QMessageBox, QGroupBox, QFrame, QApplication,
+    QListWidget, QListWidgetItem, QDialog, QDialogButtonBox,
+    QGridLayout, QSizePolicy, QProgressBar, QStackedWidget
 )
-from PyQt6.QtCore import Qt, QTimer, pyqtSlot, QSettings
-from PyQt6.QtGui import QAction, QKeySequence, QDragEnterEvent, QDropEvent
+from PyQt6.QtCore import Qt, QTimer, pyqtSlot, QSettings, QSize
+from PyQt6.QtGui import QAction, QKeySequence, QDragEnterEvent, QDropEvent, QKeyEvent
 
 from .widgets.settings_panel import SettingsPanel
 from .widgets.preview_widget import ImagePreviewWidget
 from .widgets.progress_dialog import ProgressDialog
 from .widgets.histogram_widget import HistogramWidget
 from .widgets.toast_notification import ToastManager
+from .widgets.compare_widget import BeforeAfterCompareWidget
+from .widgets.crop_editor_widget import CropEditorWidget
+from .widgets.preset_manager import PresetComboBox, get_preset_manager
+from .widgets.thumbnail_grid_widget import ThumbnailGridWidget
+from .widgets.fullscreen_viewer import FullscreenViewerManager
+from .widgets.floating_action_button import QuickActionFAB
 from .styles.themes import get_theme, get_available_themes
 
 from ..core.settings import AppSettings, SettingsManager
 from ..core.image_processor import ImageProcessor
 from ..core.batch_processor import BatchProcessor, BatchProgress, FileResult
+from ..core.history_manager import HistoryManager, ImageHolder
+from ..core.folder_watcher import FolderWatcher, AutoProcessor
 from ..utils.file_helpers import get_image_files, open_file_explorer, validate_directory, SUPPORTED_IMAGE_FORMATS
 
 logger = logging.getLogger(__name__)
@@ -44,10 +65,14 @@ class MainWindow(QMainWindow):
         - Real-time preview
         - Batch processing with progress
         - Settings persistence
+        - Thumbnail grid view (v8.5)
+        - Fullscreen preview (v8.5)
+        - Undo/Redo history (v8.5)
     """
     
-    VERSION = "7.2"
+    VERSION = "8.5"
     TITLE = f"📸 사진 자동 자르기 v{VERSION}"
+
     
     def __init__(self):
         super().__init__()
@@ -63,12 +88,24 @@ class MainWindow(QMainWindow):
         )
         self.batch_processor: Optional[BatchProcessor] = None
         
+        # v8.5: History Manager for Undo/Redo
+        self.history_manager = HistoryManager(max_history=50)
+        
+        # v8.5: Fullscreen viewer manager
+        self.fullscreen_manager = FullscreenViewerManager()
+        
         # State
         self._current_image_path: Optional[str] = None
+        self._image_list: List[str] = []  # List of images in input folder
+        self._current_image_index: int = -1  # Current image index
         self._preview_timer = QTimer()
         self._preview_timer.setSingleShot(True)
         self._preview_timer.timeout.connect(self._do_preview)
         self.progress_dialog: Optional[ProgressDialog] = None
+        
+        # Last processed result for comparison
+        self._last_original: Optional[any] = None
+        self._last_processed: Optional[any] = None
         
         # Setup UI
         self._setup_window()
@@ -76,6 +113,7 @@ class MainWindow(QMainWindow):
         self._setup_toolbar()
         self._setup_central_widget()
         self._setup_statusbar()
+        self._setup_fab()  # v8.5: Floating Action Button
         
         # Initialize Toast Manager
         ToastManager.set_parent(self)
@@ -87,6 +125,7 @@ class MainWindow(QMainWindow):
         self._restore_window_state()
         
         # Enable drag and drop
+
         self.setAcceptDrops(True)
     
     def _setup_window(self):
@@ -183,6 +222,27 @@ class MainWindow(QMainWindow):
         rotate_action.triggered.connect(self._rotate_preview)
         tools_menu.addAction(rotate_action)
         
+        tools_menu.addSeparator()
+        
+        # v8.0: Compare mode
+        compare_action = QAction("Before/After 비교 (&C)", self)
+        compare_action.setShortcut(QKeySequence("Ctrl+Shift+C"))
+        compare_action.triggered.connect(self._show_compare_dialog)
+        tools_menu.addAction(compare_action)
+        
+        # v8.0: Crop editor
+        crop_editor_action = QAction("수동 영역 편집...", self)
+        crop_editor_action.triggered.connect(self._show_crop_editor)
+        tools_menu.addAction(crop_editor_action)
+        
+        tools_menu.addSeparator()
+        
+        # v8.0: Duplicate detection
+        duplicate_action = QAction("중복 파일 검색...", self)
+        duplicate_action.triggered.connect(self._detect_duplicates)
+        tools_menu.addAction(duplicate_action)
+        tools_menu.addAction(rotate_action)
+        
         # Help menu
         help_menu = menubar.addMenu("도움말(&H)")
         
@@ -196,57 +256,61 @@ class MainWindow(QMainWindow):
         help_menu.addAction(about_action)
     
     def _setup_toolbar(self):
-        """Create toolbar."""
+        """Create modern toolbar with glassmorphism styling."""
         toolbar = QToolBar("메인 도구모음")
         toolbar.setMovable(False)
+        toolbar.setIconSize(QSize(24, 24))
+        toolbar.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
         self.addToolBar(toolbar)
         
-        # Open folder button
-        open_btn = QPushButton("📂 폴더 열기")
-        open_btn.clicked.connect(self._select_input_folder)
-        toolbar.addWidget(open_btn)
+        # File Operations Group
+        open_action = QAction("📂 폴더 열기", self)
+        open_action.setToolTip("입력 폴더 선택")
+        open_action.triggered.connect(self._select_input_folder)
+        toolbar.addAction(open_action)
+        
+        output_action = QAction("📁 출력 폴더", self)
+        output_action.setToolTip("결과물 저장 위치 확인")
+        output_action.triggered.connect(self._open_output_folder)
+        toolbar.addAction(output_action)
         
         toolbar.addSeparator()
         
-        # Preview button
-        preview_btn = QPushButton("🔍 미리보기")
-        preview_btn.clicked.connect(self._request_preview)
-        toolbar.addWidget(preview_btn)
+        # View Operations Group
+        preview_action = QAction("🔍 미리보기", self)
+        preview_action.setToolTip("현재 이미지 미리보기 업데이트")
+        preview_action.triggered.connect(self._request_preview)
+        toolbar.addAction(preview_action)
         
-        # Process button
-        self.process_btn = QPushButton("▶️ 변환 시작")
-        self.process_btn.setObjectName("primaryButton")
-        self.process_btn.clicked.connect(self._start_processing)
-        toolbar.addWidget(self.process_btn)
-        
-        toolbar.addSeparator()
-        
-        # Output folder button
-        output_btn = QPushButton("📁 출력폴더")
-        output_btn.clicked.connect(self._open_output_folder)
-        toolbar.addWidget(output_btn)
-        
-        toolbar.addSeparator()
-        
-        # Rotate button
-        rotate_btn = QPushButton("🔄 회전")
-        rotate_btn.setToolTip("미리보기 이미지를 시계방향 90도 회전 (Ctrl+R)")
-        rotate_btn.clicked.connect(self._rotate_preview)
-        toolbar.addWidget(rotate_btn)
+        rotate_action = QAction("🔄 회전", self)
+        rotate_action.setToolTip("시계방향 90도 회전 (Ctrl+R)")
+        rotate_action.triggered.connect(self._rotate_preview)
+        toolbar.addAction(rotate_action)
         
         # Spacer
         spacer = QWidget()
-        from PyQt6.QtWidgets import QSizePolicy
-        spacer.setSizePolicy(
-            QSizePolicy.Policy.Expanding,
-            QSizePolicy.Policy.Preferred
-        )
+        spacer.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
         toolbar.addWidget(spacer)
         
-        # Theme toggle
-        theme_btn = QPushButton("🌙 테마")
-        theme_btn.clicked.connect(self._toggle_theme)
-        toolbar.addWidget(theme_btn)
+        # Preset Selection (Right aligned)
+        preset_label = QLabel("프리셋:")
+        preset_label.setStyleSheet("color: #8b949e; margin-right: 8px; font-weight: bold;")
+        toolbar.addWidget(preset_label)
+        
+        self._preset_combo = PresetComboBox()
+        self._preset_combo.setMinimumWidth(140)
+        self._preset_combo.preset_selected.connect(self._on_preset_selected)
+        toolbar.addWidget(self._preset_combo)
+        
+        toolbar.addSeparator()
+        
+        # Primary Action - Process Button (Prominent)
+        self.process_btn = QPushButton("▶️ 변환 시작")
+        self.process_btn.setObjectName("primaryButton")
+        self.process_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.process_btn.setToolTip("일괄 처리 시작 (Space)")
+        self.process_btn.clicked.connect(self._start_processing)
+        toolbar.addWidget(self.process_btn)
     
     def _setup_central_widget(self):
         """Create central widget with splitters."""
@@ -254,58 +318,89 @@ class MainWindow(QMainWindow):
         self.setCentralWidget(central)
         
         main_layout = QVBoxLayout(central)
-        main_layout.setContentsMargins(8, 8, 8, 8)
+        main_layout.setContentsMargins(12, 12, 12, 12)
+        main_layout.setSpacing(16)
         
-        # Folder selection row
-        folder_frame = QFrame()
-        folder_layout = QHBoxLayout(folder_frame)
-        folder_layout.setContentsMargins(0, 0, 0, 0)
+        # Folder Selection Card (Glassmorphism Frame)
+        folder_card = QFrame()
+        folder_card.setObjectName("statsFrame") # Reusing statsFrame for card look
+        folder_card_layout = QVBoxLayout(folder_card)
+        folder_card_layout.setContentsMargins(16, 16, 16, 16)
+        folder_card_layout.setSpacing(12)
         
-        folder_layout.addWidget(QLabel("입력:"))
+        # Input/Output Grid
+        path_grid = QGridLayout()
+        path_grid.setSpacing(10)
+        
+        # Input Path
+        input_label = QLabel("입력 폴더:")
+        input_label.setStyleSheet("font-weight: bold;")
+        path_grid.addWidget(input_label, 0, 0)
+        
         self.input_path_edit = QLineEdit()
-        self.input_path_edit.setPlaceholderText("입력 폴더를 선택하세요...")
+        self.input_path_edit.setPlaceholderText("이미지가 있는 폴더를 선택하거나 드래그하세요...")
+        self.input_path_edit.setMinimumHeight(40)
+        self.input_path_edit.setTextMargins(10, 0, 10, 0)
         self.input_path_edit.textChanged.connect(self._on_input_path_changed)
-        folder_layout.addWidget(self.input_path_edit)
+        path_grid.addWidget(self.input_path_edit, 0, 1)
         
-        input_browse_btn = QPushButton("...")
-        input_browse_btn.setMaximumWidth(40)
+        input_browse_btn = QPushButton("찾아보기")
+        input_browse_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        input_browse_btn.setMinimumHeight(40)
         input_browse_btn.clicked.connect(self._select_input_folder)
-        folder_layout.addWidget(input_browse_btn)
+        path_grid.addWidget(input_browse_btn, 0, 2)
         
-        folder_layout.addWidget(QLabel("출력:"))
+        # Output Path
+        output_label = QLabel("출력 폴더:")
+        output_label.setStyleSheet("font-weight: bold;")
+        path_grid.addWidget(output_label, 1, 0)
+        
         self.output_path_edit = QLineEdit()
-        self.output_path_edit.setPlaceholderText("출력 폴더 (선택사항)")
-        folder_layout.addWidget(self.output_path_edit)
+        self.output_path_edit.setPlaceholderText("결과물이 저장될 폴더 (자동 설정됨)")
+        self.output_path_edit.setMinimumHeight(40)
+        self.output_path_edit.setTextMargins(10, 0, 10, 0)
+        path_grid.addWidget(self.output_path_edit, 1, 1)
         
-        output_browse_btn = QPushButton("...")
-        output_browse_btn.setMaximumWidth(40)
+        output_browse_btn = QPushButton("변경")
+        output_browse_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        output_browse_btn.setMinimumHeight(40)
         output_browse_btn.clicked.connect(self._select_output_folder)
-        folder_layout.addWidget(output_browse_btn)
+        path_grid.addWidget(output_browse_btn, 1, 2)
         
-        main_layout.addWidget(folder_frame)
+        folder_card_layout.addLayout(path_grid)
         
-        # Info label
-        self.info_label = QLabel("💡 3단계 지능형 탐색으로 다양한 배경에서 높은 검출 성공률을 제공합니다")
-        self.info_label.setObjectName("subtitleLabel")
-        self.info_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        main_layout.addWidget(self.info_label)
+        # Drag & Drop Hint
+        hint_layout = QHBoxLayout()
+        hint_icon = QLabel("💡")
+        hint_text = QLabel("팁: 폴더를 이 영역으로 드래그하여 바로 열 수 있습니다.")
+        hint_text.setObjectName("subtitleLabel")
+        hint_layout.addWidget(hint_icon)
+        hint_layout.addWidget(hint_text)
+        hint_layout.addStretch()
+        folder_card_layout.addLayout(hint_layout)
+        
+        main_layout.addWidget(folder_card)
+        
+        main_layout.addWidget(folder_card)
         
         # Main splitter (horizontal: preview | settings)
         main_splitter = QSplitter(Qt.Orientation.Horizontal)
         
-        # Left side: Preview area
-        left_widget = QWidget()
-        left_layout = QVBoxLayout(left_widget)
-        left_layout.setContentsMargins(0, 0, 0, 0)
+        # Left side: Preview area (Vertical Splitter)
+        left_splitter = QSplitter(Qt.Orientation.Vertical)
         
         self.preview_widget = ImagePreviewWidget()
-        left_layout.addWidget(self.preview_widget)
+        left_splitter.addWidget(self.preview_widget)
         
         # Histogram
         self.histogram_widget = HistogramWidget()
-        left_layout.addWidget(self.histogram_widget)
+        left_splitter.addWidget(self.histogram_widget)
         
-        main_splitter.addWidget(left_widget)
+        # Set initial sizes (Give most space to preview)
+        left_splitter.setStretchFactor(0, 4)
+        left_splitter.setStretchFactor(1, 1)
+        
+        main_splitter.addWidget(left_splitter)
         
         # Right side: Settings panel
         self.settings_panel = SettingsPanel(self._settings)
@@ -320,23 +415,99 @@ class MainWindow(QMainWindow):
         main_layout.addWidget(main_splitter)
     
     def _setup_statusbar(self):
-        """Create status bar."""
+        """Create modern status bar with progress indication."""
         self.statusbar = QStatusBar()
         self.setStatusBar(self.statusbar)
+        self.statusbar.setSizeGripEnabled(True)
         
-        self.status_label = QLabel("준비")
-        self.statusbar.addWidget(self.status_label)
+        # Main status
+        self.status_label = QLabel(" 준비 완료")
+        self.status_label.setStyleSheet("font-weight: bold; margin-left: 4px;")
+        self.statusbar.addWidget(self.status_label, 1)
         
-        self.statusbar.addPermanentWidget(QLabel("|"))
+        # Progress Bar (Hidden by default)
+        self.status_progress = QProgressBar()
+        self.status_progress.setMaximumWidth(200)
+        self.status_progress.setMaximumHeight(16)
+        self.status_progress.setVisible(False)
+        self.statusbar.addWidget(self.status_progress)
         
-        # Image info label
-        self.image_info_label = QLabel("이미지: -")
-        self.statusbar.addPermanentWidget(self.image_info_label)
+        # Separator line
+        line = QFrame()
+        line.setFrameShape(QFrame.Shape.VLine)
+        line.setFrameShadow(QFrame.Shadow.Sunken)
+        self.statusbar.addPermanentWidget(line)
         
-        self.statusbar.addPermanentWidget(QLabel("|"))
+        # Image Info Badge
+        self.image_info_badge = QLabel(" 이미지: - ")
+        self.image_info_badge.setStyleSheet("""
+            background-color: rgba(128, 128, 128, 0.2);
+            border-radius: 4px;
+            padding: 2px 8px;
+            margin: 0 4px;
+        """)
+        self.statusbar.addPermanentWidget(self.image_info_badge)
         
-        self.file_count_label = QLabel("파일: 0개")
-        self.statusbar.addPermanentWidget(self.file_count_label)
+        # File Count Badge
+        self.file_count_badge = QLabel(" 파일: 0개 ")
+        self.file_count_badge.setStyleSheet("""
+            background-color: rgba(9, 105, 218, 0.2);
+            color: #58a6ff;
+            border-radius: 4px;
+            padding: 2px 8px;
+            margin: 0 4px;
+            font-weight: bold;
+        """)
+        self.statusbar.addPermanentWidget(self.file_count_badge)
+    
+    def _setup_fab(self):
+        """Setup floating action button for quick actions (v8.5)."""
+        self.fab = QuickActionFAB(self)
+        
+        # Add quick action handlers
+        self.fab.add_action("preview", "미리보기", self._request_preview)
+        self.fab.add_action("process", "변환 시작", self._start_processing)
+        self.fab.add_action("compare", "Before/After", self._show_compare_dialog)
+        self.fab.add_action("fullscreen", "전체화면 (F11)", self._show_fullscreen)
+        self.fab.add_action("undo", "실행 취소", self._undo)
+        self.fab.add_action("redo", "다시 실행", self._redo)
+    
+    def _show_fullscreen(self):
+        """Show fullscreen preview of current image (v8.5)."""
+        if self._last_processed is not None:
+            images = [self._last_processed]
+            if self._last_original is not None:
+                images.insert(0, self._last_original)
+            self.fullscreen_manager.show_fullscreen(images, start_index=len(images)-1)
+        elif self._last_original is not None:
+            self.fullscreen_manager.show_fullscreen([self._last_original])
+        else:
+            self.status_label.setText("전체화면으로 표시할 이미지가 없습니다")
+    
+    def _undo(self):
+        """Undo last action (v8.5)."""
+        if self.history_manager.can_undo():
+            state = self.history_manager.undo()
+            if state and state.image is not None:
+                self._last_processed = state.image
+                self.preview_widget.set_processed_image(state.image)
+                self.status_label.setText("실행 취소됨")
+                ToastManager.info("↩️ 실행 취소")
+        else:
+            self.status_label.setText("실행 취소할 항목이 없습니다")
+    
+    def _redo(self):
+        """Redo last undone action (v8.5)."""
+        if self.history_manager.can_redo():
+            state = self.history_manager.redo()
+            if state and state.image is not None:
+                self._last_processed = state.image
+                self.preview_widget.set_processed_image(state.image)
+                self.status_label.setText("다시 실행됨")
+                ToastManager.info("↪️ 다시 실행")
+        else:
+            self.status_label.setText("다시 실행할 항목이 없습니다")
+
     
     # ========================================
     # Settings and Theme
@@ -447,9 +618,24 @@ class MainWindow(QMainWindow):
         """Handle input path change."""
         if os.path.isdir(path):
             files = get_image_files(path)
-            self.file_count_label.setText(f"파일: {len(files)}개")
+            self.file_count_badge.setText(f" 파일: {len(files)}개 ")
+            self.file_count_badge.setStyleSheet("""
+                background-color: rgba(46, 160, 67, 0.2);
+                color: #3fb950;
+                border-radius: 4px;
+                padding: 2px 8px;
+                margin: 0 4px;
+                font-weight: bold;
+            """)
         else:
-            self.file_count_label.setText("파일: 0개")
+            self.file_count_badge.setText(" 파일: 0개 ")
+            self.file_count_badge.setStyleSheet("""
+                background-color: rgba(128, 128, 128, 0.2);
+                color: #8b949e;
+                border-radius: 4px;
+                padding: 2px 8px;
+                margin: 0 4px;
+            """)
     
     def _open_output_folder(self):
         """Open output folder in file explorer."""
@@ -529,11 +715,11 @@ class MainWindow(QMainWindow):
                     size_str = f"{file_size_kb/1024:.1f} MB"
                 else:
                     size_str = f"{file_size_kb:.0f} KB"
-                self.image_info_label.setText(f"📷 {w}×{h}px | {size_str}")
+                self.image_info_badge.setText(f"📷 {w}×{h}px | {size_str}")
             else:
-                self.image_info_label.setText("이미지: -")
+                self.image_info_badge.setText("이미지: -")
         except Exception:
-            self.image_info_label.setText("이미지: -")
+            self.image_info_badge.setText("이미지: -")
         
         # Get preview with contour
         original, overlay, message = self.image_processor.get_preview_with_contour(
@@ -543,16 +729,19 @@ class MainWindow(QMainWindow):
         if original is not None:
             self.preview_widget.set_original_image(original, overlay)
             self.histogram_widget.set_image(original)
+            self._last_original = original.copy()  # Store for comparison
         
         # Process image
         result = self.image_processor.process_image(self._current_image_path)
         
         if result.success and result.image is not None:
             self.preview_widget.set_processed_image(result.image)
+            self._last_processed = result.image.copy()  # Store for comparison
             stage = result.detection_stage.value if result.detection_stage else "Unknown"
             self.status_label.setText(f"미리보기 성공 ({stage})")
         else:
             self.preview_widget.set_processed_image(None)
+            self._last_processed = None
             self.status_label.setText(f"미리보기 실패: {result.message}")
     
     # ========================================
@@ -718,31 +907,7 @@ class MainWindow(QMainWindow):
     # Window Events
     # ========================================
     
-    def closeEvent(self, event):
-        """Handle window close."""
-        # Check if processing is in progress
-        if self.batch_processor and self.batch_processor.is_running:
-            reply = QMessageBox.question(
-                self, "종료 확인",
-                "현재 처리 중입니다. 정말 종료하시겠습니까?\n진행 중인 작업이 취소됩니다.",
-                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-                QMessageBox.StandardButton.No
-            )
-            if reply == QMessageBox.StandardButton.No:
-                event.ignore()
-                return
-            # Cancel processing
-            self.batch_processor.request_stop()
-        
-        # Save settings
-        self._settings.last_input_path = self.input_path_edit.text()
-        self._settings.last_output_path = self.output_path_edit.text()
-        self.settings_manager.save(self._settings)
-        
-        # Save window geometry
-        self._save_window_state()
-        
-        event.accept()
+    # NOTE: closeEvent is defined below at line 1145+
     
     def _save_window_state(self):
         """Save window geometry and state."""
@@ -765,7 +930,7 @@ class MainWindow(QMainWindow):
         input_path = self.input_path_edit.text()
         if input_path and os.path.isdir(input_path):
             files = get_image_files(input_path)
-            self.file_count_label.setText(f"파일: {len(files)}개")
+            self.file_count_badge.setText(f" 파일: {len(files)}개 ")
             self.status_label.setText(f"파일 목록 새로고침 완료: {len(files)}개 파일")
             # Auto preview first file
             if files:
@@ -793,3 +958,265 @@ class MainWindow(QMainWindow):
         self.preview_widget.set_original_image(rotated)
         self.preview_widget.set_processed_image(None)
         self.status_label.setText("이미지를 시계방향 90도 회전했습니다")
+    
+    # ========================================
+    # Keyboard Navigation (v8.0)
+    # ========================================
+    
+    def keyPressEvent(self, event: QKeyEvent):
+        """Handle keyboard shortcuts for navigation."""
+        key = event.key()
+        
+        # Arrow keys for navigation
+        if key == Qt.Key.Key_Left:
+            self._navigate_prev()
+            event.accept()
+            return
+        elif key == Qt.Key.Key_Right:
+            self._navigate_next()
+            event.accept()
+            return
+        
+        # Enter for preview
+        elif key == Qt.Key.Key_Return or key == Qt.Key.Key_Enter:
+            self._request_preview()
+            event.accept()
+            return
+        
+        # Space for start processing
+        elif key == Qt.Key.Key_Space:
+            if not (self.batch_processor and self.batch_processor.is_running):
+                self._start_processing()
+            event.accept()
+            return
+        
+        # R for rotate
+        elif key == Qt.Key.Key_R and not event.modifiers():
+            self._rotate_preview()
+            event.accept()
+            return
+        
+        # C for compare mode
+        elif key == Qt.Key.Key_C and not event.modifiers():
+            self._show_compare_dialog()
+            event.accept()
+            return
+        
+        # F11 for fullscreen (v8.5)
+        elif key == Qt.Key.Key_F11:
+            self._show_fullscreen()
+            event.accept()
+            return
+        
+        # Ctrl+Z for undo (v8.5)
+        elif key == Qt.Key.Key_Z and event.modifiers() == Qt.KeyboardModifier.ControlModifier:
+            self._undo()
+            event.accept()
+            return
+        
+        # Ctrl+Y for redo (v8.5)
+        elif key == Qt.Key.Key_Y and event.modifiers() == Qt.KeyboardModifier.ControlModifier:
+            self._redo()
+            event.accept()
+            return
+        
+        super().keyPressEvent(event)
+    
+    def _update_image_list(self):
+        """Update the list of images in the input folder."""
+        input_path = self.input_path_edit.text()
+        if input_path and os.path.isdir(input_path):
+            # Check if recursive search is enabled
+            recursive = self._settings.file_management.recursive_search
+            self._image_list = get_image_files(input_path, recursive=recursive)
+            self.file_count_badge.setText(f" 파일: {len(self._image_list)}개 ")
+            
+            # Reset index
+            if self._image_list:
+                self._current_image_index = 0
+                self._current_image_path = self._image_list[0]
+            else:
+                self._current_image_index = -1
+                self._current_image_path = None
+        else:
+            self._image_list = []
+            self._current_image_index = -1
+    
+    def _navigate_prev(self):
+        """Navigate to previous image in list."""
+        if not self._image_list:
+            self._update_image_list()
+        
+        if not self._image_list:
+            self.status_label.setText("탐색할 이미지가 없습니다")
+            return
+        
+        # Move to previous
+        if self._current_image_index > 0:
+            self._current_image_index -= 1
+        else:
+            self._current_image_index = len(self._image_list) - 1  # Wrap around
+        
+        self._current_image_path = self._image_list[self._current_image_index]
+        self._do_preview()
+        self._update_navigation_status()
+    
+    def _navigate_next(self):
+        """Navigate to next image in list."""
+        if not self._image_list:
+            self._update_image_list()
+        
+        if not self._image_list:
+            self.status_label.setText("탐색할 이미지가 없습니다")
+            return
+        
+        # Move to next
+        if self._current_image_index < len(self._image_list) - 1:
+            self._current_image_index += 1
+        else:
+            self._current_image_index = 0  # Wrap around
+        
+        self._current_image_path = self._image_list[self._current_image_index]
+        self._do_preview()
+        self._update_navigation_status()
+    
+    def _update_navigation_status(self):
+        """Update status bar with navigation info."""
+        if self._image_list and self._current_image_index >= 0:
+            total = len(self._image_list)
+            current = self._current_image_index + 1
+            filename = os.path.basename(self._current_image_path) if self._current_image_path else ""
+            self.status_label.setText(f"[{current}/{total}] {filename} (← → 탐색, Enter 미리보기, Space 처리)")
+    
+    def _show_compare_dialog(self):
+        """Show before/after comparison dialog."""
+        if self._last_original is None or self._last_processed is None:
+            self.status_label.setText("비교할 이미지가 없습니다. 먼저 미리보기를 실행하세요.")
+            return
+        
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Before/After 비교")
+        dialog.setMinimumSize(800, 600)
+        
+        layout = QVBoxLayout(dialog)
+        
+        compare_widget = BeforeAfterCompareWidget()
+        compare_widget.set_images(self._last_original, self._last_processed)
+        layout.addWidget(compare_widget)
+        
+        btn_box = QDialogButtonBox(QDialogButtonBox.StandardButton.Close)
+        btn_box.rejected.connect(dialog.close)
+        layout.addWidget(btn_box)
+        
+        dialog.exec()
+    
+    def _show_crop_editor(self):
+        """Show manual crop editor dialog."""
+        if self._last_original is None:
+            self.status_label.setText("편집할 이미지가 없습니다. 먼저 이미지를 불러오세요.")
+            return
+        
+        dialog = QDialog(self)
+        dialog.setWindowTitle("수동 영역 편집")
+        dialog.setMinimumSize(900, 700)
+        
+        layout = QVBoxLayout(dialog)
+        
+        crop_editor = CropEditorWidget()
+        crop_editor.set_image(self._last_original)
+        crop_editor.crop_applied.connect(lambda img: self._on_crop_applied(img, dialog))
+        crop_editor.crop_cancelled.connect(dialog.close)
+        layout.addWidget(crop_editor)
+        
+        dialog.exec()
+    
+    def _on_crop_applied(self, cropped_image, dialog):
+        """Handle crop applied from editor."""
+        self.preview_widget.set_processed_image(cropped_image)
+        self._last_processed = cropped_image.copy()
+        self.status_label.setText("수동 크롭이 적용되었습니다")
+        dialog.close()
+        ToastManager.success("✂️ 수동 크롭 적용됨")
+    
+    def _detect_duplicates(self):
+        """Detect duplicate files in input folder."""
+        input_path = self.input_path_edit.text()
+        if not input_path or not os.path.isdir(input_path):
+            QMessageBox.warning(self, "경고", "유효한 입력 폴더를 선택하세요.")
+            return
+        
+        self.status_label.setText("중복 파일 검색 중...")
+        QApplication.processEvents()
+        
+        from ..utils.file_helpers import detect_duplicates
+        
+        files = get_image_files(input_path, recursive=self._settings.file_management.recursive_search)
+        if not files:
+            QMessageBox.information(self, "결과", "검색할 이미지 파일이 없습니다.")
+            return
+        
+        duplicates = detect_duplicates(files, method='size+hash')
+        
+        if not duplicates:
+            QMessageBox.information(self, "결과", "중복 파일이 발견되지 않았습니다.")
+            self.status_label.setText("중복 파일 없음")
+            return
+        
+        dup_count = sum(len(v) - 1 for v in duplicates.values() if len(v) > 1)
+        
+        msg = f"총 {dup_count}개의 중복 파일이 발견되었습니다.\n\n"
+        for hash_key, paths in list(duplicates.items())[:5]:
+            if len(paths) > 1:
+                msg += f"• {os.path.basename(paths[0])} ({len(paths)}개 중복)\n"
+        
+        if len(duplicates) > 5:
+            msg += f"\n... 외 {len(duplicates) - 5}개 그룹"
+        
+        QMessageBox.information(self, "중복 검색 결과", msg)
+        self.status_label.setText(f"중복 파일 {dup_count}개 발견")
+    
+    def _on_preset_selected(self, preset_name: str):
+        """Handle preset selection from dropdown."""
+        if not preset_name:
+            return
+        
+        manager = get_preset_manager()
+        if manager.apply_preset(preset_name, self._settings):
+            self.settings_panel.settings = self._settings
+            self.image_processor.update_settings(
+                self._settings.algorithm,
+                self._settings.processing
+            )
+            self.status_label.setText(f"'{preset_name}' 프리셋 적용됨")
+            ToastManager.success(f"🎨 {preset_name} 프리셋 적용")
+            
+            if self._settings.ui.auto_preview:
+                self._request_preview()
+    
+    def closeEvent(self, event):
+        """Handle window close event."""
+        # Check if processing is running
+        if self.batch_processor and self.batch_processor.is_running:
+            reply = QMessageBox.question(
+                self, 
+                "종료 확인", 
+                "작업이 진행 중입니다. 정말 종료하시겠습니까?\n종료 시 진행 중인 작업은 중단됩니다.",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No
+            )
+            
+            if reply == QMessageBox.StandardButton.No:
+                event.ignore()
+                return
+            
+            # Stop processing
+            self.batch_processor.cleanup()
+        
+        # Save settings
+        self.settings_manager.save(self._settings)
+        
+        # Cleanup
+        if self.batch_processor:
+            self.batch_processor.cleanup()
+            
+        event.accept()
