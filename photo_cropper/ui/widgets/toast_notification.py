@@ -20,17 +20,18 @@ class ToastNotification(QWidget):
         - Auto-dismiss with configurable duration
         - Success/Warning/Error/Info types
         - Non-blocking
+        - Gradient backgrounds
     """
     
     # Signal emitted when toast is closed
     closed = pyqtSignal()
     
-    # Toast types with colors and icons
+    # Toast types with gradient colors and icons
     TOAST_TYPES = {
-        "success": {"icon": "✅", "bg": "#00c880", "text": "#ffffff"},
-        "error": {"icon": "❌", "bg": "#e94560", "text": "#ffffff"},
-        "warning": {"icon": "⚠️", "bg": "#ffa500", "text": "#1a1a2e"},
-        "info": {"icon": "ℹ️", "bg": "#0f3460", "text": "#ffffff"},
+        "success": {"icon": "✅", "bg": "qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #059669, stop:1 #34d399)", "text": "#ffffff"},
+        "error": {"icon": "❌", "bg": "qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #dc2626, stop:1 #f87171)", "text": "#ffffff"},
+        "warning": {"icon": "⚠️", "bg": "qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #d97706, stop:1 #fbbf24)", "text": "#1f2937"},
+        "info": {"icon": "ℹ️", "bg": "qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #4f46e5, stop:1 #818cf8)", "text": "#ffffff"},
     }
     
     def __init__(self, parent=None):

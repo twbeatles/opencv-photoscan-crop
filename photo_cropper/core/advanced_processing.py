@@ -136,6 +136,15 @@ class AdvancedImageProcessor:
         """
         self._use_gpu = use_gpu
         self._gpu = GPUAccelerator() if use_gpu else None
+        
+        # Performance: Cached CLAHE objects
+        self._clahe_default = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
+        self._clahe_strong = cv2.createCLAHE(clipLimit=3.0, tileGridSize=(8, 8))
+        
+        # Performance: Cached morphology kernels
+        self._kernel_3x3 = np.ones((3, 3), np.uint8)
+        self._kernel_line_v = cv2.getStructuringElement(cv2.MORPH_RECT, (1, 15))
+        self._kernel_line_h = cv2.getStructuringElement(cv2.MORPH_RECT, (15, 1))
     
     @property
     def gpu_available(self) -> bool:
@@ -597,8 +606,8 @@ class AdvancedImageProcessor:
             lab = cv2.cvtColor(result, cv2.COLOR_BGR2LAB)
             l, a, b = cv2.split(lab)
             
-            clahe = cv2.createCLAHE(clipLimit=3.0, tileGridSize=(8, 8))
-            l = clahe.apply(l)
+            # Use cached CLAHE
+            l = self._clahe_strong.apply(l)
             
             lab = cv2.merge([l, a, b])
             result = cv2.cvtColor(lab, cv2.COLOR_LAB2BGR)

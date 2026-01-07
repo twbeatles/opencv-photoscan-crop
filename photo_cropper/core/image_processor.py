@@ -60,10 +60,18 @@ class ImageProcessor:
         - Perspective transform for skewed photos
     """
     
+    # Constants
     SUPPORTED_FORMATS = (
         '.png', '.jpg', '.jpeg', '.bmp', '.gif', 
         '.tiff', '.tif', '.webp', '.heic', '.heif'
     )
+    MIN_IMAGE_SIZE = 100
+    RESIZE_TARGET_DIM = 1000
+    RESIZE_THRESHOLD = 1500
+    DEFAULT_BILATERAL_D = 9
+    DEFAULT_BILATERAL_SIGMA = 75
+    MIN_CONTOUR_AREA = 100
+    MIN_CROP_SIZE = 50
     
     def __init__(
         self, 
@@ -85,6 +93,15 @@ class ImageProcessor:
         
         # v8.0: Advanced processor
         self._advanced_processor = AdvancedImageProcessor()
+        
+        # Performance: Cached CLAHE objects
+        self._clahe_default = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
+        self._clahe_custom = None  # Lazy initialized with custom settings
+        self._clahe_settings_cache = (None, None)  # (clip_limit, grid_size)
+        
+        # Performance: Cached kernels
+        self._kernel_3x3 = np.ones((3, 3), np.uint8)
+        self._kernel_morph_21x21 = cv2.getStructuringElement(cv2.MORPH_RECT, (21, 21))
     
     def update_settings(
         self,
@@ -179,20 +196,35 @@ class ImageProcessor:
         if not self.algo.use_clahe:
             return image
         
+        # Get or create CLAHE object with current settings
+        clahe = self._get_clahe_with_settings(
+            self.algo.clahe_clip_limit,
+            self.algo.clahe_grid_size
+        )
+        
         # Convert to LAB color space
         lab = cv2.cvtColor(image, cv2.COLOR_BGR2LAB)
         l, a, b = cv2.split(lab)
         
         # Apply CLAHE to L channel
-        clahe = cv2.createCLAHE(
-            clipLimit=self.algo.clahe_clip_limit,
-            tileGridSize=(self.algo.clahe_grid_size, self.algo.clahe_grid_size)
-        )
         l = clahe.apply(l)
         
         # Merge and convert back
         lab = cv2.merge([l, a, b])
         return cv2.cvtColor(lab, cv2.COLOR_LAB2BGR)
+    
+    def _get_clahe_with_settings(self, clip_limit: float, grid_size: int):
+        """Get cached CLAHE object or create new one if settings changed."""
+        if self._clahe_settings_cache == (clip_limit, grid_size) and self._clahe_custom is not None:
+            return self._clahe_custom
+        
+        # Create new CLAHE with updated settings
+        self._clahe_custom = cv2.createCLAHE(
+            clipLimit=clip_limit,
+            tileGridSize=(grid_size, grid_size)
+        )
+        self._clahe_settings_cache = (clip_limit, grid_size)
+        return self._clahe_custom
     
     def score_contour(self, contour: np.ndarray, image_area: int) -> float:
         """
@@ -619,15 +651,13 @@ class ImageProcessor:
         # Auto contrast (CLAHE or histogram equalization)
         if self.proc.auto_contrast:
             if len(result.shape) == 2:
-                # Grayscale
-                clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
-                result = clahe.apply(result)
+                # Grayscale - use cached CLAHE
+                result = self._clahe_default.apply(result)
             else:
                 # Color - apply CLAHE to L channel in LAB
                 lab = cv2.cvtColor(result, cv2.COLOR_BGR2LAB)
                 l, a, b = cv2.split(lab)
-                clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
-                l = clahe.apply(l)
+                l = self._clahe_default.apply(l)
                 lab = cv2.merge([l, a, b])
                 result = cv2.cvtColor(lab, cv2.COLOR_LAB2BGR)
         

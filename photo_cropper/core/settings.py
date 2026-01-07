@@ -243,6 +243,53 @@ class MultiPhotoSettings:
     separate_output_folders: bool = False
 
 
+# v9.0 Settings
+
+@dataclass
+class ClassificationSettings:
+    """Image classification settings for v9.0."""
+    enabled: bool = False
+    auto_folder: bool = True  # Create category folders automatically
+    categories_enabled: dict = field(default_factory=lambda: {
+        "portrait": True,
+        "landscape": True,
+        "document": True,
+        "blackwhite": True,
+        "other": True
+    })
+    min_confidence: float = 0.5
+
+
+@dataclass
+class FaceDetectionSettings:
+    """Face detection settings for v9.0."""
+    enabled: bool = False
+    use_dnn: bool = False  # Use DNN for more accurate detection
+    auto_center_crop: bool = True  # Adjust crop to center on faces
+    show_overlay: bool = True  # Show face rectangles in preview
+    auto_rotate: bool = False  # Auto-rotate based on eye positions
+    detect_eyes: bool = True
+
+
+@dataclass
+class SmartEnhancementSettings:
+    """Smart enhancement settings for v9.0."""
+    enabled: bool = False
+    auto_preset: bool = True  # Automatically select preset based on classification
+    default_preset: str = "none"  # Default preset if auto is off
+    apply_to_batch: bool = True
+
+
+@dataclass
+class NotificationSettings:
+    """System notification settings for v9.0."""
+    enabled: bool = True
+    play_sound: bool = True
+    on_batch_complete: bool = True
+    on_error: bool = True
+    on_watch_mode: bool = True
+
+
 @dataclass
 class AppSettings:
     """Complete application settings."""
@@ -264,6 +311,12 @@ class AppSettings:
     watch_mode: WatchModeSettings = field(default_factory=WatchModeSettings)
     multi_photo: MultiPhotoSettings = field(default_factory=MultiPhotoSettings)
     
+    # v9.0 settings
+    classification: ClassificationSettings = field(default_factory=ClassificationSettings)
+    face_detection: FaceDetectionSettings = field(default_factory=FaceDetectionSettings)
+    smart_enhancement: SmartEnhancementSettings = field(default_factory=SmartEnhancementSettings)
+    notification: NotificationSettings = field(default_factory=NotificationSettings)
+    
     # Path settings
     last_input_path: str = ""
     last_output_path: str = ""
@@ -284,6 +337,10 @@ class AppSettings:
             "resize": asdict(self.resize),
             "watch_mode": asdict(self.watch_mode),
             "multi_photo": asdict(self.multi_photo),
+            "classification": asdict(self.classification),
+            "face_detection": asdict(self.face_detection),
+            "smart_enhancement": asdict(self.smart_enhancement),
+            "notification": asdict(self.notification),
             "last_input_path": self.last_input_path,
             "last_output_path": self.last_output_path,
             "create_backup": self.create_backup,
@@ -354,6 +411,27 @@ class AppSettings:
         except TypeError:
             multi_photo = MultiPhotoSettings()
         
+        # v9.0 settings
+        try:
+            classification = ClassificationSettings(**data.get("classification", {}))
+        except TypeError:
+            classification = ClassificationSettings()
+        
+        try:
+            face_detection = FaceDetectionSettings(**data.get("face_detection", {}))
+        except TypeError:
+            face_detection = FaceDetectionSettings()
+        
+        try:
+            smart_enhancement = SmartEnhancementSettings(**data.get("smart_enhancement", {}))
+        except TypeError:
+            smart_enhancement = SmartEnhancementSettings()
+        
+        try:
+            notification = NotificationSettings(**data.get("notification", {}))
+        except TypeError:
+            notification = NotificationSettings()
+        
         return cls(
             algorithm=algorithm,
             processing=processing,
@@ -367,6 +445,10 @@ class AppSettings:
             resize=resize,
             watch_mode=watch_mode,
             multi_photo=multi_photo,
+            classification=classification,
+            face_detection=face_detection,
+            smart_enhancement=smart_enhancement,
+            notification=notification,
             last_input_path=data.get("last_input_path", ""),
             last_output_path=data.get("last_output_path", ""),
             create_backup=data.get("create_backup", False),

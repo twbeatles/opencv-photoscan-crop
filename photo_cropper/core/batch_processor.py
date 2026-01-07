@@ -15,6 +15,7 @@ import shutil
 import logging
 import threading
 import traceback
+import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 from typing import Optional, List, Dict, Any, Callable
@@ -148,8 +149,6 @@ class BatchProcessor:
     
     def _calculate_optimal_threads(self) -> int:
         """Calculate optimal thread count based on CPU cores and settings."""
-        import os
-        
         # Get configured thread count from settings
         if hasattr(self.settings, 'performance') and self.settings.performance.thread_count > 0:
             return min(self.settings.performance.thread_count, os.cpu_count() or 4)
@@ -440,7 +439,6 @@ class BatchProcessor:
         total: int
     ) -> FileResult:
         """Process a single file."""
-        import time
         start_time = time.time()
         
         input_path = os.path.join(input_dir, filename)

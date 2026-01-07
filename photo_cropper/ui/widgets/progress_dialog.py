@@ -75,12 +75,12 @@ class StatsWidget(QFrame):
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(8)
         
-        # Create stat cards with icons
-        self.total_card = StatCard("📊", "처리됨", "#888888", self)
-        self.success_card = StatCard("✅", "성공", "#00c880", self)
-        self.failed_card = StatCard("❌", "실패", "#e94560", self)
-        self.skipped_card = StatCard("⏭️", "건너뜀", "#ffa500", self)
-        self.rate_card = StatCard("📈", "성공률", "#0f3460", self)
+        # Create stat cards with icons - using new theme colors
+        self.total_card = StatCard("📊", "처리됨", "#8b949e", self)
+        self.success_card = StatCard("✅", "성공", "#34d399", self)  # Emerald
+        self.failed_card = StatCard("❌", "실패", "#f87171", self)   # Rose
+        self.skipped_card = StatCard("⏭️", "건너뜀", "#fbbf24", self) # Amber
+        self.rate_card = StatCard("📈", "성공률", "#818cf8", self)    # Indigo
         
         layout.addWidget(self.total_card)
         layout.addWidget(self.success_card)
@@ -159,7 +159,7 @@ class ProgressDialog(QDialog):
         info_row = QHBoxLayout()
         self.percent_label = QLabel("0%")
         self.percent_label.setFont(QFont("Segoe UI", 24, QFont.Weight.Bold))
-        self.percent_label.setStyleSheet("color: #58a6ff;")
+        self.percent_label.setStyleSheet("color: #818cf8;")  # Indigo
         info_row.addWidget(self.percent_label)
         
         info_row.addStretch()
@@ -288,13 +288,13 @@ class ProgressDialog(QDialog):
             message: Log message
             level: Log level (info, success, error, warning, skip)
         """
-        # Color and icon mapping
+        # Color and icon mapping - using new theme colors
         styles = {
-            "info": {"color": "#888888", "icon": "ℹ️"},
-            "success": {"color": "#00c880", "icon": "✅"},
-            "error": {"color": "#e94560", "icon": "❌"},
-            "warning": {"color": "#ffa500", "icon": "⚠️"},
-            "skip": {"color": "#666666", "icon": "⏭️"},
+            "info": {"color": "#8b949e", "icon": "ℹ️"},
+            "success": {"color": "#34d399", "icon": "✅"},  # Emerald
+            "error": {"color": "#f87171", "icon": "❌"},    # Rose
+            "warning": {"color": "#fbbf24", "icon": "⚠️"},  # Amber
+            "skip": {"color": "#6b7280", "icon": "⏭️"},
         }
         style = styles.get(level, styles["info"])
         
@@ -326,11 +326,11 @@ class ProgressDialog(QDialog):
         if progress.is_cancelled:
             self.setWindowTitle("⛔ 처리 중단됨")
             self.current_file_label.setText("⛔ 작업이 취소되었습니다")
-            self.current_file_label.setStyleSheet("color: #e94560; font-weight: bold;")
+            self.current_file_label.setStyleSheet("color: #f87171; font-weight: bold;")
         else:
             self.setWindowTitle("✅ 처리 완료")
             self.current_file_label.setText("🎉 모든 작업이 완료되었습니다!")
-            self.current_file_label.setStyleSheet("color: #00c880; font-weight: bold;")
+            self.current_file_label.setStyleSheet("color: #34d399; font-weight: bold;")
         
         self.progress_bar.setValue(100)
         self.percent_label.setText("완료! ✨")

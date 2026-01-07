@@ -29,22 +29,25 @@ DARK_COLORS = {
     "bg_secondary": "#161b22",
     "bg_tertiary": "#21262d",
     "bg_glass": "rgba(22, 27, 34, 0.85)",
-    "accent": "#58a6ff",
-    "accent_hover": "#79b8ff",
-    "accent_glow": "rgba(88, 166, 255, 0.3)",
-    "success": "#3fb950",
-    "success_glow": "rgba(63, 185, 80, 0.3)",
-    "warning": "#d29922",
-    "error": "#f85149",
-    "error_glow": "rgba(248, 81, 73, 0.3)",
+    "bg_card": "#1c2128",
+    "bg_card_hover": "#242c38",
+    "accent": "#818cf8",  # Indigo/Purple - more vibrant
+    "accent_hover": "#a5b4fc",
+    "accent_glow": "rgba(129, 140, 248, 0.35)",
+    "accent_secondary": "#22d3ee",  # Cyan for secondary actions
+    "success": "#34d399",  # Emerald green
+    "success_glow": "rgba(52, 211, 153, 0.3)",
+    "warning": "#fbbf24",  # Amber
+    "error": "#f87171",  # Rose red
+    "error_glow": "rgba(248, 113, 113, 0.3)",
     "text_primary": "#f0f6fc",
     "text_secondary": "#c9d1d9",
     "text_muted": "#8b949e",
     "border": "#30363d",
     "border_subtle": "rgba(48, 54, 61, 0.5)",
-    "border_focus": "#58a6ff",
-    "gradient_start": "#238636",
-    "gradient_end": "#2ea043",
+    "border_focus": "#818cf8",
+    "gradient_start": "#6366f1",
+    "gradient_end": "#818cf8",
 }
 
 # Color palette - Light theme (enhanced for glassmorphism)
@@ -115,7 +118,7 @@ QGroupBox::title {
     background-color: #21262d;
     border: 1px solid rgba(48, 54, 61, 0.5);
     border-radius: 6px;
-    color: #58a6ff;
+    color: #818cf8;
     left: 12px;
 }
 
@@ -136,9 +139,9 @@ QTabBar::tab {
 }
 
 QTabBar::tab:selected {
-    background-color: rgba(88, 166, 255, 0.15);
-    color: #58a6ff;
-    border: 1px solid rgba(88, 166, 255, 0.3);
+    background-color: rgba(129, 140, 248, 0.15);
+    color: #818cf8;
+    border: 1px solid rgba(129, 140, 248, 0.3);
 }
 
 QTabBar::tab:hover:!selected {
@@ -175,29 +178,29 @@ QPushButton:disabled {
 
 /* Primary Action Button (Gradient & Shadow) */
 QPushButton#primaryButton {
-    background-color: #238636;
+    background-color: #6366f1;
     color: #ffffff;
     border: 1px solid rgba(240, 246, 252, 0.1);
 }
 
 QPushButton#primaryButton:hover {
-    background-color: #2ea043;
+    background-color: #818cf8;
     border-color: rgba(240, 246, 252, 0.2);
 }
 
 QPushButton#primaryButton:pressed {
-    background-color: #1a7f37;
+    background-color: #4f46e5;
 }
 
 /* Success Button */
 QPushButton#successButton {
-    background-color: rgba(56, 139, 253, 0.15);
-    color: #58a6ff;
-    border: 1px solid rgba(56, 139, 253, 0.4);
+    background-color: rgba(129, 140, 248, 0.15);
+    color: #818cf8;
+    border: 1px solid rgba(129, 140, 248, 0.4);
 }
 
 QPushButton#successButton:hover {
-    background-color: rgba(56, 139, 253, 0.25);
+    background-color: rgba(129, 140, 248, 0.25);
 }
 
 /* Inputs - Minimalist */
@@ -210,7 +213,7 @@ QLineEdit, QSpinBox, QDoubleSpinBox, QComboBox {
 }
 
 QLineEdit:focus, QSpinBox:focus, QDoubleSpinBox:focus, QComboBox:focus {
-    border: 1px solid #58a6ff;
+    border: 1px solid #818cf8;
     background-color: #161b22;
 }
 
@@ -243,7 +246,7 @@ QSlider::groove:horizontal {
 }
 
 QSlider::handle:horizontal {
-    background: #58a6ff;
+    background: #818cf8;
     width: 18px;
     height: 18px;
     margin: -6px 0;
@@ -252,12 +255,11 @@ QSlider::handle:horizontal {
 }
 
 QSlider::handle:horizontal:hover {
-    background: #79b8ff;
-    transform: scale(1.1);
+    background: #a5b4fc;
 }
 
 QSlider::sub-page:horizontal {
-    background: #1f6feb;
+    background: #6366f1;
     border-radius: 3px;
 }
 
@@ -272,7 +274,7 @@ QProgressBar {
 }
 
 QProgressBar::chunk {
-    background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #238636, stop:1 #2ea043);
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #6366f1, stop:1 #818cf8);
     border-radius: 6px;
 }
 
@@ -325,7 +327,7 @@ QMenu::item {
 }
 
 QMenu::item:selected {
-    background-color: #1f6feb;
+    background-color: #6366f1;
     color: #ffffff;
 }
 
@@ -360,8 +362,8 @@ QCheckBox::indicator {
     background: #0d1117;
 }
 QCheckBox::indicator:checked {
-    background-color: #1f6feb;
-    border-color: #1f6feb;
+    background-color: #6366f1;
+    border-color: #6366f1;
     image: url(data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxMiIgaGVpZ2h0PSIxMiIgdmlld0JveD0iMCAwIDEyIDEyIj48cGF0aCBmaWxsPSIjZmZmIiBkPSJNOS43LjMgbC01IDUgLTIuNS0yLjUgLTEuNCAxLjQgNCA0IDYuNC02LjR6Ii8+PC9zdmc+);
 }
 

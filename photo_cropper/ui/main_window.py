@@ -241,7 +241,45 @@ class MainWindow(QMainWindow):
         duplicate_action = QAction("중복 파일 검색...", self)
         duplicate_action.triggered.connect(self._detect_duplicates)
         tools_menu.addAction(duplicate_action)
-        tools_menu.addAction(rotate_action)
+        
+        tools_menu.addSeparator()
+        
+        # v9.0: AI Features menu
+        ai_menu = tools_menu.addMenu("🤖 AI 기능")
+        
+        classification_action = QAction("이미지 자동 분류", self)
+        classification_action.triggered.connect(self._show_classification_settings)
+        ai_menu.addAction(classification_action)
+        
+        face_detect_action = QAction("얼굴 감지 설정", self)
+        face_detect_action.triggered.connect(self._show_face_detection_settings)
+        ai_menu.addAction(face_detect_action)
+        
+        smart_enhance_action = QAction("스마트 보정", self)
+        smart_enhance_action.triggered.connect(self._show_smart_enhancement)
+        ai_menu.addAction(smart_enhance_action)
+        
+        tools_menu.addSeparator()
+        
+        # v9.0: Multi-compare window
+        multi_compare_action = QAction("🖼️ 멀티 이미지 비교", self)
+        multi_compare_action.setShortcut(QKeySequence("Ctrl+M"))
+        multi_compare_action.triggered.connect(self._show_multi_compare)
+        tools_menu.addAction(multi_compare_action)
+        
+        tools_menu.addSeparator()
+        
+        # v9.0: Profile switching
+        profile_menu = tools_menu.addMenu("📋 프로파일")
+        
+        profile_manager_action = QAction("프로파일 관리...", self)
+        profile_manager_action.triggered.connect(self._show_profile_manager)
+        profile_menu.addAction(profile_manager_action)
+        
+        profile_menu.addSeparator()
+        
+        # Quick profile actions will be populated dynamically
+        self._profile_menu = profile_menu
         
         # Help menu
         help_menu = menubar.addMenu("도움말(&H)")
@@ -1199,6 +1237,169 @@ class MainWindow(QMainWindow):
         
         QMessageBox.information(self, "중복 검색 결과", msg)
         self.status_label.setText(f"중복 파일 {dup_count}개 발견")
+    
+    # ========================================
+    # v9.0 Feature Handlers
+    # ========================================
+    
+    def _show_classification_settings(self):
+        """Show AI classification settings dialog."""
+        from ..core.settings import ClassificationSettings
+        
+        # Toggle classification in settings panel
+        enabled = not self._settings.classification.enabled
+        self._settings.classification.enabled = enabled
+        
+        if enabled:
+            ToastManager.success("🤖 AI 분류 활성화됨 - 배치 처리 시 이미지가 자동 분류됩니다")
+            self.status_label.setText("AI 분류 활성화됨")
+        else:
+            ToastManager.info("AI 분류 비활성화됨")
+            self.status_label.setText("AI 분류 비활성화됨")
+        
+        self._schedule_auto_save()
+    
+    def _show_face_detection_settings(self):
+        """Show face detection settings dialog."""
+        enabled = not self._settings.face_detection.enabled
+        self._settings.face_detection.enabled = enabled
+        
+        if enabled:
+            ToastManager.success("👤 얼굴 감지 활성화됨 - 인물 사진 자동 크롭 조정")
+            self.status_label.setText("얼굴 감지 활성화됨")
+            # Re-run preview with face detection
+            if self._current_image_path:
+                self._do_preview_with_faces()
+        else:
+            ToastManager.info("얼굴 감지 비활성화됨")
+            self.status_label.setText("얼굴 감지 비활성화됨")
+        
+        self._schedule_auto_save()
+    
+    def _do_preview_with_faces(self):
+        """Preview with face detection overlay."""
+        if not self._current_image_path:
+            return
+        
+        from ..core.face_detector import get_face_detector
+        import cv2
+        import numpy as np
+        
+        detector = get_face_detector()
+        
+        # Load and detect faces
+        image = cv2.imdecode(
+            np.fromfile(self._current_image_path, dtype=np.uint8),
+            cv2.IMREAD_COLOR
+        )
+        
+        if image is not None:
+            result = detector.detect(image, detect_eyes=True, suggest_crop=True)
+            
+            if result.has_faces:
+                # Draw face overlays
+                overlay = detector.draw_detections(image, result)
+                self.preview_widget.set_original_image(image, overlay)
+                self.status_label.setText(f"👤 {len(result.faces)}개 얼굴 감지됨")
+                ToastManager.info(f"👤 {len(result.faces)}개 얼굴 감지")
+            else:
+                self.status_label.setText("얼굴을 감지하지 못했습니다")
+    
+    def _show_smart_enhancement(self):
+        """Show smart enhancement options."""
+        if self._last_original is None:
+            self.status_label.setText("먼저 이미지를 로드하세요")
+            return
+        
+        from ..core.smart_enhancer import get_smart_enhancer, EnhancementPreset
+        
+        enhancer = get_smart_enhancer()
+        preset_names = enhancer.get_preset_names()
+        
+        # Show preset selection dialog
+        from PyQt6.QtWidgets import QInputDialog
+        
+        presets = [name for _, name in preset_names.items() if _ != EnhancementPreset.NONE]
+        preset, ok = QInputDialog.getItem(
+            self, "스마트 보정", 
+            "적용할 프리셋을 선택하세요:",
+            presets, 0, False
+        )
+        
+        if ok and preset:
+            # Find preset enum
+            selected_preset = None
+            for p, name in preset_names.items():
+                if name == preset:
+                    selected_preset = p
+                    break
+            
+            if selected_preset:
+                result = enhancer.apply_preset(self._last_original, selected_preset)
+                self._last_processed = result.image
+                self.preview_widget.set_processed_image(result.image)
+                
+                effects = ", ".join(result.applied_effects[:3])
+                ToastManager.success(f"✨ {preset} 적용됨: {effects}")
+                self.status_label.setText(f"스마트 보정 적용: {preset}")
+    
+    def _show_multi_compare(self):
+        """Show multi-image comparison window."""
+        from .widgets.multi_compare_window import MultiCompareWindow
+        
+        if not hasattr(self, '_multi_compare_window') or self._multi_compare_window is None:
+            self._multi_compare_window = MultiCompareWindow(self)
+        
+        # Add current images if available
+        if self._last_original is not None:
+            self._multi_compare_window.add_image(
+                self._last_original, 
+                "원본", 
+                slot=0
+            )
+        
+        if self._last_processed is not None:
+            self._multi_compare_window.add_image(
+                self._last_processed, 
+                "처리됨", 
+                slot=1
+            )
+        
+        self._multi_compare_window.show()
+        self._multi_compare_window.raise_()
+        self._multi_compare_window.activateWindow()
+    
+    def _show_profile_manager(self):
+        """Show profile manager dialog."""
+        from ..core.batch_profile_manager import get_batch_profile_manager
+        from PyQt6.QtWidgets import QInputDialog
+        
+        manager = get_batch_profile_manager()
+        profiles = manager.list_profiles()
+        
+        if not profiles:
+            ToastManager.warning("저장된 프로파일이 없습니다")
+            return
+        
+        # Show profile selection
+        profile, ok = QInputDialog.getItem(
+            self, "프로파일 선택",
+            "적용할 프로파일:",
+            profiles, 0, False
+        )
+        
+        if ok and profile:
+            if manager.apply_profile(profile, self._settings):
+                self.settings_panel.settings = self._settings
+                self.image_processor.update_settings(
+                    self._settings.algorithm,
+                    self._settings.processing
+                )
+                ToastManager.success(f"📋 '{profile}' 프로파일 적용됨")
+                self.status_label.setText(f"프로파일 적용: {profile}")
+                
+                if self._settings.ui.auto_preview:
+                    self._request_preview()
     
     def _on_preset_selected(self, preset_name: str):
         """Handle preset selection from dropdown."""

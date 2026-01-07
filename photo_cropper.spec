@@ -1,73 +1,105 @@
 # -*- mode: python ; coding: utf-8 -*-
 """
-Photo Cropper v8.5 PyInstaller Spec File
+Photo Cropper v9.0 - PyInstaller Spec File
 
-최적화 및 경량화:
-- UPX 압축 적용
-- 불필요한 모듈 제외
-- 단일 실행 파일 생성
+Optimized for:
+- Lightweight build (excluding unused packages)
+- Single file executable
+- UPX compression support
 """
 
-import os
 import sys
+from PyInstaller.utils.hooks import collect_data_files, collect_submodules
 
 block_cipher = None
 
-# 현재 디렉토리
-BASE_DIR = os.path.dirname(os.path.abspath(SPEC))
+# ============================================
+# Exclusions for lightweight build
+# ============================================
+
+# Heavy packages to exclude
+EXCLUDES = [
+    # Data science / ML (not needed)
+    'matplotlib', 'scipy', 'pandas', 'sklearn', 'tensorflow', 'torch',
+    'keras', 'statsmodels', 'seaborn', 'plotly', 'bokeh',
+    
+    # Testing frameworks
+    'pytest', 'unittest', 'nose', 'mock', 'hypothesis',
+    
+    # Development tools
+    'IPython', 'jupyter', 'notebook', 'ipykernel', 'debugpy',
+    'sphinx', 'docutils', 'jedi', 'black', 'flake8', 'pylint',
+    
+    # Unused GUI frameworks
+    'tkinter', '_tkinter', 'tcl', 'tk', 'wx', 'PySide6', 'PyGObject',
+    
+    # Unused database / network
+    'sqlalchemy', 'aiohttp', 'asyncio', 'tornado', 'flask', 'django',
+    'requests', 'urllib3', 'httpx', 'websockets',
+    
+    # Unused formats
+    'xml.dom', 'xml.sax', 'email', 'html', 'http',
+    'ftplib', 'imaplib', 'smtplib', 'telnetlib',
+    
+    # OpenCV unused submodules (reduces size significantly)
+    'cv2.gapi',
+    
+    # PyQt6 unused modules
+    'PyQt6.QtBluetooth', 'PyQt6.QtDBus', 'PyQt6.QtDesigner',
+    'PyQt6.QtHelp', 'PyQt6.QtMultimedia', 'PyQt6.QtMultimediaWidgets',
+    'PyQt6.QtNetwork', 'PyQt6.QtNfc', 'PyQt6.QtOpenGL',
+    'PyQt6.QtOpenGLWidgets', 'PyQt6.QtPositioning', 'PyQt6.QtPrintSupport',
+    'PyQt6.QtQml', 'PyQt6.QtQuick', 'PyQt6.QtQuick3D', 'PyQt6.QtQuickWidgets',
+    'PyQt6.QtRemoteObjects', 'PyQt6.QtSensors', 'PyQt6.QtSerialPort',
+    'PyQt6.QtSpatialAudio', 'PyQt6.QtSql', 'PyQt6.QtSvg', 'PyQt6.QtSvgWidgets',
+    'PyQt6.QtTest', 'PyQt6.QtWebChannel', 'PyQt6.QtWebEngineCore',
+    'PyQt6.QtWebEngineQuick', 'PyQt6.QtWebEngineWidgets', 'PyQt6.QtWebSockets',
+    'PyQt6.QtXml',
+    
+    # Misc
+    'lib2to3', 'distutils', 'setuptools', 'pkg_resources', 'pip',
+]
+
+# Binary files to exclude
+EXCLUDE_BINARIES = [
+    # OpenCV DNN module (large, unused)
+    'opencv_videoio_ffmpeg*.dll',
+    'libopenblas*.dll',
+    
+    # Qt unused plugins
+    'Qt6Multimedia.dll',
+    'Qt6Network.dll',
+    'Qt6Qml.dll',
+    'Qt6Quick.dll',
+    'Qt6Sql.dll',
+    'Qt6WebEngine*.dll',
+]
+
+# ============================================
+# Analysis
+# ============================================
 
 a = Analysis(
     ['run.py'],
-    pathex=[BASE_DIR],
+    pathex=[],
     binaries=[],
     datas=[
-        # i18n 번역 파일 포함
+        # Include i18n translations if exists
         ('photo_cropper/i18n', 'photo_cropper/i18n'),
     ],
     hiddenimports=[
-        # PyQt6 필수 모듈
+        # Ensure these are included
+        'cv2',
+        'numpy',
+        'PIL',
         'PyQt6.QtCore',
         'PyQt6.QtGui', 
         'PyQt6.QtWidgets',
-        'PyQt6.sip',
-        # OpenCV
-        'cv2',
-        # NumPy
-        'numpy',
     ],
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
-    # ============================================
-    # 경량화: 불필요한 모듈 제외
-    # ============================================
-    excludes=[
-        # 데이터 과학 라이브러리 (사용 안함)
-        'matplotlib', 'matplotlib.pyplot',
-        'scipy', 'scipy.io', 'scipy.stats', 'scipy.signal',
-        'pandas', 'sklearn', 'tensorflow', 'torch',
-        
-        # GUI 충돌 방지 (다른 Qt 바인딩)
-        'PyQt5', 'PySide2', 'PySide6', 'tkinter', 'wx',
-        
-        # 개발 도구
-        'IPython', 'jupyter', 'notebook', 'nbconvert', 'nbformat',
-        'pytest', 'unittest', 'doctest', 'pdb', 'pdbpp',
-        'black', 'flake8', 'pylint', 'mypy',
-        
-        # 네트워크/서버 (불필요)
-        'http.server', 'xmlrpc', 'ftplib', 'smtplib', 'poplib',
-        'socketserver', 'wsgiref', 
-        
-        # 기타 불필요
-        'PIL',  # Pillow - OpenCV로 대체
-        'curses', 'readline',
-        'distutils', 'setuptools', 'pkg_resources', 'pip',
-        'lib2to3', 'ensurepip',
-        
-        # Windows 전용 제외
-        'win32com', 'win32api', 'win32gui',
-    ],
+    excludes=EXCLUDES,
     win_no_prefer_redirects=False,
     win_private_assemblies=False,
     cipher=block_cipher,
@@ -75,34 +107,35 @@ a = Analysis(
 )
 
 # ============================================
-# OpenCV 최적화: 불필요한 바이너리 제거
+# Remove excluded binaries
 # ============================================
-opencv_excludes = [
-    'libopencv_dnn',       # 딥러닝 (미사용)
-    'libopencv_ml',        # 머신러닝 (미사용)
-    'libopencv_video',     # 비디오 (미사용)  
-    'libopencv_videoio',   # 비디오 I/O (미사용)
-    'libopencv_objdetect', # 객체 감지 (미사용)
-    'libopencv_photo',     # 사진 복원 (고급 사용시 활성화)
-    'libopencv_stitching', # 파노라마 (미사용)
-    'opencv_videoio_ffmpeg', # FFmpeg (미사용)
-]
 
-# 바이너리에서 제외
-a.binaries = [b for b in a.binaries if not any(ex in b[0].lower() for ex in opencv_excludes)]
+def should_exclude_binary(name):
+    """Check if binary should be excluded."""
+    import fnmatch
+    name_lower = name.lower()
+    for pattern in EXCLUDE_BINARIES:
+        if fnmatch.fnmatch(name_lower, pattern.lower()):
+            return True
+    return False
 
-# ============================================
-# NumPy 최적화: 테스트 파일 제거
-# ============================================
-a.datas = [d for d in a.datas if 'numpy/tests' not in d[0]]
-a.datas = [d for d in a.datas if 'numpy/doc' not in d[0]]
-a.datas = [d for d in a.datas if 'numpy/f2py' not in d[0]]
-
-pyz = PYZ(a.pure, a.zipped_data, cipher=block_cipher)
+# Filter binaries
+a.binaries = [b for b in a.binaries if not should_exclude_binary(b[0])]
 
 # ============================================
-# 단일 실행 파일 생성 (onefile)
+# PYZ (Python archive)
 # ============================================
+
+pyz = PYZ(
+    a.pure,
+    a.zipped_data,
+    cipher=block_cipher,
+)
+
+# ============================================
+# EXE Configuration
+# ============================================
+
 exe = EXE(
     pyz,
     a.scripts,
@@ -110,32 +143,55 @@ exe = EXE(
     a.zipfiles,
     a.datas,
     [],
-    name='SmartPhotoCropper_v85',
+    name='PhotoCropper_v9',
     debug=False,
     bootloader_ignore_signals=False,
-    strip=False,          # Windows에서는 strip 불가 (Linux/macOS 전용)
-    upx=True,             # UPX 압축 (설치 필요: https://upx.github.io/)
+    strip=False,  # Set True on Linux for smaller size
+    upx=True,     # Enable UPX compression
     upx_exclude=[
+        # Don't compress these (causes issues)
         'vcruntime140.dll',
         'python*.dll',
-        'Qt*.dll',         # Qt DLL은 UPX 압축 시 문제 발생 가능
+        'Qt*.dll',
     ],
     runtime_tmpdir=None,
-    console=False,         # GUI 앱: 콘솔 숨김
+    console=False,  # No console window (GUI app)
     disable_windowed_traceback=False,
     argv_emulation=False,
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
-    icon=None,             # 아이콘: 'resources/icon.ico' (있다면)
-    version=None,          # 버전 정보: 'version_info.txt' (선택)
+    
+    # Windows specific
+    icon='photo_cropper/resources/icon.ico' if sys.platform == 'win32' else None,
+    version=None,
 )
 
 # ============================================
-# 빌드 명령어:
-#   pyinstaller photo_cropper.spec --clean
-#
-# UPX 설치 (선택, 권장):
-#   https://github.com/upx/upx/releases 에서 다운로드
-#   PATH에 upx.exe 추가
+# Build Notes
 # ============================================
+
+"""
+Build Commands:
+    
+    # Standard build
+    pyinstaller photo_cropper.spec --clean
+    
+    # With UPX (recommended for smaller size)
+    # Install UPX: https://github.com/upx/upx/releases
+    pyinstaller photo_cropper.spec --clean --upx-dir=/path/to/upx
+    
+    # Debug build (with console)
+    # Change console=True above, then:
+    pyinstaller photo_cropper.spec --clean
+
+Expected Output Size:
+    - Without UPX: ~80-100 MB
+    - With UPX: ~50-70 MB
+
+Tips for further size reduction:
+    1. Install UPX compression
+    2. Use Python 3.11+ (smaller stdlib)
+    3. Use opencv-python-headless instead of opencv-python
+    4. Consider using Nuitka instead of PyInstaller
+"""
