@@ -351,24 +351,43 @@ class MainWindow(QMainWindow):
         toolbar.addWidget(self.process_btn)
     
     def _setup_central_widget(self):
-        """Create central widget with splitters."""
+        """Create central widget with resizable splitters."""
         central = QWidget()
         self.setCentralWidget(central)
         
         main_layout = QVBoxLayout(central)
-        main_layout.setContentsMargins(12, 12, 12, 12)
-        main_layout.setSpacing(16)
+        main_layout.setContentsMargins(8, 8, 8, 8)
+        main_layout.setSpacing(0)
         
-        # Folder Selection Card (Glassmorphism Frame)
+        # Outer splitter for folder card and preview area (vertical)
+        outer_splitter = QSplitter(Qt.Orientation.Vertical)
+        outer_splitter.setHandleWidth(6)
+        outer_splitter.setStyleSheet("""
+            QSplitter::handle:vertical {
+                background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
+                    stop:0 transparent, stop:0.4 rgba(88, 166, 255, 0.5), 
+                    stop:0.6 rgba(88, 166, 255, 0.5), stop:1 transparent);
+                height: 6px;
+                margin: 2px 0;
+            }
+            QSplitter::handle:vertical:hover {
+                background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
+                    stop:0 transparent, stop:0.3 rgba(88, 166, 255, 0.8), 
+                    stop:0.7 rgba(88, 166, 255, 0.8), stop:1 transparent);
+            }
+        """)
+        
+        # Folder Selection Card (Compact)
         folder_card = QFrame()
-        folder_card.setObjectName("statsFrame") # Reusing statsFrame for card look
+        folder_card.setObjectName("statsFrame")
         folder_card_layout = QVBoxLayout(folder_card)
-        folder_card_layout.setContentsMargins(16, 16, 16, 16)
-        folder_card_layout.setSpacing(12)
+        folder_card_layout.setContentsMargins(10, 8, 10, 8)
+        folder_card_layout.setSpacing(6)
         
         # Input/Output Grid
         path_grid = QGridLayout()
-        path_grid.setSpacing(10)
+        path_grid.setSpacing(6)
+        path_grid.setContentsMargins(0, 0, 0, 0)
         
         # Input Path
         input_label = QLabel("입력 폴더:")
@@ -377,14 +396,14 @@ class MainWindow(QMainWindow):
         
         self.input_path_edit = QLineEdit()
         self.input_path_edit.setPlaceholderText("이미지가 있는 폴더를 선택하거나 드래그하세요...")
-        self.input_path_edit.setMinimumHeight(40)
-        self.input_path_edit.setTextMargins(10, 0, 10, 0)
+        self.input_path_edit.setMinimumHeight(32)
+        self.input_path_edit.setTextMargins(8, 0, 8, 0)
         self.input_path_edit.textChanged.connect(self._on_input_path_changed)
         path_grid.addWidget(self.input_path_edit, 0, 1)
         
         input_browse_btn = QPushButton("찾아보기")
         input_browse_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        input_browse_btn.setMinimumHeight(40)
+        input_browse_btn.setMinimumHeight(32)
         input_browse_btn.clicked.connect(self._select_input_folder)
         path_grid.addWidget(input_browse_btn, 0, 2)
         
@@ -395,20 +414,21 @@ class MainWindow(QMainWindow):
         
         self.output_path_edit = QLineEdit()
         self.output_path_edit.setPlaceholderText("결과물이 저장될 폴더 (자동 설정됨)")
-        self.output_path_edit.setMinimumHeight(40)
-        self.output_path_edit.setTextMargins(10, 0, 10, 0)
+        self.output_path_edit.setMinimumHeight(32)
+        self.output_path_edit.setTextMargins(8, 0, 8, 0)
         path_grid.addWidget(self.output_path_edit, 1, 1)
         
         output_browse_btn = QPushButton("변경")
         output_browse_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        output_browse_btn.setMinimumHeight(40)
+        output_browse_btn.setMinimumHeight(32)
         output_browse_btn.clicked.connect(self._select_output_folder)
         path_grid.addWidget(output_browse_btn, 1, 2)
         
         folder_card_layout.addLayout(path_grid)
         
-        # Drag & Drop Hint
+        # Drag & Drop Hint (compact)
         hint_layout = QHBoxLayout()
+        hint_layout.setContentsMargins(0, 0, 0, 0)
         hint_icon = QLabel("💡")
         hint_text = QLabel("팁: 폴더를 이 영역으로 드래그하여 바로 열 수 있습니다.")
         hint_text.setObjectName("subtitleLabel")
@@ -417,15 +437,44 @@ class MainWindow(QMainWindow):
         hint_layout.addStretch()
         folder_card_layout.addLayout(hint_layout)
         
-        main_layout.addWidget(folder_card)
-        
-        main_layout.addWidget(folder_card)
+        # Add folder card to outer splitter
+        outer_splitter.addWidget(folder_card)
         
         # Main splitter (horizontal: preview | settings)
         main_splitter = QSplitter(Qt.Orientation.Horizontal)
+        main_splitter.setHandleWidth(6)
+        main_splitter.setStyleSheet("""
+            QSplitter::handle:horizontal {
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                    stop:0 transparent, stop:0.4 rgba(88, 166, 255, 0.5), 
+                    stop:0.6 rgba(88, 166, 255, 0.5), stop:1 transparent);
+                width: 6px;
+                margin: 0 2px;
+            }
+            QSplitter::handle:horizontal:hover {
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                    stop:0 transparent, stop:0.3 rgba(88, 166, 255, 0.8), 
+                    stop:0.7 rgba(88, 166, 255, 0.8), stop:1 transparent);
+            }
+        """)
         
         # Left side: Preview area (Vertical Splitter)
         left_splitter = QSplitter(Qt.Orientation.Vertical)
+        left_splitter.setHandleWidth(6)
+        left_splitter.setStyleSheet("""
+            QSplitter::handle:vertical {
+                background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
+                    stop:0 transparent, stop:0.4 rgba(88, 166, 255, 0.5), 
+                    stop:0.6 rgba(88, 166, 255, 0.5), stop:1 transparent);
+                height: 6px;
+                margin: 2px 0;
+            }
+            QSplitter::handle:vertical:hover {
+                background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
+                    stop:0 transparent, stop:0.3 rgba(88, 166, 255, 0.8), 
+                    stop:0.7 rgba(88, 166, 255, 0.8), stop:1 transparent);
+            }
+        """)
         
         self.preview_widget = ImagePreviewWidget()
         left_splitter.addWidget(self.preview_widget)
@@ -435,8 +484,9 @@ class MainWindow(QMainWindow):
         left_splitter.addWidget(self.histogram_widget)
         
         # Set initial sizes (Give most space to preview)
-        left_splitter.setStretchFactor(0, 4)
+        left_splitter.setStretchFactor(0, 5)
         left_splitter.setStretchFactor(1, 1)
+        left_splitter.setSizes([500, 100])
         
         main_splitter.addWidget(left_splitter)
         
@@ -448,9 +498,17 @@ class MainWindow(QMainWindow):
         main_splitter.addWidget(self.settings_panel)
         
         # Set splitter sizes
-        main_splitter.setSizes([800, 350])
+        main_splitter.setSizes([850, 320])
         
-        main_layout.addWidget(main_splitter)
+        # Add main splitter to outer splitter
+        outer_splitter.addWidget(main_splitter)
+        
+        # Configure outer splitter sizes (folder: small, preview: large)
+        outer_splitter.setStretchFactor(0, 0)  # Folder card: don't stretch
+        outer_splitter.setStretchFactor(1, 1)  # Main area: stretch
+        outer_splitter.setSizes([110, 700])    # Initial sizes
+        
+        main_layout.addWidget(outer_splitter)
     
     def _setup_statusbar(self):
         """Create modern status bar with progress indication."""

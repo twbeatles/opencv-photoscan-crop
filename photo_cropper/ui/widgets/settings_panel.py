@@ -42,6 +42,12 @@ class NoScrollComboBox(QComboBox):
         event.ignore()
 
 
+class NoScrollSlider(QSlider):
+    """QSlider that ignores mouse wheel events."""
+    def wheelEvent(self, event: QWheelEvent):
+        event.ignore()
+
+
 class SettingsPanel(QWidget):
     """
     Tabbed settings panel for all application settings.
@@ -119,7 +125,7 @@ class SettingsPanel(QWidget):
         sharpening_row = QHBoxLayout()
         sharpening_row.addSpacing(24)
         sharpening_row.addWidget(QLabel("강도:"))
-        self.sharpening_slider = QSlider(Qt.Orientation.Horizontal)
+        self.sharpening_slider = NoScrollSlider(Qt.Orientation.Horizontal)
         self.sharpening_slider.setRange(1, 30)
         self.sharpening_slider.setValue(10)
         self.sharpening_slider.valueChanged.connect(self._on_setting_changed)
@@ -174,7 +180,7 @@ class SettingsPanel(QWidget):
         # Min threshold
         min_row = QHBoxLayout()
         min_row.addWidget(QLabel("최소 임계값:"))
-        self.canny_min_slider = QSlider(Qt.Orientation.Horizontal)
+        self.canny_min_slider = NoScrollSlider(Qt.Orientation.Horizontal)
         self.canny_min_slider.setRange(0, 255)
         self.canny_min_slider.setValue(50)
         self.canny_min_slider.valueChanged.connect(self._on_canny_changed)
@@ -187,7 +193,7 @@ class SettingsPanel(QWidget):
         # Max threshold
         max_row = QHBoxLayout()
         max_row.addWidget(QLabel("최대 임계값:"))
-        self.canny_max_slider = QSlider(Qt.Orientation.Horizontal)
+        self.canny_max_slider = NoScrollSlider(Qt.Orientation.Horizontal)
         self.canny_max_slider.setRange(0, 255)
         self.canny_max_slider.setValue(150)
         self.canny_max_slider.valueChanged.connect(self._on_canny_changed)
@@ -725,7 +731,7 @@ class SettingsPanel(QWidget):
         thread_group = QGroupBox("⚡ 병렬 처리")
         thread_layout = QFormLayout(thread_group)
         
-        self.max_threads_spin = QSpinBox()
+        self.max_threads_spin = NoScrollSpinBox()
         self.max_threads_spin.setRange(1, 32)
         self.max_threads_spin.setValue(4)
         self.max_threads_spin.setToolTip("동시에 처리할 이미지 수 (CPU 코어 수 권장)")

@@ -162,8 +162,8 @@ exe = EXE(
     codesign_identity=None,
     entitlements_file=None,
     
-    # Windows specific
-    icon='photo_cropper/resources/icon.ico' if sys.platform == 'win32' else None,
+    # Windows specific - icon is optional
+    icon=None,  # Set to 'photo_cropper/resources/icon.ico' if you have an icon file
     version=None,
 )
 
