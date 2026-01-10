@@ -83,6 +83,13 @@ class Scheduler(QObject):
         
         self._is_running = False
         self._task_counter = 0
+        
+        # Thread pool for async task execution
+        from concurrent.futures import ThreadPoolExecutor
+        import threading
+        self._executor = ThreadPoolExecutor(max_workers=2, thread_name_prefix="Scheduler")
+        self._running_tasks: set = set()
+        self._running_tasks_lock = threading.Lock()  # Thread safety for _running_tasks
     
     def start(self):
         """Start the scheduler."""
@@ -98,13 +105,20 @@ class Scheduler(QObject):
         logger.info("Scheduler started")
     
     def stop(self):
-        """Stop the scheduler."""
+        """Stop the scheduler and cleanup resources."""
         self._is_running = False
         self._check_timer.stop()
         
         # Stop all task timers
         for timer in self._task_timers.values():
             timer.stop()
+        
+        # Shutdown executor gracefully
+        if hasattr(self, '_executor') and self._executor:
+            try:
+                self._executor.shutdown(wait=False, cancel_futures=True)
+            except Exception as e:
+                logger.warning(f"Executor shutdown error: {e}")
         
         logger.info("Scheduler stopped")
     
@@ -244,7 +258,7 @@ class Scheduler(QObject):
             task.next_run = next_hour
     
     def _execute_task(self, task: ScheduleTask) -> bool:
-        """Execute a scheduled task."""
+        """Execute a scheduled task asynchronously."""
         if not self._process_callback:
             logger.warning("No process callback set")
             return False
@@ -253,29 +267,48 @@ class Scheduler(QObject):
             logger.error(f"Invalid input path for task {task.task_id}")
             return False
         
-        output_path = task.output_path or task.input_path
+        # Prevent duplicate execution (thread-safe)
+        with self._running_tasks_lock:
+            if task.task_id in self._running_tasks:
+                logger.warning(f"Task {task.task_id} is already running")
+                return False
+            self._running_tasks.add(task.task_id)
         
         self.task_started.emit(task.task_id)
         logger.info(f"Starting scheduled task: {task.name}")
+        
+        # Execute in thread pool
+        self._executor.submit(self._do_execute_task, task)
+        return True
+    
+    def _do_execute_task(self, task: ScheduleTask):
+        """Execute task in background thread."""
+        output_path = task.output_path or task.input_path
+        success = False
         
         try:
             success = self._process_callback(task.input_path, output_path)
             task.last_run = datetime.now()
             
-            self.task_completed.emit(task.task_id, success)
-            logger.info(f"Task completed: {task.name} (success={success})")
-            
             # For one-time tasks, disable after execution
             if task.schedule_type == ScheduleType.ONCE:
                 task.enabled = False
-                self.schedule_updated.emit()
             
-            return success
+            logger.info(f"Task completed: {task.name} (success={success})")
             
         except Exception as e:
             logger.error(f"Task execution failed: {e}")
-            self.task_completed.emit(task.task_id, False)
-            return False
+        
+        finally:
+            with self._running_tasks_lock:
+                self._running_tasks.discard(task.task_id)
+            # Emit signals from main thread
+            QTimer.singleShot(0, lambda: self._on_task_complete(task.task_id, success))
+    
+    def _on_task_complete(self, task_id: str, success: bool):
+        """Handle task completion (runs in main thread)."""
+        self.task_completed.emit(task_id, success)
+        self.schedule_updated.emit()
     
     def create_daily_task(
         self,

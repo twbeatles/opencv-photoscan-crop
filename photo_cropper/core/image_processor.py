@@ -733,6 +733,11 @@ class ImageProcessor:
             Tuple of (success, message, file_size_kb)
         """
         try:
+            # Ensure output directory exists
+            output_dir = os.path.dirname(output_path)
+            if output_dir and not os.path.exists(output_dir):
+                os.makedirs(output_dir, exist_ok=True)
+            
             fmt = output_format.upper()
             
             if fmt == "JPG" or fmt == "JPEG":
@@ -744,8 +749,21 @@ class ImageProcessor:
             else:
                 encode_params = []
             
-            extension = os.path.splitext(output_path)[1]
-            result, encoded_img = cv2.imencode(extension, image, encode_params)
+            extension = os.path.splitext(output_path)[1].lower()
+            
+            # Validate extension matches format for proper encoding
+            expected_ext = {
+                "JPG": ".jpg", "JPEG": ".jpg",
+                "PNG": ".png", "WEBP": ".webp",
+                "BMP": ".bmp", "TIFF": ".tiff"
+            }.get(fmt, extension)
+            
+            if extension != expected_ext and extension:
+                logger.warning(f"Extension mismatch: '{extension}' vs expected '{expected_ext}' for format {fmt}")
+                # Use expected extension for proper encoding
+                extension = expected_ext
+            
+            result, encoded_img = cv2.imencode(extension or expected_ext, image, encode_params)
             
             if result:
                 # Handle Unicode paths
@@ -764,7 +782,10 @@ class ImageProcessor:
     @staticmethod
     def get_image_info(image_path: str) -> Optional[Tuple[int, int, int]]:
         """
-        Get image dimensions without fully loading.
+        Get image dimensions without fully loading (memory efficient).
+        
+        Uses PIL to read only image header, avoiding full decode.
+        Falls back to OpenCV if PIL fails.
         
         Args:
             image_path: Path to image
@@ -773,11 +794,33 @@ class ImageProcessor:
             Tuple of (width, height, channels) or None
         """
         try:
+            # Try PIL first for efficient header-only reading
+            from PIL import Image
+            with Image.open(image_path) as img:
+                w, h = img.size
+                # Estimate channels from mode
+                mode_channels = {
+                    '1': 1, 'L': 1, 'P': 1,
+                    'RGB': 3, 'RGBA': 4, 'CMYK': 4,
+                    'YCbCr': 3, 'LAB': 3, 'HSV': 3
+                }
+                c = mode_channels.get(img.mode, 3)
+                return w, h, c
+        except ImportError:
+            # PIL not available, fall back to OpenCV
+            pass
+        except Exception:
+            # PIL failed, try OpenCV
+            pass
+        
+        # Fallback: OpenCV (loads full image)
+        try:
             img_array = np.fromfile(image_path, np.uint8)
             image = cv2.imdecode(img_array, cv2.IMREAD_COLOR)
             if image is not None:
                 h, w = image.shape[:2]
                 c = image.shape[2] if len(image.shape) > 2 else 1
+                del image  # Free memory immediately
                 return w, h, c
         except Exception:
             pass

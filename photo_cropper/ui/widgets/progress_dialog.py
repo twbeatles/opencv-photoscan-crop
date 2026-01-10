@@ -302,6 +302,16 @@ class ProgressDialog(QDialog):
         html = f'<span style="color: {style["color"]}">{style["icon"]} {message}</span>'
         self.log_text.append(html)
         
+        # Limit log lines to prevent memory issues (max 1000 lines)
+        MAX_LOG_LINES = 1000
+        doc = self.log_text.document()
+        if doc.blockCount() > MAX_LOG_LINES:
+            cursor = self.log_text.textCursor()
+            cursor.movePosition(cursor.MoveOperation.Start)
+            cursor.movePosition(cursor.MoveOperation.Down, cursor.MoveMode.KeepAnchor,
+                               doc.blockCount() - MAX_LOG_LINES)
+            cursor.removeSelectedText()
+        
         # Auto scroll
         scrollbar = self.log_text.verticalScrollBar()
         scrollbar.setValue(scrollbar.maximum())

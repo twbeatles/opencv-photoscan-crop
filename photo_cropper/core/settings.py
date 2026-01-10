@@ -528,6 +528,9 @@ class SettingsManager:
             logger.warning("No settings to save")
             return False
         
+        # Validate and clamp settings to valid ranges
+        self._validate_settings(settings)
+        
         try:
             # Ensure directory exists
             config_dir = os.path.dirname(self.config_file)
@@ -543,6 +546,37 @@ class SettingsManager:
         except Exception as e:
             logger.error(f"Settings save error: {e}")
             return False
+    
+    def _validate_settings(self, settings: AppSettings):
+        """Validate and clamp settings to valid ranges."""
+        # Output settings
+        settings.output.jpg_quality = max(1, min(100, settings.output.jpg_quality))
+        settings.output.png_compression = max(0, min(9, settings.output.png_compression))
+        settings.output.webp_quality = max(1, min(100, settings.output.webp_quality))
+        
+        # Algorithm settings
+        settings.algorithm.canny_min = max(0, min(255, settings.algorithm.canny_min))
+        settings.algorithm.canny_max = max(0, min(255, settings.algorithm.canny_max))
+        # Ensure canny_min <= canny_max
+        if settings.algorithm.canny_min > settings.algorithm.canny_max:
+            settings.algorithm.canny_min, settings.algorithm.canny_max = \
+                settings.algorithm.canny_max, settings.algorithm.canny_min
+        
+        settings.algorithm.clahe_clip_limit = max(0.1, min(10.0, settings.algorithm.clahe_clip_limit))
+        settings.algorithm.clahe_grid_size = max(2, min(16, settings.algorithm.clahe_grid_size))
+        settings.algorithm.min_area_ratio = max(0.01, min(0.99, settings.algorithm.min_area_ratio))
+        settings.algorithm.max_area_ratio = max(0.01, min(0.99, settings.algorithm.max_area_ratio))
+        
+        # Processing settings
+        settings.processing.sharpening_strength = max(0.0, min(5.0, settings.processing.sharpening_strength))
+        settings.processing.denoise_strength = max(1, min(30, settings.processing.denoise_strength))
+        
+        # UI settings
+        settings.ui.preview_quality = max(10, min(100, settings.ui.preview_quality))
+        
+        # Performance settings
+        settings.performance.thread_count = max(0, min(32, settings.performance.thread_count))
+        settings.performance.max_image_size_mb = max(1, min(1000, settings.performance.max_image_size_mb))
     
     def reset_to_defaults(self) -> AppSettings:
         """

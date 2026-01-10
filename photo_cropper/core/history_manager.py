@@ -239,15 +239,15 @@ class HistoryManager:
         
         return False
     
-    def undo(self) -> bool:
+    def undo(self) -> Optional[Command]:
         """
         Undo the last command.
         
         Returns:
-            True if undo was successful
+            The undone Command if successful, None otherwise
         """
         if not self.can_undo:
-            return False
+            return None
         
         command = self._history[self._current_index]
         
@@ -258,19 +258,19 @@ class HistoryManager:
             self._notify_change()
             
             logger.debug(f"Undone: {command.description}")
-            return True
+            return command
         
-        return False
+        return None
     
-    def redo(self) -> bool:
+    def redo(self) -> Optional[Command]:
         """
         Redo the last undone command.
         
         Returns:
-            True if redo was successful
+            The redone Command if successful, None otherwise
         """
         if not self.can_redo:
-            return False
+            return None
         
         command = self._redo_stack.pop()
         
@@ -280,11 +280,11 @@ class HistoryManager:
             self._notify_change()
             
             logger.debug(f"Redone: {command.description}")
-            return True
+            return command
         
         # Put back on redo stack if failed
         self._redo_stack.append(command)
-        return False
+        return None
     
     def clear(self):
         """Clear all history."""

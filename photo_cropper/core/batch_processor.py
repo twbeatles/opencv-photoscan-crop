@@ -203,19 +203,47 @@ class BatchProcessor:
         if callback is None:
             return
         try:
+            # Check if callback target is still valid (for bound methods to Qt objects)
+            if hasattr(callback, '__self__'):
+                obj = callback.__self__
+                # For Qt objects, check if still valid by testing a safe method
+                if hasattr(obj, 'isVisible'):
+                    try:
+                        obj.isVisible()  # Will throw RuntimeError if deleted
+                    except RuntimeError:
+                        logger.debug("Callback target Qt object was deleted")
+                        return
             callback(*args, **kwargs)
+        except RuntimeError as e:
+            # Qt object deleted
+            logger.debug(f"Callback target deleted: {e}")
         except Exception as e:
             logger.error(f"Callback error: {e}")
             logger.debug(traceback.format_exc())
             
-    def cleanup(self):
-        """Clean up resources and stop threads."""
+    def cleanup(self, timeout: float = 5.0):
+        """
+        Clean up resources and stop threads.
+        
+        Args:
+            timeout: Maximum time to wait for thread termination in seconds
+        """
         self.request_stop()
+        
+        # Shutdown executor with cancellation
         if self._executor:
-            self._executor.shutdown(wait=False)
+            try:
+                self._executor.shutdown(wait=True, cancel_futures=True)
+            except Exception as e:
+                logger.warning(f"Executor shutdown error: {e}")
+            finally:
+                self._executor = None  # Allow recreation on next use
+        
+        # Wait for processing thread to terminate
         if self._processing_thread and self._processing_thread.is_alive():
-            # Thread join is blocking, avoid if calling from UI thread
-            pass
+            self._processing_thread.join(timeout=timeout)
+            if self._processing_thread.is_alive():
+                logger.warning("Processing thread did not terminate within timeout")
     
     def _update_progress(self):
         """Send progress update through callback."""
@@ -305,6 +333,10 @@ class BatchProcessor:
         with self._lock:
             self._progress = BatchProgress(is_running=True)
         
+        # Reset timing for ETA calculation
+        self._processing_times = []
+        self._start_time = time.time()
+        
         # Start thread
         self._processing_thread = threading.Thread(
             target=self._process_batch,
@@ -386,7 +418,7 @@ class BatchProcessor:
                 if result.status == ProcessStatus.FAILED:
                     self._failed_files.append(filename)
                 
-                # Update progress
+                # Update progress and ETA
                 with self._lock:
                     self._progress.processed = i + 1
                     self._progress.current_file = filename
@@ -397,6 +429,17 @@ class BatchProcessor:
                         self._progress.failed += 1
                     elif result.status == ProcessStatus.SKIPPED:
                         self._progress.skipped += 1
+                    
+                    # Track processing time for ETA
+                    if result.processing_time_ms > 0:
+                        self._processing_times.append(result.processing_time_ms)
+                        # Keep last 10 for rolling average
+                        if len(self._processing_times) > 10:
+                            self._processing_times = self._processing_times[-10:]
+                        self._progress.avg_time_per_file_ms = sum(self._processing_times) / len(self._processing_times)
+                    
+                    if self._start_time:
+                        self._progress.total_time_ms = (time.time() - self._start_time) * 1000
                 
                 self._update_progress()
                 
