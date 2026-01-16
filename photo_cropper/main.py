@@ -44,7 +44,7 @@ def main():
     # Create application
     app = QApplication(sys.argv)
     app.setApplicationName("Photo Cropper")
-    app.setApplicationVersion("8.5")
+    app.setApplicationVersion("9.0")
     app.setOrganizationName("PhotoCropper")
     
     # Set default font for Korean text

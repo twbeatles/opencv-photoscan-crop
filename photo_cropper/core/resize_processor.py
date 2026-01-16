@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Resize Processor for Photo Cropper v8.5.
+Resize Processor for Photo Cropper v9.0.
 
 Provides image resizing and aspect ratio adjustment.
 """

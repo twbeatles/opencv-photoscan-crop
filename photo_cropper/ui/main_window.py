@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Main Window for Photo Cropper v8.5 PyQt6 Application.
+Main Window for Photo Cropper v9.0 PyQt6 Application.
 
 Provides the main application window with all UI components.
-v8.5 Features:
+v9.0 Features:
     - Keyboard navigation (arrows, Enter, Space)
     - Before/After comparison
     - Crop editor
@@ -50,6 +50,9 @@ from ..core.image_processor import ImageProcessor
 from ..core.batch_processor import BatchProcessor, BatchProgress, FileResult
 from ..core.history_manager import HistoryManager, ImageHolder
 from ..core.folder_watcher import FolderWatcher, AutoProcessor
+from ..core.smart_enhancer import SmartEnhancer, EnhancementPreset, get_smart_enhancer
+from ..core.face_detector import FaceDetector, get_face_detector
+from ..core.image_classifier import ImageClassifier, ImageCategory, get_classifier
 from ..utils.file_helpers import get_image_files, open_file_explorer, validate_directory, SUPPORTED_IMAGE_FORMATS
 
 logger = logging.getLogger(__name__)
@@ -70,7 +73,7 @@ class MainWindow(QMainWindow):
         - Undo/Redo history (v8.5)
     """
     
-    VERSION = "8.5"
+    VERSION = "9.0"
     TITLE = f"📸 사진 자동 자르기 v{VERSION}"
 
     
@@ -84,7 +87,8 @@ class MainWindow(QMainWindow):
         # Initialize processors
         self.image_processor = ImageProcessor(
             self._settings.algorithm,
-            self._settings.processing
+            self._settings.processing,
+            self._settings.advanced  # v9.0: Include advanced processing settings
         )
         self.batch_processor: Optional[BatchProcessor] = None
         
@@ -93,6 +97,9 @@ class MainWindow(QMainWindow):
         
         # v8.5: Fullscreen viewer manager
         self.fullscreen_manager = FullscreenViewerManager()
+        
+        # v9.0: Auto processor for watch mode
+        self.auto_processor: Optional[AutoProcessor] = None
         
         # State
         self._current_image_path: Optional[str] = None
@@ -258,6 +265,14 @@ class MainWindow(QMainWindow):
         smart_enhance_action = QAction("스마트 보정", self)
         smart_enhance_action.triggered.connect(self._show_smart_enhancement)
         ai_menu.addAction(smart_enhance_action)
+        
+        tools_menu.addSeparator()
+        
+        # v9.0: Watch Mode toggle
+        self.watch_mode_action = QAction("👁️ 폴더 감시 모드", self)
+        self.watch_mode_action.setCheckable(True)
+        self.watch_mode_action.triggered.connect(self._toggle_watch_mode)
+        tools_menu.addAction(self.watch_mode_action)
         
         tools_menu.addSeparator()
         
@@ -583,33 +598,25 @@ class MainWindow(QMainWindow):
     
     def _undo(self):
         """Undo last action (v8.5)."""
-        if self.history_manager.can_undo:
-            command = self.history_manager.undo()
-            if command and hasattr(command, '_state') and command._state:
-                state = command._state
-                if state.image_before is not None:
-                    self._last_processed = state.image_before
-                    self.preview_widget.set_processed_image(state.image_before)
-                    self.status_label.setText("실행 취소됨")
-                    ToastManager.info("↩️ 실행 취소")
-                    return
-            self.status_label.setText("실행 취소됨")
+        if self.history_manager.can_undo():
+            state = self.history_manager.undo()
+            if state and state.image is not None:
+                self._last_processed = state.image
+                self.preview_widget.set_processed_image(state.image)
+                self.status_label.setText("실행 취소됨")
+                ToastManager.info("↩️ 실행 취소")
         else:
             self.status_label.setText("실행 취소할 항목이 없습니다")
     
     def _redo(self):
         """Redo last undone action (v8.5)."""
-        if self.history_manager.can_redo:
-            command = self.history_manager.redo()
-            if command and hasattr(command, '_state') and command._state:
-                state = command._state
-                if state.image_after is not None:
-                    self._last_processed = state.image_after
-                    self.preview_widget.set_processed_image(state.image_after)
-                    self.status_label.setText("다시 실행됨")
-                    ToastManager.info("↪️ 다시 실행")
-                    return
-            self.status_label.setText("다시 실행됨")
+        if self.history_manager.can_redo():
+            state = self.history_manager.redo()
+            if state and state.image is not None:
+                self._last_processed = state.image
+                self.preview_widget.set_processed_image(state.image)
+                self.status_label.setText("다시 실행됨")
+                ToastManager.info("↪️ 다시 실행")
         else:
             self.status_label.setText("다시 실행할 항목이 없습니다")
 
@@ -625,7 +632,8 @@ class MainWindow(QMainWindow):
         # Update processors
         self.image_processor.update_settings(
             settings.algorithm,
-            settings.processing
+            settings.processing,
+            settings.advanced  # v9.0: Include advanced processing settings
         )
         
         # Apply theme
@@ -643,7 +651,8 @@ class MainWindow(QMainWindow):
         self._settings = settings
         self.image_processor.update_settings(
             settings.algorithm,
-            settings.processing
+            settings.processing,
+            settings.advanced  # v9.0: Include advanced processing settings
         )
         
         # Check theme change
@@ -714,24 +723,6 @@ class MainWindow(QMainWindow):
             self._apply_settings(default_settings)
             self.statusbar.showMessage("설정이 초기화되었습니다", 3000)
     
-    def _restore_window_state(self):
-        """Restore window geometry and state from QSettings."""
-        settings = QSettings("PhotoCropper", "MainWindow")
-        
-        geometry = settings.value("geometry")
-        if geometry:
-            self.restoreGeometry(geometry)
-        
-        state = settings.value("windowState")
-        if state:
-            self.restoreState(state)
-    
-    def _save_window_state(self):
-        """Save window geometry and state to QSettings."""
-        settings = QSettings("PhotoCropper", "MainWindow")
-        settings.setValue("geometry", self.saveGeometry())
-        settings.setValue("windowState", self.saveState())
-    
     # ========================================
     # Folder Selection
     # ========================================
@@ -744,11 +735,6 @@ class MainWindow(QMainWindow):
         )
         
         if path:
-            # Validate read permission
-            if not os.access(path, os.R_OK):
-                QMessageBox.warning(self, "경고", "폴더 읽기 권한이 없습니다.")
-                return
-            
             self.input_path_edit.setText(path)
             
             # Auto-set output folder
@@ -764,11 +750,6 @@ class MainWindow(QMainWindow):
         )
         
         if path:
-            # Validate write permission
-            if not os.access(path, os.W_OK):
-                QMessageBox.warning(self, "경고", "폴더 쓰기 권한이 없습니다.")
-                return
-            
             self.output_path_edit.setText(path)
     
     def _on_input_path_changed(self, path: str):
@@ -920,18 +901,6 @@ class MainWindow(QMainWindow):
             output_path = os.path.join(input_path, "output_cropped")
             self.output_path_edit.setText(output_path)
         
-        # Validate output folder write permission
-        if os.path.exists(output_path):
-            if not os.access(output_path, os.W_OK):
-                QMessageBox.warning(self, "오류", "출력 폴더에 쓰기 권한이 없습니다.")
-                return
-        else:
-            # Check parent directory write permission for folder creation
-            parent_dir = os.path.dirname(output_path)
-            if parent_dir and os.path.exists(parent_dir) and not os.access(parent_dir, os.W_OK):
-                QMessageBox.warning(self, "오류", "출력 폴더를 생성할 권한이 없습니다.")
-                return
-        
         # Get files
         files = get_image_files(input_path)
         if not files:
@@ -941,7 +910,7 @@ class MainWindow(QMainWindow):
         # Cleanup previous batch processor if exists
         if self.batch_processor:
             self.batch_processor.cleanup()
-            
+        
         # Create batch processor
         self.batch_processor = BatchProcessor(self._settings)
         self.batch_processor.set_callbacks(
@@ -995,6 +964,26 @@ class MainWindow(QMainWindow):
         else:
             ToastManager.warning(f"⚠️ {progress.success}개 성공, {progress.failed}개 실패")
         
+        # v9.0: Show system notification if enabled
+        if self._settings.notification.enabled and not progress.is_cancelled:
+            try:
+                from ..utils.system_notification import get_notification_manager
+                notifier = get_notification_manager()
+                
+                if progress.failed == 0:
+                    notifier.notify_success(
+                        "배치 처리 완료",
+                        f"{progress.success}개 파일 처리 완료!"
+                    )
+                else:
+                    notifier.notify_warning(
+                        "배치 처리 완료",
+                        f"{progress.success}개 성공, {progress.failed}개 실패"
+                    )
+            except Exception as e:
+                import logging
+                logging.getLogger(__name__).warning(f"System notification error: {e}")
+        
         # Auto-open output folder if enabled
         if self._settings.ui.open_output_on_complete and not progress.is_cancelled:
             output_path = self.output_path_edit.text()
@@ -1015,10 +1004,6 @@ class MainWindow(QMainWindow):
                 input_path = self.input_path_edit.text()
                 output_path = self.output_path_edit.text()
                 
-                # Cleanup previous batch processor if exists
-                if self.batch_processor:
-                    self.batch_processor.cleanup()
-                    
                 self.batch_processor = BatchProcessor(self._settings)
                 self.batch_processor.set_callbacks(
                     on_progress=self._on_batch_progress,
@@ -1507,7 +1492,8 @@ class MainWindow(QMainWindow):
                 self.settings_panel.settings = self._settings
                 self.image_processor.update_settings(
                     self._settings.algorithm,
-                    self._settings.processing
+                    self._settings.processing,
+                    self._settings.advanced
                 )
                 ToastManager.success(f"📋 '{profile}' 프로파일 적용됨")
                 self.status_label.setText(f"프로파일 적용: {profile}")
@@ -1525,13 +1511,119 @@ class MainWindow(QMainWindow):
             self.settings_panel.settings = self._settings
             self.image_processor.update_settings(
                 self._settings.algorithm,
-                self._settings.processing
+                self._settings.processing,
+                self._settings.advanced
             )
             self.status_label.setText(f"'{preset_name}' 프리셋 적용됨")
             ToastManager.success(f"🎨 {preset_name} 프리셋 적용")
             
             if self._settings.ui.auto_preview:
                 self._request_preview()
+    
+    # ========================================
+    # Watch Mode (v9.0)
+    # ========================================
+    
+    def _toggle_watch_mode(self, checked: bool):
+        """Toggle folder watch mode for automatic processing."""
+        if checked:
+            self._start_watch_mode()
+        else:
+            self._stop_watch_mode()
+    
+    def _start_watch_mode(self):
+        """Start watching folder for new files."""
+        input_path = self.input_path_edit.text()
+        output_path = self.output_path_edit.text()
+        
+        # Validate paths
+        if not input_path or not os.path.isdir(input_path):
+            self.watch_mode_action.setChecked(False)
+            QMessageBox.warning(self, "경고", "유효한 입력 폴더를 선택하세요.")
+            return
+        
+        if not output_path:
+            output_path = os.path.join(input_path, "output_cropped")
+            self.output_path_edit.setText(output_path)
+        
+        # Create output folder if needed
+        if not os.path.exists(output_path):
+            os.makedirs(output_path, exist_ok=True)
+        
+        # Create auto processor
+        self.auto_processor = AutoProcessor(
+            watch_path=input_path,
+            output_path=output_path,
+            process_callback=self._process_watched_file,
+            parent=self
+        )
+        
+        # Connect signals
+        self.auto_processor.processing_started.connect(
+            lambda f: self.status_label.setText(f"👁️ 감시 중... 처리 시작: {os.path.basename(f)}")
+        )
+        self.auto_processor.processing_completed.connect(self._on_watched_file_complete)
+        self.auto_processor.queue_updated.connect(
+            lambda count: self.status_label.setText(f"👁️ 감시 중... 대기열: {count}개")
+        )
+        
+        # Start watching
+        if self.auto_processor.start():
+            self.watch_mode_action.setText("👁️ 폴더 감시 중지")
+            ToastManager.success(f"👁️ 폴더 감시 모드 시작: {input_path}")
+            self.status_label.setText(f"👁️ 폴더 감시 중: {input_path}")
+        else:
+            self.watch_mode_action.setChecked(False)
+            ToastManager.error("폴더 감시 시작 실패")
+    
+    def _stop_watch_mode(self):
+        """Stop watching folder."""
+        if self.auto_processor:
+            self.auto_processor.stop()
+            self.auto_processor = None
+        
+        self.watch_mode_action.setText("👁️ 폴더 감시 모드")
+        ToastManager.info("폴더 감시 모드 중지됨")
+        self.status_label.setText("폴더 감시 중지됨")
+    
+    def _process_watched_file(self, input_path: str, output_path: str) -> bool:
+        """Process a single file from watch mode."""
+        try:
+            result = self.image_processor.process_image(input_path)
+            
+            if result.success and result.image is not None:
+                # Generate output filename
+                ext = "." + self._settings.output.output_format.lower()
+                base_name = os.path.splitext(os.path.basename(input_path))[0]
+                output_filename = f"{base_name}_cropped{ext}"
+                output_file = os.path.join(output_path, output_filename)
+                
+                # Save
+                success, msg, file_size = self.image_processor.save_image(
+                    result.image,
+                    output_file,
+                    self._settings.output.output_format,
+                    self._settings.output.jpg_quality,
+                    self._settings.output.png_compression,
+                    self._settings.output.webp_quality
+                )
+                
+                return success
+            return False
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).error(f"Watch mode processing error: {e}")
+            return False
+    
+    def _on_watched_file_complete(self, filepath: str, success: bool):
+        """Handle completion of watched file processing."""
+        filename = os.path.basename(filepath)
+        if success:
+            self.status_label.setText(f"👁️ 처리 완료: {filename}")
+            ToastManager.success(f"✅ 자동 처리 완료: {filename}")
+        else:
+            self.status_label.setText(f"👁️ 처리 실패: {filename}")
+            ToastManager.warning(f"⚠️ 자동 처리 실패: {filename}")
     
     def closeEvent(self, event):
         """Handle window close event."""
@@ -1548,8 +1640,11 @@ class MainWindow(QMainWindow):
             if reply == QMessageBox.StandardButton.No:
                 event.ignore()
                 return
+            
+            # Stop processing
+            self.batch_processor.cleanup()
         
-        # Save settings before cleanup
+        # Save settings
         self._settings.last_input_path = self.input_path_edit.text()
         self._settings.last_output_path = self.output_path_edit.text()
         self.settings_manager.save(self._settings)
@@ -1557,46 +1652,17 @@ class MainWindow(QMainWindow):
         # Save window state
         self._save_window_state()
         
-        # Stop timers
-        if hasattr(self, '_preview_timer'):
-            self._preview_timer.stop()
-        if hasattr(self, '_auto_save_timer'):
-            self._auto_save_timer.stop()
-        
-        # Stop folder watcher if active
-        if hasattr(self, '_folder_watcher') and self._folder_watcher:
-            try:
-                self._folder_watcher.stop()
-            except Exception as e:
-                logger.warning(f"Folder watcher stop error: {e}")
-        
-        # Stop auto processor if active
-        if hasattr(self, '_auto_processor') and self._auto_processor:
-            try:
-                self._auto_processor.stop()
-            except Exception as e:
-                logger.warning(f"Auto processor stop error: {e}")
-        
-        # Stop scheduler if active
-        if hasattr(self, '_scheduler') and self._scheduler:
-            try:
-                self._scheduler.stop()
-            except Exception as e:
-                logger.warning(f"Scheduler stop error: {e}")
-        
         # Cleanup batch processor
         if self.batch_processor:
-            try:
-                self.batch_processor.cleanup()
-            except Exception as e:
-                logger.warning(f"Batch processor cleanup error: {e}")
+            self.batch_processor.cleanup()
         
-        # Close fullscreen manager
-        if hasattr(self, 'fullscreen_manager') and self.fullscreen_manager:
-            try:
-                self.fullscreen_manager.close_all()
-            except Exception:
-                pass
+        # Clear history to free memory
+        if self.history_manager:
+            self.history_manager.clear()
         
+        # v9.0: Stop watch mode if active
+        if self.auto_processor:
+            self.auto_processor.stop()
+            self.auto_processor = None
+            
         event.accept()
-

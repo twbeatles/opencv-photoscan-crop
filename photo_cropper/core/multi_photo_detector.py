@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Multi-Photo Detector for Photo Cropper v8.5.
+Multi-Photo Detector for Photo Cropper v9.0.
 
 Detects and separates multiple photos from a single scanned image.
 """

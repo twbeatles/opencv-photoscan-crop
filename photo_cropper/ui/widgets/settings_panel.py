@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Settings Panel Widget for Photo Cropper v8.0.
+Settings Panel Widget for Photo Cropper v9.0.
 
 Provides tabbed settings interface for all application settings.
 """
@@ -18,7 +18,9 @@ from PyQt6.QtGui import QWheelEvent
 from ...core.settings import (
     AppSettings, AlgorithmSettings, ProcessingSettings, 
     OutputSettings, FilterSettings, UISettings,
-    AdvancedProcessingSettings, FileManagementSettings, PerformanceSettings
+    AdvancedProcessingSettings, FileManagementSettings, PerformanceSettings,
+    WatermarkSettings, ResizeSettings, WatchModeSettings,  # v8.5
+    ClassificationSettings, FaceDetectionSettings, SmartEnhancementSettings, NotificationSettings  # v9.0
 )
 from .toggle_switch import ModernToggleSwitch
 
@@ -81,9 +83,13 @@ class SettingsPanel(QWidget):
         self._create_algorithm_tab()
         self._create_output_tab()
         self._create_filter_tab()
+        self._create_watermark_tab()  # v8.5
+        self._create_resize_tab()  # v8.5
+        self._create_automation_tab()  # v8.5
         self._create_advanced_tab()  # v8.0
         self._create_file_management_tab()  # v8.0
         self._create_performance_tab()  # v8.0
+        self._create_ai_settings_tab()  # v9.0
     
     def _make_scrollable_tab(self, content_widget: QWidget) -> QWidget:
         """Wrap widget in a scroll area for tab content."""
@@ -436,11 +442,125 @@ class SettingsPanel(QWidget):
             skip_processed=self.skip_processed_check.isChecked(),
         )
         
+        # Safe language reference - widget may not exist yet during init
+        language = "ko"
+        if hasattr(self, 'language_combo') and self.language_combo is not None:
+            language = self.language_combo.itemData(self.language_combo.currentIndex()) or "ko"
+        
         ui = UISettings(
             theme=self.theme_combo.currentText(),
+            language=language,
             auto_preview=self.auto_preview_check.isChecked(),
             show_contour_overlay=self.contour_overlay_check.isChecked(),
         )
+        
+        # v8.5 settings
+        watermark = WatermarkSettings(
+            enabled=self.watermark_enable_check.isChecked(),
+            text=self.watermark_text_edit.text(),
+            text_font_scale=self.watermark_font_spin.value(),
+            opacity=self.watermark_opacity_spin.value() / 100.0,
+            position=self.watermark_position_combo.currentText(),
+            text_shadow=self.watermark_shadow_check.isChecked(),
+            tiled=self.watermark_tiled_check.isChecked(),
+            tile_spacing=self.watermark_spacing_spin.value(),
+        )
+        
+        resize = ResizeSettings(
+            enabled=self.resize_enable_check.isChecked(),
+            mode=self.resize_mode_combo.currentText(),
+            width=self.resize_width_spin.value(),
+            height=self.resize_height_spin.value(),
+            percentage=float(self.resize_percent_spin.value()),
+            max_dimension=self.resize_max_dim_spin.value(),
+            maintain_aspect=self.resize_aspect_check.isChecked(),
+            upscale_allowed=self.resize_upscale_check.isChecked(),
+        )
+        
+        # Build watch_mode with scheduler fields
+        watch_mode = WatchModeSettings(
+            enabled=self.watch_mode_check.isChecked(),
+            recursive=self.watch_recursive_check.isChecked(),
+            debounce_ms=self.watch_delay_spin.value(),
+            scheduler_enabled=getattr(self, 'scheduler_enable_check', None) and self.scheduler_enable_check.isChecked(),
+            schedule_type=getattr(self, 'schedule_type_combo', None) and self.schedule_type_combo.currentText() or "interval",
+            schedule_time=getattr(self, 'schedule_time_edit', None) and self.schedule_time_edit.text() or "00:00",
+            schedule_interval_minutes=getattr(self, 'schedule_interval_spin', None) and self.schedule_interval_spin.value() or 60,
+        )
+        
+        # v8.0 Advanced settings - safely build if widgets exist
+        advanced = AdvancedProcessingSettings()
+        if hasattr(self, 'auto_deskew_check'):
+            advanced = AdvancedProcessingSettings(
+                auto_deskew=self.auto_deskew_check.isChecked(),
+                auto_color_correct=self.auto_color_check.isChecked(),
+                color_correct_method=self.color_method_combo.currentText(),
+                perspective_correct=self.perspective_check.isChecked(),
+                enhanced_denoise=self.enhanced_denoise_check.isChecked(),
+                enhanced_denoise_strength=self.enhanced_denoise_spin.value(),
+                restore_old_photo=self.restore_old_check.isChecked(),
+                enhanced_sharpen=self.enhanced_sharpen_check.isChecked(),
+                auto_crop_borders=self.auto_crop_border_check.isChecked(),
+            )
+        
+        # v8.0 File management settings
+        file_management = FileManagementSettings()
+        if hasattr(self, 'recursive_check'):
+            file_management = FileManagementSettings(
+                recursive_search=self.recursive_check.isChecked(),
+                use_naming_rules=self.use_naming_rules_check.isChecked(),
+                naming_prefix=self.naming_prefix_edit.text(),
+                naming_suffix=self.naming_suffix_edit.text(),
+                naming_use_counter=self.naming_counter_check.isChecked(),
+                naming_use_date=self.naming_date_check.isChecked(),
+                move_failed_files=self.move_failed_check.isChecked(),
+                copy_failed_instead_of_move=self.copy_failed_check.isChecked(),
+                enable_logging=self.enable_log_check.isChecked(),
+                log_format=self.log_format_combo.currentText(),
+            )
+        
+        # v8.0 Performance settings
+        performance = PerformanceSettings()
+        if hasattr(self, 'use_gpu_check'):
+            performance = PerformanceSettings(
+                use_gpu=self.use_gpu_check.isChecked(),
+                enable_multithreading=self.multithreading_check.isChecked(),
+                thread_count=self.thread_count_spin.value(),
+                max_image_size_mb=self.max_size_spin.value(),
+                downscale_large_images=self.downscale_check.isChecked(),
+            )
+        
+        # v9.0 Classification settings
+        classification = ClassificationSettings()
+        if hasattr(self, 'classification_enable_check'):
+            classification = ClassificationSettings(
+                enabled=self.classification_enable_check.isChecked(),
+                auto_folder=self.classification_subfolders_check.isChecked(),
+            )
+        
+        # v9.0 Face detection settings
+        face_detection = FaceDetectionSettings()
+        if hasattr(self, 'face_detect_enable_check'):
+            face_detection = FaceDetectionSettings(
+                enabled=self.face_detect_enable_check.isChecked(),
+                auto_rotate=self.face_auto_orient_check.isChecked(),
+            )
+        
+        # v9.0 Smart enhancement settings
+        smart_enhancement = SmartEnhancementSettings()
+        if hasattr(self, 'smart_enhance_enable_check'):
+            smart_enhancement = SmartEnhancementSettings(
+                enabled=self.smart_enhance_enable_check.isChecked(),
+            )
+        
+        # v9.0 Notification settings
+        notification = NotificationSettings()
+        if hasattr(self, 'notification_enable_check'):
+            notification = NotificationSettings(
+                enabled=self.notification_enable_check.isChecked(),
+                play_sound=self.notification_sound_check.isChecked(),
+                on_error=self.notification_error_only_check.isChecked(),
+            )
         
         return AppSettings(
             algorithm=algorithm,
@@ -448,6 +568,16 @@ class SettingsPanel(QWidget):
             output=output,
             filter=filter_settings,
             ui=ui,
+            advanced=advanced,
+            file_management=file_management,
+            performance=performance,
+            watermark=watermark,
+            resize=resize,
+            watch_mode=watch_mode,
+            classification=classification,
+            face_detection=face_detection,
+            smart_enhancement=smart_enhancement,
+            notification=notification,
             create_backup=self.backup_check.isChecked(),
         )
     
@@ -498,6 +628,13 @@ class SettingsPanel(QWidget):
         self.auto_preview_check.setChecked(settings.ui.auto_preview)
         self.contour_overlay_check.setChecked(settings.ui.show_contour_overlay)
         
+        # Language
+        if hasattr(settings.ui, 'language'):
+            for i in range(self.language_combo.count()):
+                if self.language_combo.itemData(i) == settings.ui.language:
+                    self.language_combo.setCurrentIndex(i)
+                    break
+        
         # Misc
         self.backup_check.setChecked(settings.create_backup)
         
@@ -506,7 +643,295 @@ class SettingsPanel(QWidget):
         self.quality_spin.setEnabled(not is_png)
         self.png_compression_spin.setEnabled(is_png)
         
+        # v8.5 Watermark settings
+        if hasattr(settings, 'watermark'):
+            wm = settings.watermark
+            self.watermark_enable_check.setChecked(wm.enabled)
+            self.watermark_text_edit.setText(wm.text)
+            self.watermark_font_spin.setValue(wm.text_font_scale)
+            self.watermark_opacity_spin.setValue(int(wm.opacity * 100))
+            idx = self.watermark_position_combo.findText(wm.position)
+            if idx >= 0:
+                self.watermark_position_combo.setCurrentIndex(idx)
+            self.watermark_shadow_check.setChecked(wm.text_shadow)
+            self.watermark_tiled_check.setChecked(wm.tiled)
+            self.watermark_spacing_spin.setValue(wm.tile_spacing)
+        
+        # v8.5 Resize settings
+        if hasattr(settings, 'resize'):
+            rs = settings.resize
+            self.resize_enable_check.setChecked(rs.enabled)
+            idx = self.resize_mode_combo.findText(rs.mode)
+            if idx >= 0:
+                self.resize_mode_combo.setCurrentIndex(idx)
+            self.resize_width_spin.setValue(rs.width)
+            self.resize_height_spin.setValue(rs.height)
+            self.resize_percent_spin.setValue(int(rs.percentage))
+            self.resize_max_dim_spin.setValue(rs.max_dimension)
+            self.resize_aspect_check.setChecked(rs.maintain_aspect)
+            self.resize_upscale_check.setChecked(rs.upscale_allowed)
+        
+        # v8.5 Watch mode settings
+        if hasattr(settings, 'watch_mode'):
+            wm = settings.watch_mode
+            self.watch_mode_check.setChecked(wm.enabled)
+            self.watch_recursive_check.setChecked(wm.recursive)
+            self.watch_delay_spin.setValue(wm.debounce_ms)
+        
         self._block_signals = False
+    
+    # ========================================
+    # v8.5 New Tabs
+    # ========================================
+    
+    def _create_watermark_tab(self):
+        """Create watermark settings tab (v8.5)."""
+        content = QWidget()
+        layout = QVBoxLayout(content)
+        layout.setSpacing(15)
+        
+        # Enable group
+        enable_group = QGroupBox("💧 워터마크")
+        enable_layout = QVBoxLayout(enable_group)
+        
+        self.watermark_enable_check = ModernToggleSwitch("워터마크 사용")
+        self.watermark_enable_check.toggled.connect(self._on_setting_changed)
+        enable_layout.addWidget(self.watermark_enable_check)
+        
+        layout.addWidget(enable_group)
+        
+        # Text watermark group
+        text_group = QGroupBox("📝 텍스트 워터마크")
+        text_layout = QFormLayout(text_group)
+        
+        self.watermark_text_edit = QLineEdit()
+        self.watermark_text_edit.setPlaceholderText("예: © 2026 My Studio")
+        self.watermark_text_edit.textChanged.connect(self._on_setting_changed)
+        text_layout.addRow("텍스트:", self.watermark_text_edit)
+        
+        self.watermark_font_spin = NoScrollDoubleSpinBox()
+        self.watermark_font_spin.setRange(0.5, 5.0)
+        self.watermark_font_spin.setValue(1.0)
+        self.watermark_font_spin.setSingleStep(0.1)
+        self.watermark_font_spin.valueChanged.connect(self._on_setting_changed)
+        text_layout.addRow("글꼴 크기:", self.watermark_font_spin)
+        
+        self.watermark_opacity_spin = NoScrollSpinBox()
+        self.watermark_opacity_spin.setRange(10, 100)
+        self.watermark_opacity_spin.setValue(70)
+        self.watermark_opacity_spin.valueChanged.connect(self._on_setting_changed)
+        text_layout.addRow("투명도 (%):", self.watermark_opacity_spin)
+        
+        self.watermark_position_combo = NoScrollComboBox()
+        self.watermark_position_combo.addItems([
+            "bottom_right", "bottom_left", "bottom_center",
+            "top_right", "top_left", "top_center",
+            "center", "middle_left", "middle_right"
+        ])
+        self.watermark_position_combo.currentTextChanged.connect(self._on_setting_changed)
+        text_layout.addRow("위치:", self.watermark_position_combo)
+        
+        self.watermark_shadow_check = QCheckBox("그림자 효과")
+        self.watermark_shadow_check.stateChanged.connect(self._on_setting_changed)
+        text_layout.addRow(self.watermark_shadow_check)
+        
+        layout.addWidget(text_group)
+        
+        # Tile mode group
+        tile_group = QGroupBox("🔲 타일 모드")
+        tile_layout = QVBoxLayout(tile_group)
+        
+        self.watermark_tiled_check = QCheckBox("타일 패턴으로 반복")
+        self.watermark_tiled_check.stateChanged.connect(self._on_setting_changed)
+        tile_layout.addWidget(self.watermark_tiled_check)
+        
+        tile_row = QHBoxLayout()
+        tile_row.addWidget(QLabel("타일 간격:"))
+        self.watermark_spacing_spin = NoScrollSpinBox()
+        self.watermark_spacing_spin.setRange(50, 500)
+        self.watermark_spacing_spin.setValue(200)
+        self.watermark_spacing_spin.valueChanged.connect(self._on_setting_changed)
+        tile_row.addWidget(self.watermark_spacing_spin)
+        tile_layout.addLayout(tile_row)
+        
+        layout.addWidget(tile_group)
+        layout.addStretch()
+        
+        self.tab_widget.addTab(self._make_scrollable_tab(content), "워터마크")
+    
+    def _create_resize_tab(self):
+        """Create resize settings tab (v8.5)."""
+        content = QWidget()
+        layout = QVBoxLayout(content)
+        layout.setSpacing(15)
+        
+        # Enable group
+        enable_group = QGroupBox("📐 리사이즈")
+        enable_layout = QVBoxLayout(enable_group)
+        
+        self.resize_enable_check = ModernToggleSwitch("리사이즈 사용")
+        self.resize_enable_check.toggled.connect(self._on_setting_changed)
+        enable_layout.addWidget(self.resize_enable_check)
+        
+        layout.addWidget(enable_group)
+        
+        # Mode group
+        mode_group = QGroupBox("⚙️ 리사이즈 모드")
+        mode_layout = QFormLayout(mode_group)
+        
+        self.resize_mode_combo = NoScrollComboBox()
+        self.resize_mode_combo.addItems([
+            "none", "fit", "fill", "stretch", 
+            "width", "height", "percentage", "max_dimension"
+        ])
+        self.resize_mode_combo.currentTextChanged.connect(self._on_setting_changed)
+        mode_layout.addRow("모드:", self.resize_mode_combo)
+        
+        self.resize_width_spin = NoScrollSpinBox()
+        self.resize_width_spin.setRange(100, 10000)
+        self.resize_width_spin.setValue(1920)
+        self.resize_width_spin.valueChanged.connect(self._on_setting_changed)
+        mode_layout.addRow("너비 (px):", self.resize_width_spin)
+        
+        self.resize_height_spin = NoScrollSpinBox()
+        self.resize_height_spin.setRange(100, 10000)
+        self.resize_height_spin.setValue(1080)
+        self.resize_height_spin.valueChanged.connect(self._on_setting_changed)
+        mode_layout.addRow("높이 (px):", self.resize_height_spin)
+        
+        self.resize_percent_spin = NoScrollSpinBox()
+        self.resize_percent_spin.setRange(10, 200)
+        self.resize_percent_spin.setValue(100)
+        self.resize_percent_spin.valueChanged.connect(self._on_setting_changed)
+        mode_layout.addRow("비율 (%):", self.resize_percent_spin)
+        
+        self.resize_max_dim_spin = NoScrollSpinBox()
+        self.resize_max_dim_spin.setRange(100, 10000)
+        self.resize_max_dim_spin.setValue(1920)
+        self.resize_max_dim_spin.valueChanged.connect(self._on_setting_changed)
+        mode_layout.addRow("최대 크기:", self.resize_max_dim_spin)
+        
+        layout.addWidget(mode_group)
+        
+        # Options group
+        opt_group = QGroupBox("🔧 옵션")
+        opt_layout = QVBoxLayout(opt_group)
+        
+        self.resize_upscale_check = QCheckBox("원본보다 큰 크기로 확대 허용")
+        self.resize_upscale_check.stateChanged.connect(self._on_setting_changed)
+        opt_layout.addWidget(self.resize_upscale_check)
+        
+        self.resize_aspect_check = QCheckBox("가로세로 비율 유지")
+        self.resize_aspect_check.setChecked(True)
+        self.resize_aspect_check.stateChanged.connect(self._on_setting_changed)
+        opt_layout.addWidget(self.resize_aspect_check)
+        
+        layout.addWidget(opt_group)
+        layout.addStretch()
+        
+        self.tab_widget.addTab(self._make_scrollable_tab(content), "리사이즈")
+    
+    def _create_automation_tab(self):
+        """Create automation and scheduler settings tab (v8.5)."""
+        content = QWidget()
+        layout = QVBoxLayout(content)
+        layout.setSpacing(15)
+        
+        # Watch mode group
+        watch_group = QGroupBox("👁️ 폴더 감시 모드")
+        watch_layout = QVBoxLayout(watch_group)
+        
+        self.watch_mode_check = ModernToggleSwitch("Watch Mode 사용")
+        self.watch_mode_check.setToolTip("새 이미지가 추가되면 자동으로 처리")
+        self.watch_mode_check.toggled.connect(self._on_setting_changed)
+        watch_layout.addWidget(self.watch_mode_check)
+        
+        self.watch_recursive_check = QCheckBox("하위 폴더도 감시")
+        self.watch_recursive_check.stateChanged.connect(self._on_setting_changed)
+        watch_layout.addWidget(self.watch_recursive_check)
+        
+        delay_row = QHBoxLayout()
+        delay_row.addWidget(QLabel("감지 지연 (ms):"))
+        self.watch_delay_spin = NoScrollSpinBox()
+        self.watch_delay_spin.setRange(100, 5000)
+        self.watch_delay_spin.setValue(500)
+        self.watch_delay_spin.setToolTip("파일 쓰기 완료를 기다리는 시간")
+        self.watch_delay_spin.valueChanged.connect(self._on_setting_changed)
+        delay_row.addWidget(self.watch_delay_spin)
+        watch_layout.addLayout(delay_row)
+        
+        layout.addWidget(watch_group)
+        
+        # Scheduler group - detailed settings
+        sched_group = QGroupBox("⏰ 스케줄러")
+        sched_layout = QVBoxLayout(sched_group)
+        
+        self.scheduler_enable_check = ModernToggleSwitch("스케줄러 사용")
+        self.scheduler_enable_check.setToolTip("예약된 시간에 자동으로 배치 처리")
+        self.scheduler_enable_check.toggled.connect(self._on_setting_changed)
+        sched_layout.addWidget(self.scheduler_enable_check)
+        
+        # Schedule type
+        type_row = QHBoxLayout()
+        type_row.addWidget(QLabel("스케줄 유형:"))
+        self.schedule_type_combo = NoScrollComboBox()
+        self.schedule_type_combo.addItems(["interval", "once", "daily", "hourly"])
+        self.schedule_type_combo.currentTextChanged.connect(self._on_schedule_type_changed)
+        type_row.addWidget(self.schedule_type_combo)
+        sched_layout.addLayout(type_row)
+        
+        # Schedule time (for daily/once)
+        time_row = QHBoxLayout()
+        time_row.addWidget(QLabel("시간:"))
+        self.schedule_time_edit = QLineEdit()
+        self.schedule_time_edit.setPlaceholderText("HH:MM (예: 09:00)")
+        self.schedule_time_edit.setText("00:00")
+        self.schedule_time_edit.textChanged.connect(self._on_setting_changed)
+        time_row.addWidget(self.schedule_time_edit)
+        sched_layout.addLayout(time_row)
+        
+        # Schedule interval (for interval mode)
+        interval_row = QHBoxLayout()
+        interval_row.addWidget(QLabel("간격 (분):"))
+        self.schedule_interval_spin = NoScrollSpinBox()
+        self.schedule_interval_spin.setRange(5, 1440)  # 5 min to 24 hours
+        self.schedule_interval_spin.setValue(60)
+        self.schedule_interval_spin.valueChanged.connect(self._on_setting_changed)
+        interval_row.addWidget(self.schedule_interval_spin)
+        sched_layout.addLayout(interval_row)
+        
+        layout.addWidget(sched_group)
+        
+        # Language settings group (v9.0)
+        lang_group = QGroupBox("🌐 언어 설정")
+        lang_layout = QFormLayout(lang_group)
+        
+        self.language_combo = NoScrollComboBox()
+        self.language_combo.addItem("한국어", "ko")
+        self.language_combo.addItem("English", "en")
+        self.language_combo.addItem("日本語", "ja")
+        self.language_combo.addItem("简体中文", "zh")
+        self.language_combo.addItem("Español", "es")
+        self.language_combo.currentIndexChanged.connect(self._on_language_changed)
+        lang_layout.addRow("언어:", self.language_combo)
+        
+        lang_info = QLabel("💡 언어 변경은 앱 재시작 후 완전히 적용됩니다.")
+        lang_info.setWordWrap(True)
+        lang_info.setObjectName("subtitleLabel")
+        lang_layout.addRow(lang_info)
+        
+        layout.addWidget(lang_group)
+        layout.addStretch()
+        
+        self.tab_widget.addTab(self._make_scrollable_tab(content), "자동화")
+    
+    def _on_language_changed(self, index: int):
+        """Handle language selection change."""
+        lang_code = self.language_combo.itemData(index)
+        if lang_code:
+            from ...i18n.translations import set_language
+            set_language(lang_code)
+            self._on_setting_changed()
     
     # ========================================
     # v8.0 New Tabs
@@ -622,63 +1047,57 @@ class SettingsPanel(QWidget):
         
         self.naming_prefix_edit = QLineEdit()
         self.naming_prefix_edit.setPlaceholderText("예: scan_")
-        """Create advanced processing settings tab."""
-        content = QWidget()
-        layout = QVBoxLayout(content)
+        self.naming_prefix_edit.textChanged.connect(self._on_setting_changed)
+        naming_layout.addRow("접두사:", self.naming_prefix_edit)
         
-        # GPU Acceleration
-        gpu_group = QGroupBox("🚀 하드웨어 가속")
-        gpu_layout = QVBoxLayout(gpu_group)
+        self.naming_suffix_edit = QLineEdit()
+        self.naming_suffix_edit.setPlaceholderText("예: _cropped")
+        self.naming_suffix_edit.setText("_cropped")
+        self.naming_suffix_edit.textChanged.connect(self._on_setting_changed)
+        naming_layout.addRow("접미사:", self.naming_suffix_edit)
         
-        self.use_gpu_check = ModernToggleSwitch("GPU 가속 사용 (CUDA/OpenCL)")
-        self.use_gpu_check.setChecked(False)  # Default off for stability
-        self.use_gpu_check.setToolTip("가능한 경우 GPU를 사용하여 처리 속도를 높입니다.")
-        self.use_gpu_check.toggled.connect(self._on_setting_changed)
-        gpu_layout.addWidget(self.use_gpu_check)
+        self.naming_counter_check = QCheckBox("일련번호 추가")
+        self.naming_counter_check.stateChanged.connect(self._on_setting_changed)
+        naming_layout.addRow(self.naming_counter_check)
         
-        layout.addWidget(gpu_group)
+        self.naming_date_check = QCheckBox("날짜 추가")
+        self.naming_date_check.stateChanged.connect(self._on_setting_changed)
+        naming_layout.addRow(self.naming_date_check)
         
-        # Geometric correction
-        geo_group = QGroupBox("📐 기하학 보정")
-        geo_layout = QFormLayout(geo_group)
+        layout.addWidget(naming_group)
         
-        self.auto_deskew_check = ModernToggleSwitch("자동 기울기 보정 (Deskew)")
-        self.auto_deskew_check.setChecked(True)
-        self.auto_deskew_check.toggled.connect(self._on_setting_changed)
-        geo_layout.addRow(self.auto_deskew_check)
+        # Failed files group
+        failed_group = QGroupBox("⚠️ 실패 파일 처리")
+        failed_layout = QVBoxLayout(failed_group)
         
-        self.perspective_check = ModernToggleSwitch("원근 왜곡 보정")
-        self.perspective_check.setChecked(False)
-        self.perspective_check.toggled.connect(self._on_setting_changed)
-        geo_layout.addRow(self.perspective_check)
+        self.move_failed_check = QCheckBox("실패 파일 별도 폴더로 이동")
+        self.move_failed_check.stateChanged.connect(self._on_setting_changed)
+        failed_layout.addWidget(self.move_failed_check)
         
-        layout.addWidget(geo_group)
+        self.copy_failed_check = QCheckBox("이동 대신 복사")
+        self.copy_failed_check.stateChanged.connect(self._on_setting_changed)
+        failed_layout.addWidget(self.copy_failed_check)
         
-        # Color & Restore
-        restore_group = QGroupBox("✨ 복원 및 색상")
-        restore_layout = QFormLayout(restore_group)
+        layout.addWidget(failed_group)
         
-        self.auto_color_check = QCheckBox("자동 색상 보정")
-        self.auto_color_check.stateChanged.connect(self._on_setting_changed)
-        restore_layout.addRow(self.auto_color_check)
+        # Logging group
+        log_group = QGroupBox("📋 로깅")
+        log_layout = QFormLayout(log_group)
         
-        self.restore_check = QCheckBox("오래된 사진 복원 (Inpainting)")
-        self.restore_check.setToolTip("긁힘이나 먼지를 제거합니다. 속도가 느릴 수 있습니다.")
-        self.restore_check.stateChanged.connect(self._on_setting_changed)
-        restore_layout.addRow(self.restore_check)
+        self.enable_log_check = QCheckBox()
+        self.enable_log_check.setChecked(True)
+        self.enable_log_check.stateChanged.connect(self._on_setting_changed)
+        log_layout.addRow("처리 로그 저장:", self.enable_log_check)
         
-        layout.addWidget(restore_group)
-        layout.addStretch()
+        self.log_format_combo = NoScrollComboBox()
+        self.log_format_combo.addItems(["json", "csv"])
+        self.log_format_combo.currentTextChanged.connect(self._on_setting_changed)
+        log_layout.addRow("로그 형식:", self.log_format_combo)
         
-        self.tab_widget.addTab(self._make_scrollable_tab(content), "고급 처리")
-
-    def _create_file_management_tab(self):
-        """Create file management settings tab."""
-        content = QWidget()
-        layout = QVBoxLayout(content)
+        layout.addWidget(log_group)
         
         # Conflict resolution
-        conflict_group = QGroupBox("⚠️ 파일명 충돌 해결")
+        conflict_group = QGroupBox("🔄 파일명 충돌 해결")
         conflict_layout = QVBoxLayout(conflict_group)
         
         self.conflict_combo = NoScrollComboBox()
@@ -720,7 +1139,8 @@ class SettingsPanel(QWidget):
         layout.addWidget(dup_group)
         layout.addStretch()
         
-        self.tab_widget.addTab(self._make_scrollable_tab(content), "파일 관리")
+        scroll.setWidget(tab)
+        self.tab_widget.addTab(scroll, "파일 관리")
 
     def _create_performance_tab(self):
         """Create performance settings tab."""
@@ -753,6 +1173,124 @@ class SettingsPanel(QWidget):
         layout.addStretch()
         
         self.tab_widget.addTab(self._make_scrollable_tab(content), "성능")
+    
+    def _create_ai_settings_tab(self):
+        """Create v9.0 AI settings tab."""
+        content = QWidget()
+        layout = QVBoxLayout(content)
+        layout.setSpacing(15)
+        
+        # Classification settings
+        class_group = QGroupBox("📊 이미지 자동 분류")
+        class_layout = QVBoxLayout(class_group)
+        
+        self.classification_enable_check = ModernToggleSwitch("자동 분류 사용")
+        self.classification_enable_check.setToolTip("이미지를 유형별로 자동 분류하여 저장")
+        self.classification_enable_check.toggled.connect(self._on_setting_changed)
+        class_layout.addWidget(self.classification_enable_check)
+        
+        model_row = QHBoxLayout()
+        model_row.addWidget(QLabel("분류 모델:"))
+        self.classification_model_combo = NoScrollComboBox()
+        self.classification_model_combo.addItems(["basic", "advanced", "custom"])
+        self.classification_model_combo.currentTextChanged.connect(self._on_setting_changed)
+        model_row.addWidget(self.classification_model_combo)
+        class_layout.addLayout(model_row)
+        
+        self.classification_subfolders_check = QCheckBox("분류된 하위 폴더에 저장")
+        self.classification_subfolders_check.stateChanged.connect(self._on_setting_changed)
+        class_layout.addWidget(self.classification_subfolders_check)
+        
+        layout.addWidget(class_group)
+        
+        # Face detection settings
+        face_group = QGroupBox("👤 얼굴 감지")
+        face_layout = QVBoxLayout(face_group)
+        
+        self.face_detect_enable_check = ModernToggleSwitch("얼굴 감지 사용")
+        self.face_detect_enable_check.setToolTip("인물 사진에서 얼굴을 감지하여 최적화")
+        self.face_detect_enable_check.toggled.connect(self._on_setting_changed)
+        face_layout.addWidget(self.face_detect_enable_check)
+        
+        self.face_auto_orient_check = QCheckBox("얼굴 기준 자동 회전")
+        self.face_auto_orient_check.stateChanged.connect(self._on_setting_changed)
+        face_layout.addWidget(self.face_auto_orient_check)
+        
+        self.face_enhance_check = QCheckBox("얼굴 영역 보정 적용")
+        self.face_enhance_check.stateChanged.connect(self._on_setting_changed)
+        face_layout.addWidget(self.face_enhance_check)
+        
+        min_size_row = QHBoxLayout()
+        min_size_row.addWidget(QLabel("최소 얼굴 크기 (px):"))
+        self.face_min_size_spin = NoScrollSpinBox()
+        self.face_min_size_spin.setRange(20, 500)
+        self.face_min_size_spin.setValue(50)
+        self.face_min_size_spin.valueChanged.connect(self._on_setting_changed)
+        min_size_row.addWidget(self.face_min_size_spin)
+        face_layout.addLayout(min_size_row)
+        
+        layout.addWidget(face_group)
+        
+        # Smart enhancement settings
+        smart_group = QGroupBox("✨ 스마트 보정")
+        smart_layout = QVBoxLayout(smart_group)
+        
+        self.smart_enhance_enable_check = ModernToggleSwitch("스마트 보정 사용")
+        self.smart_enhance_enable_check.setToolTip("이미지 특성에 맞는 자동 보정 적용")
+        self.smart_enhance_enable_check.toggled.connect(self._on_setting_changed)
+        smart_layout.addWidget(self.smart_enhance_enable_check)
+        
+        self.smart_exposure_check = QCheckBox("노출 자동 조정")
+        self.smart_exposure_check.stateChanged.connect(self._on_setting_changed)
+        smart_layout.addWidget(self.smart_exposure_check)
+        
+        self.smart_color_balance_check = QCheckBox("색상 균형 자동 조정")
+        self.smart_color_balance_check.stateChanged.connect(self._on_setting_changed)
+        smart_layout.addWidget(self.smart_color_balance_check)
+        
+        strength_row = QHBoxLayout()
+        strength_row.addWidget(QLabel("보정 강도:"))
+        self.smart_strength_spin = NoScrollSpinBox()
+        self.smart_strength_spin.setRange(0, 100)
+        self.smart_strength_spin.setValue(50)
+        self.smart_strength_spin.valueChanged.connect(self._on_setting_changed)
+        strength_row.addWidget(self.smart_strength_spin)
+        smart_layout.addLayout(strength_row)
+        
+        layout.addWidget(smart_group)
+        
+        # Notification settings
+        notif_group = QGroupBox("🔔 알림 설정")
+        notif_layout = QVBoxLayout(notif_group)
+        
+        self.notification_enable_check = ModernToggleSwitch("시스템 알림 사용")
+        self.notification_enable_check.setToolTip("배치 처리 완료 시 시스템 알림 표시")
+        self.notification_enable_check.toggled.connect(self._on_setting_changed)
+        notif_layout.addWidget(self.notification_enable_check)
+        
+        self.notification_sound_check = QCheckBox("알림 소리 재생")
+        self.notification_sound_check.stateChanged.connect(self._on_setting_changed)
+        notif_layout.addWidget(self.notification_sound_check)
+        
+        self.notification_error_only_check = QCheckBox("오류 시에만 알림")
+        self.notification_error_only_check.stateChanged.connect(self._on_setting_changed)
+        notif_layout.addWidget(self.notification_error_only_check)
+        
+        layout.addWidget(notif_group)
+        layout.addStretch()
+        
+        self.tab_widget.addTab(self._make_scrollable_tab(content), "🤖 AI")
+    
+    def _on_schedule_type_changed(self, schedule_type: str):
+        """Handle schedule type change to show/hide relevant controls."""
+        # Show time field for daily/once, interval for interval mode
+        if hasattr(self, 'schedule_time_edit'):
+            show_time = schedule_type in ("daily", "once")
+            self.schedule_time_edit.setEnabled(show_time)
+        if hasattr(self, 'schedule_interval_spin'):
+            show_interval = schedule_type in ("interval", "hourly")
+            self.schedule_interval_spin.setEnabled(show_interval)
+        self._on_setting_changed()
     
     # ========================================
     # Updated _build_settings for v8.0

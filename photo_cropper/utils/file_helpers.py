@@ -362,9 +362,11 @@ def get_image_dimensions(filepath: str) -> Optional[Tuple[int, int]]:
         pass
     
     try:
-        # Fallback to OpenCV
+        # Fallback to OpenCV with Unicode path support
         import cv2
-        img = cv2.imread(filepath, cv2.IMREAD_UNCHANGED)
+        import numpy as np
+        img_array = np.fromfile(filepath, np.uint8)
+        img = cv2.imdecode(img_array, cv2.IMREAD_UNCHANGED)
         if img is not None:
             h, w = img.shape[:2]
             return (w, h)

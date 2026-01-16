@@ -1,17 +1,46 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Internationalization (i18n) Module for Photo Cropper v8.5.
+Internationalization (i18n) Module for Photo Cropper v9.0.
 
-Provides multi-language support with dynamic language switching.
+Provides multi-language support with dynamic language switching
+and automatic system locale detection.
 """
 
 import os
 import json
+import locale
 import logging
 from typing import Dict, Optional, Callable, List
 
 logger = logging.getLogger(__name__)
+
+
+def detect_system_language() -> str:
+    """
+    Detect language from system locale.
+    
+    Returns:
+        Language code ('ko', 'en', 'ja', 'zh', 'es') or 'en' as default
+    """
+    try:
+        # Try to get system locale
+        locale_lang, _ = locale.getdefaultlocale()
+        if locale_lang:
+            lang_code = locale_lang.split('_')[0].lower()
+            supported = ['ko', 'en', 'ja', 'zh', 'es']
+            if lang_code in supported:
+                logger.info(f"Detected system language: {lang_code}")
+                return lang_code
+            # Map similar locales
+            if lang_code in ['zh-cn', 'zh-hans']:
+                return 'zh'
+            if lang_code in ['zh-tw', 'zh-hant']:
+                return 'zh'
+    except Exception as e:
+        logger.debug(f"Could not detect system locale: {e}")
+    
+    return 'en'  # Default to English
 
 
 # Default translations (Korean as base language)
@@ -19,7 +48,7 @@ DEFAULT_TRANSLATIONS = {
     "ko": {
         # App
         "app.name": "사진 자동 자르기",
-        "app.version": "v8.5",
+        "app.version": "v9.0",
         
         # Menu - File
         "menu.file": "파일",
@@ -180,7 +209,7 @@ DEFAULT_TRANSLATIONS = {
     "en": {
         # App
         "app.name": "Photo Cropper",
-        "app.version": "v8.5",
+        "app.version": "v9.0",
         
         # Menu - File
         "menu.file": "File",
@@ -341,7 +370,7 @@ DEFAULT_TRANSLATIONS = {
     "ja": {
         # App
         "app.name": "フォトクロッパー",
-        "app.version": "v8.5",
+        "app.version": "v9.0",
         
         # Menu - File
         "menu.file": "ファイル",
@@ -376,12 +405,41 @@ DEFAULT_TRANSLATIONS = {
         "menu.help.about": "情報",
         "menu.help.shortcuts": "ショートカット",
         
+        # Toolbar
+        "toolbar.open_folder": "フォルダを開く",
+        "toolbar.open_image": "画像を開く",
+        "toolbar.preview": "プレビュー",
+        "toolbar.start": "開始",
+        "toolbar.cancel": "キャンセル",
+        "toolbar.rotate": "回転",
+        "toolbar.theme": "テーマ切替",
+        "toolbar.refresh": "更新",
+        
+        # Settings
+        "settings.tab.basic": "基本",
+        "settings.tab.algorithm": "アルゴリズム",
+        "settings.tab.output": "出力",
+        "settings.tab.filter": "フィルタ",
+        "settings.tab.advanced": "高度",
+        "settings.tab.watermark": "透かし",
+        "settings.tab.resize": "リサイズ",
+        "settings.tab.automation": "自動化",
+        
         # Status
         "status.ready": "準備完了",
         "status.processing": "処理中...",
         "status.completed": "完了",
         "status.cancelled": "キャンセル",
         "status.error": "エラー",
+        
+        # Progress
+        "progress.title": "処理中",
+        "progress.processing_file": "ファイル処理中",
+        "progress.success": "成功",
+        "progress.failed": "失敗",
+        "progress.skipped": "スキップ",
+        "progress.remaining": "残り時間",
+        "progress.cancel": "キャンセル",
         
         # Dialogs
         "dialog.confirm": "確認",
@@ -391,6 +449,177 @@ DEFAULT_TRANSLATIONS = {
         "dialog.ok": "OK",
         "dialog.save": "保存",
         "dialog.delete": "削除",
+        
+        # Messages
+        "msg.no_files": "処理する画像がありません。",
+        "msg.processing_complete": "処理が完了しました。",
+        "msg.processing_cancelled": "処理がキャンセルされました。",
+        "msg.select_folder": "フォルダを選択してください。",
+        "msg.invalid_folder": "無効なフォルダです。",
+    },
+    
+    "zh": {
+        # App
+        "app.name": "照片自动裁剪",
+        "app.version": "v9.0",
+        
+        # Menu - File
+        "menu.file": "文件",
+        "menu.file.open_folder": "选择输入文件夹",
+        "menu.file.open_image": "打开图片",
+        "menu.file.open_output": "打开输出文件夹",
+        "menu.file.exit": "退出",
+        
+        # Menu - Edit
+        "menu.edit": "编辑",
+        "menu.edit.undo": "撤销",
+        "menu.edit.redo": "重做",
+        "menu.edit.settings": "设置",
+        "menu.edit.reset": "重置设置",
+        
+        # Menu - View
+        "menu.view": "视图",
+        "menu.view.theme": "主题",
+        "menu.view.fullscreen": "全屏",
+        "menu.view.grid_view": "网格视图",
+        "menu.view.list_view": "列表视图",
+        
+        # Menu - Process
+        "menu.process": "处理",
+        "menu.process.preview": "预览",
+        "menu.process.start": "开始处理",
+        "menu.process.cancel": "取消",
+        "menu.process.retry_failed": "重试失败",
+        
+        # Menu - Help
+        "menu.help": "帮助",
+        "menu.help.about": "关于",
+        "menu.help.shortcuts": "快捷键",
+        
+        # Toolbar
+        "toolbar.open_folder": "打开文件夹",
+        "toolbar.open_image": "打开图片",
+        "toolbar.preview": "预览",
+        "toolbar.start": "开始",
+        "toolbar.cancel": "取消",
+        "toolbar.rotate": "旋转",
+        "toolbar.theme": "切换主题",
+        "toolbar.refresh": "刷新",
+        
+        # Settings
+        "settings.tab.basic": "基本",
+        "settings.tab.algorithm": "算法",
+        "settings.tab.output": "输出",
+        "settings.tab.filter": "过滤",
+        "settings.tab.advanced": "高级",
+        "settings.tab.watermark": "水印",
+        "settings.tab.resize": "调整大小",
+        "settings.tab.automation": "自动化",
+        
+        # Status
+        "status.ready": "就绪",
+        "status.processing": "处理中...",
+        "status.completed": "完成",
+        "status.cancelled": "已取消",
+        "status.error": "错误",
+        
+        # Dialogs
+        "dialog.confirm": "确认",
+        "dialog.cancel": "取消",
+        "dialog.yes": "是",
+        "dialog.no": "否",
+        "dialog.ok": "确定",
+        "dialog.save": "保存",
+        "dialog.delete": "删除",
+        
+        # Messages
+        "msg.no_files": "没有可处理的图片。",
+        "msg.processing_complete": "处理完成。",
+        "msg.processing_cancelled": "处理已取消。",
+        "msg.select_folder": "请选择文件夹。",
+        "msg.invalid_folder": "无效的文件夹。",
+    },
+    
+    "es": {
+        # App
+        "app.name": "Recortador de Fotos",
+        "app.version": "v9.0",
+        
+        # Menu - File
+        "menu.file": "Archivo",
+        "menu.file.open_folder": "Seleccionar carpeta de entrada",
+        "menu.file.open_image": "Abrir imagen",
+        "menu.file.open_output": "Abrir carpeta de salida",
+        "menu.file.exit": "Salir",
+        
+        # Menu - Edit
+        "menu.edit": "Editar",
+        "menu.edit.undo": "Deshacer",
+        "menu.edit.redo": "Rehacer",
+        "menu.edit.settings": "Configuración",
+        "menu.edit.reset": "Restablecer configuración",
+        
+        # Menu - View
+        "menu.view": "Ver",
+        "menu.view.theme": "Tema",
+        "menu.view.fullscreen": "Pantalla completa",
+        "menu.view.grid_view": "Vista de cuadrícula",
+        "menu.view.list_view": "Vista de lista",
+        
+        # Menu - Process
+        "menu.process": "Procesar",
+        "menu.process.preview": "Vista previa",
+        "menu.process.start": "Iniciar procesamiento",
+        "menu.process.cancel": "Cancelar",
+        "menu.process.retry_failed": "Reintentar fallidos",
+        
+        # Menu - Help
+        "menu.help": "Ayuda",
+        "menu.help.about": "Acerca de",
+        "menu.help.shortcuts": "Atajos",
+        
+        # Toolbar
+        "toolbar.open_folder": "Abrir carpeta",
+        "toolbar.open_image": "Abrir imagen",
+        "toolbar.preview": "Vista previa",
+        "toolbar.start": "Iniciar",
+        "toolbar.cancel": "Cancelar",
+        "toolbar.rotate": "Rotar",
+        "toolbar.theme": "Cambiar tema",
+        "toolbar.refresh": "Actualizar",
+        
+        # Settings
+        "settings.tab.basic": "Básico",
+        "settings.tab.algorithm": "Algoritmo",
+        "settings.tab.output": "Salida",
+        "settings.tab.filter": "Filtro",
+        "settings.tab.advanced": "Avanzado",
+        "settings.tab.watermark": "Marca de agua",
+        "settings.tab.resize": "Redimensionar",
+        "settings.tab.automation": "Automatización",
+        
+        # Status
+        "status.ready": "Listo",
+        "status.processing": "Procesando...",
+        "status.completed": "Completado",
+        "status.cancelled": "Cancelado",
+        "status.error": "Error",
+        
+        # Dialogs
+        "dialog.confirm": "Confirmar",
+        "dialog.cancel": "Cancelar",
+        "dialog.yes": "Sí",
+        "dialog.no": "No",
+        "dialog.ok": "Aceptar",
+        "dialog.save": "Guardar",
+        "dialog.delete": "Eliminar",
+        
+        # Messages
+        "msg.no_files": "No hay imágenes para procesar.",
+        "msg.processing_complete": "Procesamiento completado.",
+        "msg.processing_cancelled": "Procesamiento cancelado.",
+        "msg.select_folder": "Por favor, seleccione una carpeta.",
+        "msg.invalid_folder": "Carpeta inválida.",
     }
 }
 
@@ -416,14 +645,18 @@ class TranslationManager:
         return cls._instance
     
     def __init__(self):
-        """Initialize translation manager."""
+        """Initialize translation manager with auto-detected language."""
         if self._initialized:
             return
         
         self._translations: Dict[str, Dict[str, str]] = dict(DEFAULT_TRANSLATIONS)
-        self._current_language = "ko"
         self._fallback_language = "en"
         self._on_language_change: List[Callable[[str], None]] = []
+        
+        # Auto-detect system language
+        detected = detect_system_language()
+        self._current_language = detected
+        logger.info(f"Translation manager initialized with language: {detected}")
         
         self._initialized = True
     

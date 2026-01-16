@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Floating Action Button for Photo Cropper v8.5.
+Floating Action Button for Photo Cropper v9.0.
 
 Material Design-inspired FAB with expandable menu.
 Fixed positioning and click handling.

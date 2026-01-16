@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Watermark Processor for Photo Cropper v8.5.
+Watermark Processor for Photo Cropper v9.0.
 
 Adds text and image watermarks to processed photos.
 """

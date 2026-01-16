@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Theme definitions for Photo Cropper PyQt6 UI v8.0.
+Theme definitions for Photo Cropper PyQt6 UI v9.0.
 
 Provides dark and light themes with:
 - Glassmorphism effects

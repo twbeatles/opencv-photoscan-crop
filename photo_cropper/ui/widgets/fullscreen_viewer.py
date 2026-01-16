@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Fullscreen Viewer for Photo Cropper v8.5.
+Fullscreen Viewer for Photo Cropper v9.0.
 
 Provides fullscreen image preview with navigation.
 """

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-History Manager for Photo Cropper v8.5.
+History Manager for Photo Cropper v9.0.
 
 Provides undo/redo functionality using the Command pattern.
 """
@@ -239,15 +239,15 @@ class HistoryManager:
         
         return False
     
-    def undo(self) -> Optional[Command]:
+    def undo(self) -> bool:
         """
         Undo the last command.
         
         Returns:
-            The undone Command if successful, None otherwise
+            True if undo was successful
         """
         if not self.can_undo:
-            return None
+            return False
         
         command = self._history[self._current_index]
         
@@ -258,19 +258,19 @@ class HistoryManager:
             self._notify_change()
             
             logger.debug(f"Undone: {command.description}")
-            return command
+            return True
         
-        return None
+        return False
     
-    def redo(self) -> Optional[Command]:
+    def redo(self) -> bool:
         """
         Redo the last undone command.
         
         Returns:
-            The redone Command if successful, None otherwise
+            True if redo was successful
         """
         if not self.can_redo:
-            return None
+            return False
         
         command = self._redo_stack.pop()
         
@@ -280,11 +280,11 @@ class HistoryManager:
             self._notify_change()
             
             logger.debug(f"Redone: {command.description}")
-            return command
+            return True
         
         # Put back on redo stack if failed
         self._redo_stack.append(command)
-        return None
+        return False
     
     def clear(self):
         """Clear all history."""

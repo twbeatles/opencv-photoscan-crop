@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Folder Watcher for Photo Cropper v8.5.
+Folder Watcher for Photo Cropper v9.0.
 
 Monitors folders for new images and triggers automatic processing.
 Uses QFileSystemWatcher for cross-platform compatibility.
@@ -18,9 +18,6 @@ logger = logging.getLogger(__name__)
 
 # Supported image extensions
 SUPPORTED_EXTENSIONS = {'.jpg', '.jpeg', '.png', '.bmp', '.gif', '.tiff', '.tif', '.webp'}
-
-# Maximum retry attempts for files that are not ready
-MAX_RETRY_ATTEMPTS = 5
 
 
 class FolderWatcher(QObject):
@@ -75,9 +72,6 @@ class FolderWatcher(QObject):
         self._debounce_timer = QTimer(self)
         self._debounce_timer.setSingleShot(True)
         self._debounce_timer.timeout.connect(self._process_pending_files)
-        
-        # Retry tracking for files that are not ready
-        self._retry_counts: dict = {}  # filepath -> retry count
         
         # Callback for custom processing
         self._on_new_file_callback: Optional[Callable[[str], None]] = None
@@ -160,7 +154,6 @@ class FolderWatcher(QObject):
         self._is_watching = False
         self._known_files.clear()
         self._pending_files.clear()
-        self._retry_counts.clear()  # Clear retry tracking to prevent memory leak
         self._debounce_timer.stop()
         
         self.watch_stopped.emit()
@@ -248,8 +241,6 @@ class FolderWatcher(QObject):
                     with open(filepath, 'rb') as f:
                         f.seek(0, 2)  # Seek to end
                     
-                    # Success - clear retry count and emit signal
-                    self._retry_counts.pop(filepath, None)
                     self.new_file_detected.emit(filepath)
                     
                     if self._on_new_file_callback:
@@ -258,21 +249,10 @@ class FolderWatcher(QObject):
                 except (IOError, OSError):
                     # File might still be being written
                     logger.debug(f"File not ready yet: {filepath}")
-                    # Schedule retry with count limit
-                    self._schedule_retry(filepath)
+                    # Re-queue with longer delay
+                    QTimer.singleShot(1000, lambda f=filepath: self._retry_file(f))
         
         self._pending_files.clear()
-    
-    def _schedule_retry(self, filepath: str):
-        """Schedule a retry for a file that wasn't ready, with count limit."""
-        count = self._retry_counts.get(filepath, 0)
-        if count < MAX_RETRY_ATTEMPTS:
-            self._retry_counts[filepath] = count + 1
-            QTimer.singleShot(1000, lambda f=filepath: self._retry_file(f))
-        else:
-            logger.warning(f"Max retries ({MAX_RETRY_ATTEMPTS}) reached for: {filepath}")
-            self._retry_counts.pop(filepath, None)
-            self.error_occurred.emit(f"File not ready after {MAX_RETRY_ATTEMPTS} attempts: {os.path.basename(filepath)}")
     
     def _retry_file(self, filepath: str):
         """Retry processing a file that wasn't ready."""
@@ -281,17 +261,13 @@ class FolderWatcher(QObject):
                 with open(filepath, 'rb') as f:
                     f.seek(0, 2)
                 
-                # Clear retry count on success
-                self._retry_counts.pop(filepath, None)
-                
                 self.new_file_detected.emit(filepath)
                 
                 if self._on_new_file_callback:
                     self._on_new_file_callback(filepath)
                     
             except (IOError, OSError):
-                # File still not ready - schedule another retry
-                self._schedule_retry(filepath)
+                logger.warning(f"File still not ready after retry: {filepath}")
     
     def get_watched_directories(self) -> List[str]:
         """Get list of watched directories."""
@@ -311,11 +287,6 @@ class FolderWatcher(QObject):
 class AutoProcessor(QObject):
     """
     Automatic processor that combines folder watching with batch processing.
-    
-    Features:
-        - Async file processing (non-blocking UI)
-        - Queue management with signals
-        - Graceful shutdown
     """
     
     # Signals
@@ -350,11 +321,6 @@ class AutoProcessor(QObject):
         
         self._queue: List[str] = []
         self._is_processing = False
-        self._is_stopped = False
-        
-        # Thread pool for async processing
-        from concurrent.futures import ThreadPoolExecutor
-        self._executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="AutoProc")
         
         # Process timer for queue
         self._process_timer = QTimer(self)
@@ -368,23 +334,13 @@ class AutoProcessor(QObject):
         if output_path:
             self._output_path = output_path
         
-        self._is_stopped = False
         self._watcher.start(self._watch_path)
     
     def stop(self):
-        """Stop auto processing and cleanup resources."""
-        self._is_stopped = True
+        """Stop auto processing."""
         self._watcher.stop()
-        self._process_timer.stop()
         self._queue.clear()
         self._is_processing = False
-        
-        # Shutdown executor gracefully
-        if hasattr(self, '_executor') and self._executor:
-            try:
-                self._executor.shutdown(wait=False, cancel_futures=True)
-            except Exception as e:
-                logger.warning(f"Executor shutdown error: {e}")
     
     def set_process_callback(self, callback: Callable[[str, str], bool]):
         """Set the processing callback function."""
@@ -392,9 +348,6 @@ class AutoProcessor(QObject):
     
     def _on_new_file(self, filepath: str):
         """Handle new file detected."""
-        if self._is_stopped:
-            return
-            
         self._queue.append(filepath)
         self.queue_updated.emit(len(self._queue))
         
@@ -402,8 +355,8 @@ class AutoProcessor(QObject):
             self._process_timer.start(100)  # Small delay to batch multiple files
     
     def _process_next(self):
-        """Process next file in queue (submit to thread pool)."""
-        if not self._queue or self._is_stopped:
+        """Process next file in queue."""
+        if not self._queue:
             self._is_processing = False
             return
         
@@ -413,14 +366,6 @@ class AutoProcessor(QObject):
         
         self.processing_started.emit(filepath)
         
-        # Submit to thread pool for async processing
-        self._executor.submit(self._do_process, filepath)
-    
-    def _do_process(self, filepath: str):
-        """Process file in background thread."""
-        if self._is_stopped:
-            return
-            
         success = False
         if self._process_callback and self._output_path:
             try:
@@ -428,19 +373,10 @@ class AutoProcessor(QObject):
             except Exception as e:
                 logger.error(f"Processing failed for {filepath}: {e}")
         
-        # Emit signal from main thread using QTimer.singleShot
-        QTimer.singleShot(0, lambda: self._on_process_complete(filepath, success))
-    
-    def _on_process_complete(self, filepath: str, success: bool):
-        """Handle process completion (runs in main thread)."""
-        if self._is_stopped:
-            return
-            
         self.processing_completed.emit(filepath, success)
         
         # Process next file
-        if self._queue and not self._is_stopped:
+        if self._queue:
             self._process_timer.start(100)
         else:
             self._is_processing = False
-

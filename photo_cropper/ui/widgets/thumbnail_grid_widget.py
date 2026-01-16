@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Thumbnail Grid Widget for Photo Cropper v8.5.
+Thumbnail Grid Widget for Photo Cropper v9.0.
 
 Provides grid view of images with thumbnails.
 """
@@ -349,8 +349,7 @@ class ThumbnailGridWidget(QWidget):
         # Stop any existing loader
         if self._loader and self._loader.isRunning():
             self._loader.stop()
-            if not self._loader.wait(3000):  # 3 second timeout
-                logger.warning("Thumbnail loader did not stop in time")
+            self._loader.wait()
         
         self._file_list = filepaths
         self._selected_files.clear()
@@ -478,13 +477,6 @@ class ThumbnailGridWidget(QWidget):
         """Refresh thumbnails."""
         if self._file_list:
             self.set_files(self._file_list)
-    
-    def closeEvent(self, event):
-        """Clean up resources on close."""
-        if self._loader and self._loader.isRunning():
-            self._loader.stop()
-            self._loader.wait(2000)  # 2 second timeout
-        super().closeEvent(event)
     
     def resizeEvent(self, event):
         """Handle resize - reflow grid."""

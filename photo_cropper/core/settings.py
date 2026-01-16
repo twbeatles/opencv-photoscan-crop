@@ -56,6 +56,32 @@ class AlgorithmSettings:
     # Area ratios
     min_area_ratio: float = 0.1
     max_area_ratio: float = 0.95
+    
+    def __post_init__(self):
+        """Validate and clamp settings to valid ranges."""
+        # Canny thresholds: 1-255, min < max
+        self.canny_min = max(1, min(254, self.canny_min))
+        self.canny_max = max(2, min(255, self.canny_max))
+        if self.canny_min >= self.canny_max:
+            self.canny_max = self.canny_min + 1
+        
+        # CLAHE: clip_limit > 0, grid_size >= 2
+        self.clahe_clip_limit = max(0.1, min(10.0, self.clahe_clip_limit))
+        self.clahe_grid_size = max(2, min(16, self.clahe_grid_size))
+        
+        # Corner detection: block_size >= 2, k > 0
+        self.corner_block_size = max(2, min(10, self.corner_block_size))
+        self.corner_k = max(0.01, min(0.1, self.corner_k))
+        
+        # Contour scoring: must be valid option
+        if self.contour_scoring not in ("basic", "enhanced", "strict"):
+            self.contour_scoring = "enhanced"
+        
+        # Area ratios: 0 < min < max <= 1
+        self.min_area_ratio = max(0.01, min(0.9, self.min_area_ratio))
+        self.max_area_ratio = max(0.1, min(1.0, self.max_area_ratio))
+        if self.min_area_ratio >= self.max_area_ratio:
+            self.max_area_ratio = min(1.0, self.min_area_ratio + 0.1)
 
 
 @dataclass
@@ -67,6 +93,13 @@ class ProcessingSettings:
     sharpening_strength: float = 1.0
     denoise: bool = False
     denoise_strength: int = 10
+    
+    def __post_init__(self):
+        """Validate and clamp settings to valid ranges."""
+        # Sharpening strength: 0.1-5.0
+        self.sharpening_strength = max(0.1, min(5.0, self.sharpening_strength))
+        # Denoise strength: 1-30
+        self.denoise_strength = max(1, min(30, self.denoise_strength))
 
 
 @dataclass
@@ -78,6 +111,17 @@ class OutputSettings:
     webp_quality: int = 90
     add_timestamp: bool = False
     preserve_metadata: bool = False
+    
+    def __post_init__(self):
+        """Validate and clamp settings to valid ranges."""
+        # Output format: must be valid
+        if self.output_format.upper() not in ("JPG", "JPEG", "PNG", "WEBP"):
+            self.output_format = "JPG"
+        # Quality values: 1-100
+        self.jpg_quality = max(1, min(100, self.jpg_quality))
+        self.webp_quality = max(1, min(100, self.webp_quality))
+        # PNG compression: 0-9
+        self.png_compression = max(0, min(9, self.png_compression))
 
 
 @dataclass
@@ -528,9 +572,6 @@ class SettingsManager:
             logger.warning("No settings to save")
             return False
         
-        # Validate and clamp settings to valid ranges
-        self._validate_settings(settings)
-        
         try:
             # Ensure directory exists
             config_dir = os.path.dirname(self.config_file)
@@ -546,37 +587,6 @@ class SettingsManager:
         except Exception as e:
             logger.error(f"Settings save error: {e}")
             return False
-    
-    def _validate_settings(self, settings: AppSettings):
-        """Validate and clamp settings to valid ranges."""
-        # Output settings
-        settings.output.jpg_quality = max(1, min(100, settings.output.jpg_quality))
-        settings.output.png_compression = max(0, min(9, settings.output.png_compression))
-        settings.output.webp_quality = max(1, min(100, settings.output.webp_quality))
-        
-        # Algorithm settings
-        settings.algorithm.canny_min = max(0, min(255, settings.algorithm.canny_min))
-        settings.algorithm.canny_max = max(0, min(255, settings.algorithm.canny_max))
-        # Ensure canny_min <= canny_max
-        if settings.algorithm.canny_min > settings.algorithm.canny_max:
-            settings.algorithm.canny_min, settings.algorithm.canny_max = \
-                settings.algorithm.canny_max, settings.algorithm.canny_min
-        
-        settings.algorithm.clahe_clip_limit = max(0.1, min(10.0, settings.algorithm.clahe_clip_limit))
-        settings.algorithm.clahe_grid_size = max(2, min(16, settings.algorithm.clahe_grid_size))
-        settings.algorithm.min_area_ratio = max(0.01, min(0.99, settings.algorithm.min_area_ratio))
-        settings.algorithm.max_area_ratio = max(0.01, min(0.99, settings.algorithm.max_area_ratio))
-        
-        # Processing settings
-        settings.processing.sharpening_strength = max(0.0, min(5.0, settings.processing.sharpening_strength))
-        settings.processing.denoise_strength = max(1, min(30, settings.processing.denoise_strength))
-        
-        # UI settings
-        settings.ui.preview_quality = max(10, min(100, settings.ui.preview_quality))
-        
-        # Performance settings
-        settings.performance.thread_count = max(0, min(32, settings.performance.thread_count))
-        settings.performance.max_image_size_mb = max(1, min(1000, settings.performance.max_image_size_mb))
     
     def reset_to_defaults(self) -> AppSettings:
         """

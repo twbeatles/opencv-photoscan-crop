@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Batch Processor for Photo Cropper v8.0.
+Batch Processor for Photo Cropper v9.0.
 
 Handles batch image processing with:
 - Multithreading support (ThreadPoolExecutor)
@@ -25,6 +25,9 @@ from queue import Queue
 
 from .image_processor import ImageProcessor, CropResult
 from .settings import AppSettings
+from .watermark_processor import WatermarkProcessor, TextWatermarkSettings, WatermarkPosition
+from .resize_processor import ResizeProcessor, ResizeSettings as ResizeProcessorSettings, ResizeMode
+from .multi_photo_detector import MultiPhotoDetector
 from ..utils.file_helpers import SUPPORTED_IMAGE_FORMATS, get_image_files, classify_failed_files
 from ..utils.processing_log import ProcessingLogger, get_processing_logger
 from ..utils.naming_rules import NamingRule, NamingRuleEngine
@@ -112,7 +115,8 @@ class BatchProcessor:
         self.settings = settings or AppSettings()
         self.processor = ImageProcessor(
             self.settings.algorithm,
-            self.settings.processing
+            self.settings.processing,
+            self.settings.advanced  # v9.0: Include advanced processing settings
         )
         
         self._progress = BatchProgress()
@@ -140,6 +144,11 @@ class BatchProcessor:
         
         # Advanced processor (lazy init)
         self._advanced_processor = None
+        
+        # v9.0: Watermark and Resize processors (lazy init)
+        self._watermark_processor: Optional[WatermarkProcessor] = None
+        self._resize_processor: Optional[ResizeProcessor] = None
+        self._multi_photo_detector: Optional[MultiPhotoDetector] = None
         
         # Callbacks
         self._on_progress: Optional[Callable[[BatchProgress], None]] = None
@@ -174,7 +183,16 @@ class BatchProcessor:
     def update_settings(self, settings: AppSettings):
         """Update processor settings."""
         self.settings = settings
-        self.processor.update_settings(settings.algorithm, settings.processing)
+        self.processor.update_settings(
+            settings.algorithm, 
+            settings.processing,
+            settings.advanced  # v9.0: Include advanced processing settings
+        )
+        
+        # v9.0: Reset lazy-initialized processors so they use new settings
+        self._multi_photo_detector = None
+        self._watermark_processor = None
+        self._resize_processor = None
     
     def _log(self, message: str, level: str = "info"):
         """Send log message through callback."""
@@ -182,7 +200,10 @@ class BatchProcessor:
         valid_levels = {"info", "error", "warning", "success", "skip"}
         level = level if level in valid_levels else "info"
         
-        self._safe_callback(self._on_log, message, level)
+        # v9.0: Thread-safe callback invocation
+        with self._lock:
+            callback = self._on_log
+        self._safe_callback(callback, message, level)
         
         if level == "error":
             logger.error(message)
@@ -203,47 +224,19 @@ class BatchProcessor:
         if callback is None:
             return
         try:
-            # Check if callback target is still valid (for bound methods to Qt objects)
-            if hasattr(callback, '__self__'):
-                obj = callback.__self__
-                # For Qt objects, check if still valid by testing a safe method
-                if hasattr(obj, 'isVisible'):
-                    try:
-                        obj.isVisible()  # Will throw RuntimeError if deleted
-                    except RuntimeError:
-                        logger.debug("Callback target Qt object was deleted")
-                        return
             callback(*args, **kwargs)
-        except RuntimeError as e:
-            # Qt object deleted
-            logger.debug(f"Callback target deleted: {e}")
         except Exception as e:
             logger.error(f"Callback error: {e}")
             logger.debug(traceback.format_exc())
             
-    def cleanup(self, timeout: float = 5.0):
-        """
-        Clean up resources and stop threads.
-        
-        Args:
-            timeout: Maximum time to wait for thread termination in seconds
-        """
+    def cleanup(self):
+        """Clean up resources and stop threads."""
         self.request_stop()
-        
-        # Shutdown executor with cancellation
         if self._executor:
-            try:
-                self._executor.shutdown(wait=True, cancel_futures=True)
-            except Exception as e:
-                logger.warning(f"Executor shutdown error: {e}")
-            finally:
-                self._executor = None  # Allow recreation on next use
-        
-        # Wait for processing thread to terminate
+            self._executor.shutdown(wait=False)
         if self._processing_thread and self._processing_thread.is_alive():
-            self._processing_thread.join(timeout=timeout)
-            if self._processing_thread.is_alive():
-                logger.warning("Processing thread did not terminate within timeout")
+            # Thread join is blocking, avoid if calling from UI thread
+            pass
     
     def _update_progress(self):
         """Send progress update through callback."""
@@ -329,13 +322,11 @@ class BatchProcessor:
         self._stop_event.clear()
         self._results = []
         self._failed_files = []
+        self._processing_times = []  # v9.0: Reset timing data
+        self._start_time = time.time()  # v9.0: Track start time
         
         with self._lock:
             self._progress = BatchProgress(is_running=True)
-        
-        # Reset timing for ETA calculation
-        self._processing_times = []
-        self._start_time = time.time()
         
         # Start thread
         self._processing_thread = threading.Thread(
@@ -401,6 +392,16 @@ class BatchProcessor:
                 self._progress.total = total
                 self._progress.processed = 0
             
+            # v9.0: Start logging session if enabled
+            if self.settings.file_management.enable_logging:
+                try:
+                    self._processing_logger = get_processing_logger(
+                        self.settings.file_management.log_directory or output_dir
+                    )
+                    self._processing_logger.start_session(input_dir, output_dir, total)
+                except Exception as e:
+                    logger.warning(f"Failed to start processing logger: {e}")
+            
             self._log(f"총 {total}개 파일 처리 시작", "info")
             self._update_progress()
             
@@ -413,12 +414,18 @@ class BatchProcessor:
                 result = self._process_single_file(
                     input_dir, output_dir, filename, backup_dir, i + 1, total
                 )
-                self._results.append(result)
+                # Thread-safe list operations
+                with self._lock:
+                    self._results.append(result)
+                    
+                    if result.status == ProcessStatus.FAILED:
+                        self._failed_files.append(filename)
+                    
+                    # v9.0: Track processing times for accurate ETA
+                    if result.processing_time_ms > 0:
+                        self._processing_times.append(result.processing_time_ms)
                 
-                if result.status == ProcessStatus.FAILED:
-                    self._failed_files.append(filename)
-                
-                # Update progress and ETA
+                # Update progress
                 with self._lock:
                     self._progress.processed = i + 1
                     self._progress.current_file = filename
@@ -430,16 +437,37 @@ class BatchProcessor:
                     elif result.status == ProcessStatus.SKIPPED:
                         self._progress.skipped += 1
                     
-                    # Track processing time for ETA
-                    if result.processing_time_ms > 0:
-                        self._processing_times.append(result.processing_time_ms)
-                        # Keep last 10 for rolling average
-                        if len(self._processing_times) > 10:
-                            self._processing_times = self._processing_times[-10:]
+                    # v9.0: Calculate average processing time for ETA
+                    if self._processing_times:
                         self._progress.avg_time_per_file_ms = sum(self._processing_times) / len(self._processing_times)
-                    
                     if self._start_time:
                         self._progress.total_time_ms = (time.time() - self._start_time) * 1000
+                
+                # v9.0: Log processing result to file
+                if self._processing_logger is not None:
+                    try:
+                        if result.status == ProcessStatus.SUCCESS:
+                            self._processing_logger.log_success(
+                                input_file=os.path.join(input_dir, filename),
+                                output_file=result.output_path,
+                                detection_stage=result.message.replace("탐지: ", "") if "탐지" in result.message else "Unknown",
+                                processing_time_ms=result.processing_time_ms,
+                                file_size_before_kb=0.0,  # Not tracked per file currently
+                                file_size_after_kb=result.file_size_kb
+                            )
+                        elif result.status == ProcessStatus.FAILED:
+                            self._processing_logger.log_failure(
+                                input_file=os.path.join(input_dir, filename),
+                                error_message=result.message,
+                                processing_time_ms=result.processing_time_ms
+                            )
+                        elif result.status == ProcessStatus.SKIPPED:
+                            self._processing_logger.log_skipped(
+                                input_file=os.path.join(input_dir, filename),
+                                reason=result.message
+                            )
+                    except Exception as log_err:
+                        logger.debug(f"Failed to log processing result: {log_err}")
                 
                 self._update_progress()
                 
@@ -469,6 +497,20 @@ class BatchProcessor:
         finally:
             with self._lock:
                 self._progress.is_running = False
+            
+            # v9.0: Save processing log if enabled
+            if self._processing_logger is not None:
+                try:
+                    session = self._processing_logger.end_session()
+                    if session:
+                        log_format = self.settings.file_management.log_format.lower()
+                        if log_format == "csv":
+                            self._processing_logger.save_to_csv()
+                        else:
+                            self._processing_logger.save_to_json()
+                        self._log("📋 처리 로그 저장 완료", "info")
+                except Exception as e:
+                    logger.warning(f"Failed to save processing log: {e}")
             
             self._safe_callback(self._on_complete, self.progress, self._results)
     
@@ -523,12 +565,94 @@ class BatchProcessor:
             except Exception as e:
                 self._log(f"  백업 실패: {e}", "warning")
         
-        # Process image
+        # v9.0: Multi-photo detection mode
+        if self.settings.multi_photo.enabled:
+            try:
+                return self._process_multi_photo(
+                    input_path, output_dir, filename, current, total, start_time
+                )
+            except Exception as e:
+                self._log(f"  멀티포토 처리 오류: {e}, 단일 모드로 전환", "warning")
+        
+        # Process image (standard single-photo mode)
         result = self.processor.process_image(input_path)
         
         processing_time = (time.time() - start_time) * 1000
         
         if result.success and result.image is not None:
+            processed_image = result.image
+            
+            # v9.0: Apply resize if enabled
+            if self.settings.resize.enabled:
+                try:
+                    if self._resize_processor is None:
+                        self._resize_processor = ResizeProcessor()
+                    
+                    # Build resize settings from app settings
+                    resize_settings = ResizeProcessorSettings(
+                        enabled=True,
+                        mode=ResizeMode(self.settings.resize.mode) if self.settings.resize.mode != "none" else ResizeMode.NONE,
+                        width=self.settings.resize.width,
+                        height=self.settings.resize.height,
+                        percentage=self.settings.resize.percentage,
+                        max_dimension=self.settings.resize.max_dimension,
+                        upscale_allowed=self.settings.resize.upscale_allowed,
+                        maintain_aspect=self.settings.resize.maintain_aspect,
+                        jpeg_compatible=self.settings.resize.jpeg_compatible
+                    )
+                    
+                    resize_result = self._resize_processor.resize(processed_image, resize_settings)
+                    if resize_result.success and resize_result.image is not None:
+                        processed_image = resize_result.image
+                        self._log(f"  ↔️ 리사이즈 적용: {resize_result.original_size} → {resize_result.new_size}", "info")
+                except Exception as e:
+                    self._log(f"  ⚠️ 리사이즈 오류: {e}", "warning")
+            
+            # v9.0: Apply watermark if enabled
+            if self.settings.watermark.enabled:
+                try:
+                    if self._watermark_processor is None:
+                        self._watermark_processor = WatermarkProcessor()
+                    
+                    # Check for tiled watermark first
+                    if self.settings.watermark.tiled and self.settings.watermark.text:
+                        processed_image = self._watermark_processor.create_tiled_watermark(
+                            processed_image,
+                            self.settings.watermark.text,
+                            spacing=self.settings.watermark.tile_spacing,
+                            angle=self.settings.watermark.tile_angle,
+                            font_scale=self.settings.watermark.text_font_scale,
+                            color=(
+                                self.settings.watermark.text_color_r,
+                                self.settings.watermark.text_color_g,
+                                self.settings.watermark.text_color_b
+                            ),
+                            opacity=self.settings.watermark.opacity
+                        )
+                        self._log("  💧 타일 워터마크 적용", "info")
+                    else:
+                        # Apply text watermark
+                        if self.settings.watermark.text:
+                            text_settings = TextWatermarkSettings(
+                                text=self.settings.watermark.text,
+                                font_scale=self.settings.watermark.text_font_scale,
+                                color=(
+                                    self.settings.watermark.text_color_r,
+                                    self.settings.watermark.text_color_g,
+                                    self.settings.watermark.text_color_b
+                                ),
+                                opacity=self.settings.watermark.opacity,
+                                position=WatermarkPosition(self.settings.watermark.position),
+                                margin=self.settings.watermark.margin,
+                                shadow=self.settings.watermark.text_shadow
+                            )
+                            processed_image = self._watermark_processor.apply_text_watermark(
+                                processed_image, text_settings
+                            )
+                            self._log(f"  💧 텍스트 워터마크 적용: '{self.settings.watermark.text}'", "info")
+                except Exception as e:
+                    self._log(f"  ⚠️ 워터마크 오류: {e}", "warning")
+            
             # Generate output filename
             ext = "." + self.settings.output.output_format.lower()
             base_name = os.path.splitext(filename)[0]
@@ -541,9 +665,9 @@ class BatchProcessor:
             
             output_path = os.path.join(output_dir, output_filename)
             
-            # Save
+            # Save (use processed_image which may have watermark/resize applied)
             success, msg, file_size = self.processor.save_image(
-                result.image,
+                processed_image,
                 output_path,
                 self.settings.output.output_format,
                 self.settings.output.jpg_quality,
@@ -575,5 +699,163 @@ class BatchProcessor:
                 filename=filename,
                 status=ProcessStatus.FAILED,
                 message=result.message,
+                processing_time_ms=processing_time
+            )
+    
+    def _process_multi_photo(
+        self,
+        input_path: str,
+        output_dir: str,
+        filename: str,
+        current: int,
+        total: int,
+        start_time: float
+    ) -> FileResult:
+        """
+        Process a single file with multi-photo detection.
+        Detects multiple photos in a single scan and saves each separately.
+        """
+        import cv2
+        import numpy as np
+        
+        # Initialize detector if needed
+        if self._multi_photo_detector is None:
+            self._multi_photo_detector = MultiPhotoDetector(
+                min_area_ratio=self.settings.multi_photo.min_area_ratio,
+                max_area_ratio=self.settings.multi_photo.max_area_ratio,
+                min_photos=self.settings.multi_photo.min_photos,
+                max_photos=self.settings.multi_photo.max_photos,
+                merge_distance=self.settings.multi_photo.merge_distance
+            )
+        
+        # Load image with Unicode support
+        img_array = np.fromfile(input_path, np.uint8)
+        image = cv2.imdecode(img_array, cv2.IMREAD_COLOR)
+        
+        if image is None:
+            return FileResult(
+                filename=filename,
+                status=ProcessStatus.FAILED,
+                message="이미지 로드 실패",
+                processing_time_ms=(time.time() - start_time) * 1000
+            )
+        
+        # Detect multiple photos
+        detection_result = self._multi_photo_detector.detect(image)
+        
+        if not detection_result.success or detection_result.total_found == 0:
+            self._log(f"  멀티포토: 사진 감지 안됨, 단일 모드로 처리", "info")
+            # Fall through to standard processing
+            result = self.processor.process_image(input_path)
+            processing_time = (time.time() - start_time) * 1000
+            
+            if result.success and result.image is not None:
+                return self._save_single_result(result, output_dir, filename, processing_time)
+            else:
+                return FileResult(
+                    filename=filename,
+                    status=ProcessStatus.FAILED,
+                    message=result.message,
+                    processing_time_ms=processing_time
+                )
+        
+        # Crop and save each detected photo
+        self._log(f"  📷 멀티포토: {detection_result.total_found}개 사진 감지", "info")
+        
+        cropped_photos = self._multi_photo_detector.crop_photos(
+            image, detection_result.photos, padding=10
+        )
+        
+        saved_count = 0
+        ext = "." + self.settings.output.output_format.lower()
+        base_name = os.path.splitext(filename)[0]
+        
+        for idx, (cropped_img, photo_info) in enumerate(cropped_photos, 1):
+            output_filename = f"{base_name}_photo{idx:02d}{ext}"
+            output_path = os.path.join(output_dir, output_filename)
+            
+            # Apply watermark/resize if enabled
+            processed_img = cropped_img
+            if self.settings.resize.enabled and self._resize_processor:
+                resize_result = self._resize_processor.resize(processed_img)
+                if resize_result.success:
+                    processed_img = resize_result.image
+            
+            if self.settings.watermark.enabled and self._watermark_processor and self.settings.watermark.text:
+                text_settings = TextWatermarkSettings(
+                    text=self.settings.watermark.text,
+                    font_scale=self.settings.watermark.text_font_scale,
+                    opacity=self.settings.watermark.opacity,
+                    position=WatermarkPosition(self.settings.watermark.position)
+                )
+                processed_img = self._watermark_processor.apply_text_watermark(processed_img, text_settings)
+            
+            # Save
+            success, msg, file_size = self.processor.save_image(
+                processed_img,
+                output_path,
+                self.settings.output.output_format,
+                self.settings.output.jpg_quality,
+                self.settings.output.png_compression,
+                self.settings.output.webp_quality
+            )
+            
+            if success:
+                saved_count += 1
+                self._log(f"    ✓ 사진 {idx}: {output_filename}", "success")
+        
+        processing_time = (time.time() - start_time) * 1000
+        
+        if saved_count > 0:
+            return FileResult(
+                filename=filename,
+                status=ProcessStatus.SUCCESS,
+                message=f"멀티포토: {saved_count}/{detection_result.total_found}개 저장",
+                processing_time_ms=processing_time
+            )
+        else:
+            return FileResult(
+                filename=filename,
+                status=ProcessStatus.FAILED,
+                message="멀티포토 저장 실패",
+                processing_time_ms=processing_time
+            )
+    
+    def _save_single_result(
+        self,
+        result: CropResult,
+        output_dir: str,
+        filename: str,
+        processing_time: float
+    ) -> FileResult:
+        """Save a single processed result."""
+        ext = "." + self.settings.output.output_format.lower()
+        base_name = os.path.splitext(filename)[0]
+        output_filename = f"{base_name}_cropped{ext}"
+        output_path = os.path.join(output_dir, output_filename)
+        
+        success, msg, file_size = self.processor.save_image(
+            result.image,
+            output_path,
+            self.settings.output.output_format,
+            self.settings.output.jpg_quality,
+            self.settings.output.png_compression,
+            self.settings.output.webp_quality
+        )
+        
+        if success:
+            return FileResult(
+                filename=filename,
+                status=ProcessStatus.SUCCESS,
+                message=f"탐지: {result.detection_stage.value if result.detection_stage else 'Unknown'}",
+                output_path=output_path,
+                file_size_kb=file_size,
+                processing_time_ms=processing_time
+            )
+        else:
+            return FileResult(
+                filename=filename,
+                status=ProcessStatus.FAILED,
+                message=f"저장 실패: {msg}",
                 processing_time_ms=processing_time
             )

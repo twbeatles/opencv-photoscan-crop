@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Command Line Interface for Photo Cropper v8.5.
+Command Line Interface for Photo Cropper v9.0.
 
 Provides CLI access to batch processing functionality.
 Usage: python -m photo_cropper.cli --help
@@ -232,7 +232,7 @@ Examples:
     parser.add_argument(
         '--version',
         action='version',
-        version='Photo Cropper v8.5'
+        version='Photo Cropper v9.0'
     )
     
     return parser
