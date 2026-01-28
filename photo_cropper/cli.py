@@ -13,7 +13,6 @@ import sys
 import json
 import logging
 from pathlib import Path
-from typing import Optional
 
 # Setup logging
 logging.basicConfig(
@@ -248,6 +247,47 @@ def load_config(config_path: str) -> dict:
         return {}
 
 
+def parse_resize_arg(resize_arg: str):
+    """Parse resize argument into core resize settings dict."""
+    if not resize_arg:
+        return None
+
+    value = resize_arg.strip().lower()
+
+    # Percentage (e.g., 50%)
+    if value.endswith('%'):
+        try:
+            percentage = float(value.rstrip('%'))
+        except ValueError:
+            return None
+        if percentage <= 0:
+            return None
+        return {"mode": "percentage", "percentage": percentage}
+
+    # WxH (e.g., 800x600)
+    if 'x' in value:
+        parts = value.split('x')
+        if len(parts) == 2:
+            try:
+                width = int(parts[0])
+                height = int(parts[1])
+            except ValueError:
+                return None
+            if width > 0 and height > 0:
+                return {"mode": "fit", "width": width, "height": height}
+
+    # Preset name
+    try:
+        from photo_cropper.core.resize_processor import ResizeProcessor
+        if value in ResizeProcessor.PRESETS:
+            width, height = ResizeProcessor.PRESETS[value]
+            return {"mode": "fit", "width": width, "height": height}
+    except Exception:
+        return None
+
+    return None
+
+
 def process_batch(args) -> int:
     """
     Process batch of images.
@@ -262,9 +302,17 @@ def process_batch(args) -> int:
     
     # Import after path setup
     from photo_cropper.core.settings import (
-        AppSettings, AlgorithmSettings, ProcessingSettings, OutputSettings
+        AppSettings,
+        AlgorithmSettings,
+        ProcessingSettings,
+        OutputSettings,
+        WatermarkSettings,
+        ResizeSettings,
+        FilterSettings,
+        FileManagementSettings,
+        MultiPhotoSettings,
+        PerformanceSettings,
     )
-    from photo_cropper.core.image_processor import ImageProcessor
     from photo_cropper.core.batch_processor import BatchProcessor
     from photo_cropper.utils.file_helpers import get_image_files
     
@@ -304,10 +352,59 @@ def process_batch(args) -> int:
         webp_quality=args.quality
     )
     
+    watermark_settings = WatermarkSettings(
+        enabled=bool(args.watermark),
+        text=args.watermark or "",
+        position=args.watermark_position,
+        opacity=args.watermark_opacity
+    )
+
+    resize_settings = ResizeSettings()
+    if args.max_size > 0:
+        resize_settings.enabled = True
+        resize_settings.mode = "max_dimension"
+        resize_settings.max_dimension = args.max_size
+    elif args.resize:
+        parsed_resize = parse_resize_arg(args.resize)
+        if parsed_resize:
+            resize_settings.enabled = True
+            resize_settings.mode = parsed_resize.get("mode", "none")
+            resize_settings.width = parsed_resize.get("width", 0)
+            resize_settings.height = parsed_resize.get("height", 0)
+            resize_settings.percentage = parsed_resize.get("percentage", 100.0)
+        else:
+            logger.warning(f"Invalid resize option: {args.resize}")
+
+    filter_settings = FilterSettings(
+        skip_small_images=True,
+        min_image_size=args.min_size,
+        skip_processed=args.skip_processed
+    )
+
+    file_management_settings = FileManagementSettings(
+        recursive_search=args.recursive
+    )
+
+    multi_photo_settings = MultiPhotoSettings(
+        enabled=args.multi_photo
+    )
+
+    jobs = max(1, args.jobs)
+    performance_settings = PerformanceSettings(
+        enable_multithreading=jobs > 1,
+        thread_count=jobs
+    )
+
     settings = AppSettings(
         algorithm=algorithm_settings,
         processing=processing_settings,
-        output=output_settings
+        output=output_settings,
+        watermark=watermark_settings,
+        resize=resize_settings,
+        filter=filter_settings,
+        file_management=file_management_settings,
+        multi_photo=multi_photo_settings,
+        performance=performance_settings
     )
     
     # Get file list
@@ -325,91 +422,25 @@ def process_batch(args) -> int:
             logger.info(f"  {f}")
         return 0
     
-    # Create processor
+    def cli_log(message: str, level: str = "info"):
+        if level == "error":
+            logger.error(message)
+        elif level == "warning":
+            logger.warning(message)
+        else:
+            logger.info(message)
+
     processor = BatchProcessor(settings)
-    
-    # Process files
-    success_count = 0
-    fail_count = 0
-    
-    for i, filename in enumerate(files, 1):
-        filepath = os.path.join(args.input, filename)
-        logger.info(f"[{i}/{len(files)}] Processing: {filename}")
-        
-        try:
-            img_processor = ImageProcessor(
-                algorithm_settings=algorithm_settings,
-                processing_settings=processing_settings
-            )
-            
-            result = img_processor.process_image(filepath)
-            
-            if result.success and result.image is not None:
-                # Generate output filename
-                base_name = os.path.splitext(filename)[0]
-                output_name = f"{base_name}_cropped.{args.format}"
-                output_path = os.path.join(output_dir, output_name)
-                
-                # Apply watermark if specified
-                if args.watermark:
-                    from photo_cropper.core.watermark_processor import (
-                        WatermarkProcessor, TextWatermarkSettings, WatermarkPosition
-                    )
-                    
-                    watermark_proc = WatermarkProcessor()
-                    wm_settings = TextWatermarkSettings(
-                        text=args.watermark,
-                        opacity=args.watermark_opacity,
-                        position=WatermarkPosition(args.watermark_position)
-                    )
-                    result.image = watermark_proc.apply_text_watermark(
-                        result.image, wm_settings
-                    )
-                
-                # Apply resize if specified
-                if args.resize or args.max_size > 0:
-                    from photo_cropper.core.resize_processor import (
-                        ResizeProcessor, ResizeSettings, ResizeMode
-                    )
-                    
-                    resize_proc = ResizeProcessor()
-                    
-                    if args.max_size > 0:
-                        resize_settings = ResizeSettings(
-                            enabled=True,
-                            mode=ResizeMode.MAX_DIMENSION,
-                            max_dimension=args.max_size
-                        )
-                    else:
-                        resize_settings = ResizeSettings(
-                            enabled=True,
-                            mode=ResizeMode.PERCENTAGE,
-                            percentage=float(args.resize.rstrip('%'))
-                        )
-                    
-                    resize_result = resize_proc.resize(result.image, resize_settings)
-                    if resize_result.success:
-                        result.image = resize_result.image
-                
-                # Save result
-                img_processor.save_image(
-                    result.image,
-                    output_path,
-                    output_settings.output_format,
-                    output_settings.jpg_quality,
-                    output_settings.png_compression,
-                    output_settings.webp_quality
-                )
-                
-                logger.info(f"  ✓ Saved: {output_name} ({result.detection_stage.value})")
-                success_count += 1
-            else:
-                logger.warning(f"  ✗ Failed: {result.message}")
-                fail_count += 1
-                
-        except Exception as e:
-            logger.error(f"  ✗ Error: {e}")
-            fail_count += 1
+    processor.set_callbacks(
+        on_log=cli_log
+    )
+
+    processor.start_async(args.input, output_dir, file_list=None)
+    processor.wait_for_completion()
+
+    results = processor.results
+    success_count = len([r for r in results if r.status.name == "SUCCESS"])
+    fail_count = len([r for r in results if r.status.name == "FAILED"])
     
     # Summary
     logger.info("")

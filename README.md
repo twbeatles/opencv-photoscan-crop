@@ -70,7 +70,7 @@ pip install -r requirements.txt
 python run.py
 ```
 
-### CLI 사용법 (v8.5 신규)
+### CLI 사용법
 
 ```bash
 # 기본 사용
@@ -81,6 +81,20 @@ python -m photo_cropper.cli -i ./scans -o ./cropped --watermark "© 2026"
 
 # 리사이즈 적용
 python -m photo_cropper.cli -i ./scans -o ./cropped --max-size 1920
+
+# 리사이즈 적용 (비율/해상도/프리셋)
+python -m photo_cropper.cli -i ./scans -o ./cropped --resize "50%"
+python -m photo_cropper.cli -i ./scans -o ./cropped --resize "1200x900"
+python -m photo_cropper.cli -i ./scans -o ./cropped --resize instagram_square
+
+# 멀티포토 감지
+python -m photo_cropper.cli -i ./scans -o ./cropped --multi-photo
+
+# 병렬 처리 (스레드 수 지정)
+python -m photo_cropper.cli -i ./scans -o ./cropped --jobs 6
+
+# 이미 처리된 파일 건너뛰기
+python -m photo_cropper.cli -i ./scans -o ./cropped --skip-processed
 
 # 옵션 확인
 python -m photo_cropper.cli --help
@@ -131,6 +145,9 @@ python -m photo_cropper.cli --help
 - **품질 조절**: JPG/WEBP 품질 (1-100), PNG 압축 (0-9)
 - **그레이스케일/노이즈 제거/선명도 향상**
 
+> 참고: 파일명 규칙/타임스탬프를 사용하는 경우 `skip processed` 판별은 출력 파일명 기준입니다.
+> 파일명에 시간이 포함되면 이전 처리본을 완전히 탐지하지 못할 수 있습니다.
+
 ## 📁 프로젝트 구조
 
 ```
@@ -173,7 +190,7 @@ pip install pyinstaller
 pyinstaller photo_cropper.spec --clean
 ```
 
-빌드된 실행 파일: `dist/SmartPhotoCropper_v85.exe`
+빌드된 실행 파일: `dist/PhotoCropper_v9.exe`
 
 ### 추가 경량화 (UPX)
 

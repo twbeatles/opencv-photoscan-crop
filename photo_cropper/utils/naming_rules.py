@@ -111,7 +111,8 @@ class NamingRuleEngine:
     def generate_name(self, original_path: str,
                      output_dir: Optional[str] = None,
                      output_format: Optional[str] = None,
-                     index: Optional[int] = None) -> str:
+                     index: Optional[int] = None,
+                     ensure_unique: bool = True) -> str:
         """
         Generate output filename based on rules.
         
@@ -161,7 +162,8 @@ class NamingRuleEngine:
         final_path = os.path.join(out_dir, new_name + out_ext)
         
         # Ensure uniqueness
-        final_path = self._ensure_unique(final_path)
+        if ensure_unique:
+            final_path = self._ensure_unique(final_path)
         
         return final_path
     
