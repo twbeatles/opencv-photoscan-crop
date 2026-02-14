@@ -336,6 +336,7 @@ class MainWindow(QMainWindow):
     def _setup_toolbar(self):
         """Create modern toolbar with glassmorphism styling."""
         toolbar = QToolBar("메인 도구모음")
+        toolbar.setObjectName("mainToolBar")
         toolbar.setMovable(False)
         toolbar.setIconSize(QSize(24, 24))
         toolbar.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)

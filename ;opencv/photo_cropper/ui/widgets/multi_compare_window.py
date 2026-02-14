@@ -346,6 +346,7 @@ class MultiCompareWindow(QMainWindow):
     def _setup_toolbar(self):
         """Create toolbar."""
         toolbar = QToolBar("도구")
+        toolbar.setObjectName("compareToolBar")
         self.addToolBar(toolbar)
         
         # Layout selector
