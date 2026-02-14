@@ -1,0 +1,16 @@
+# Build artifacts
+;opencv/build/
+;opencv/dist/
+
+# Python caches
+**/__pycache__/
+**/*.pyc
+
+# Ruff cache
+;opencv/.ruff_cache/
+
+# Misc
+.pytest_cache/
+.mypy_cache/
+.venv/
+venv/
