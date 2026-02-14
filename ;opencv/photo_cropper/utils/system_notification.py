@@ -184,15 +184,16 @@ class SystemNotification:
     def _show_fallback(self, title: str, message: str,
                        notification_type: NotificationType):
         """Show fallback notification (console)."""
-        type_emoji = {
-            NotificationType.SUCCESS: "✅",
-            NotificationType.ERROR: "❌",
-            NotificationType.WARNING: "⚠️",
-            NotificationType.INFO: "ℹ️"
+        # Avoid emojis here: Windows console encoding may not support them.
+        type_tag = {
+            NotificationType.SUCCESS: "[OK]",
+            NotificationType.ERROR: "[ERROR]",
+            NotificationType.WARNING: "[WARN]",
+            NotificationType.INFO: "[INFO]",
         }
-        
-        emoji = type_emoji.get(notification_type, "📢")
-        logger.info(f"{emoji} {title}: {message}")
+
+        tag = type_tag.get(notification_type, "[INFO]")
+        logger.info(f"{tag} {title}: {message}")
     
     def _play_sound(self, notification_type: NotificationType):
         """Play notification sound."""

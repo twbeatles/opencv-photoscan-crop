@@ -1609,6 +1609,12 @@ class MainWindow(QMainWindow):
         self.auto_processor = AutoProcessor(
             watch_path=input_path,
             output_path=output_path,
+            recursive=getattr(self._settings, "watch_mode", None)
+            and self._settings.watch_mode.recursive
+            or False,
+            debounce_ms=getattr(self._settings, "watch_mode", None)
+            and self._settings.watch_mode.debounce_ms
+            or 500,
             process_callback=self._process_watched_file,
             parent=self,
         )

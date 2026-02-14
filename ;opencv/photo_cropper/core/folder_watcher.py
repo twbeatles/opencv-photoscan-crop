@@ -335,6 +335,8 @@ class AutoProcessor(QObject):
         self,
         watch_path: Optional[str] = None,
         output_path: Optional[str] = None,
+        recursive: bool = False,
+        debounce_ms: int = 500,
         process_callback: Optional[Callable[[str, str], bool]] = None,
         parent: Optional[QObject] = None,
     ):
@@ -353,7 +355,12 @@ class AutoProcessor(QObject):
         self._output_path = output_path
         self._process_callback = process_callback
 
-        self._watcher = FolderWatcher(watch_path, parent=self)
+        self._watcher = FolderWatcher(
+            watch_path,
+            recursive=recursive,
+            debounce_ms=debounce_ms,
+            parent=self,
+        )
         self._watcher.new_file_detected.connect(self._on_new_file)
 
         self._queue: List[str] = []
@@ -363,8 +370,8 @@ class AutoProcessor(QObject):
 
         # File readiness tracking to avoid processing partially-copied files.
         self._file_states: dict[str, dict] = {}
-        self._stable_window_s = 0.8
-        self._retry_interval_ms = 400
+        self._stable_window_s = max(0.5, debounce_ms / 1000.0)
+        self._retry_interval_ms = max(200, int(debounce_ms * 0.8))
         self._max_wait_s = 30.0
 
         # Process timer for queue
@@ -373,13 +380,23 @@ class AutoProcessor(QObject):
         self._process_timer.timeout.connect(self._process_next)
 
     def start(
-        self, watch_path: Optional[str] = None, output_path: Optional[str] = None
+        self,
+        watch_path: Optional[str] = None,
+        output_path: Optional[str] = None,
+        recursive: Optional[bool] = None,
+        debounce_ms: Optional[int] = None,
     ) -> bool:
         """Start auto processing."""
         if watch_path:
             self._watch_path = watch_path
         if output_path:
             self._output_path = output_path
+        if recursive is not None:
+            self._watcher._recursive = bool(recursive)
+        if debounce_ms is not None:
+            self._watcher._debounce_ms = int(debounce_ms)
+            self._stable_window_s = max(0.5, int(debounce_ms) / 1000.0)
+            self._retry_interval_ms = max(200, int(int(debounce_ms) * 0.8))
 
         self._halted = False
 

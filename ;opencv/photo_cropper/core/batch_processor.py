@@ -357,7 +357,7 @@ class BatchProcessor:
                 )
                 return resize_result.image
         except Exception as e:
-            self._log(f"  ⚠️ 리사이즈 오류: {e}", "warning")
+            self._log(f"  리사이즈 오류: {e}", "warning")
 
         return image
 
@@ -413,7 +413,7 @@ class BatchProcessor:
                     color=color_bgr,
                     opacity=self.settings.watermark.opacity,
                 )
-                self._log("  💧 타일 워터마크 적용", "info")
+                self._log("  타일 워터마크 적용", "info")
                 return image
 
             # Image watermark
@@ -426,7 +426,7 @@ class BatchProcessor:
                     margin=self.settings.watermark.margin,
                 )
                 image = watermark_processor.apply_image_watermark(image, image_settings)
-                self._log("  💧 이미지 워터마크 적용", "info")
+                self._log("  이미지 워터마크 적용", "info")
 
             # Text watermark
             if self.settings.watermark.text:
@@ -442,12 +442,12 @@ class BatchProcessor:
                 )
                 image = watermark_processor.apply_text_watermark(image, text_settings)
                 self._log(
-                    f"  💧 텍스트 워터마크 적용: '{self.settings.watermark.text}'",
+                    f"  텍스트 워터마크 적용: '{self.settings.watermark.text}'",
                     "info",
                 )
 
         except Exception as e:
-            self._log(f"  ⚠️ 워터마크 오류: {e}", "warning")
+            self._log(f"  워터마크 오류: {e}", "warning")
 
         return image
 
@@ -509,7 +509,7 @@ class BatchProcessor:
             return adjusted
 
         except Exception as e:
-            self._log(f"  ⚠️ 얼굴 보정 오류: {e}", "warning")
+            self._log(f"  얼굴 보정 오류: {e}", "warning")
             return image
 
     def _resolve_output_dir_for_classification(
@@ -554,7 +554,7 @@ class BatchProcessor:
             )
             return classified_output_dir
         except Exception as e:
-            self._log(f"  ⚠️ 이미지 분류 오류: {e}", "warning")
+            self._log(f"  이미지 분류 오류: {e}", "warning")
             return output_dir
 
     def _safe_callback(self, callback: Optional[Callable], *args, **kwargs):
@@ -1142,7 +1142,7 @@ class BatchProcessor:
             ):
                 if not self._skip_processed_notice_shown:
                     self._log(
-                        "⚠️ 현재 파일명 규칙/타임스탬프 설정으로는 정확한 중복 여부 판별이 어렵습니다.",
+                        "현재 파일명 규칙/타임스탬프 설정으로는 정확한 중복 여부 판별이 어렵습니다.",
                         "warning",
                     )
                     self._skip_processed_notice_shown = True
