@@ -1,18 +1,8 @@
-# 📸 사진 자동 자르기 (Photo Cropper) v9.0
+# Photo Cropper v9.0
 
-스캔된 사진이나 배경 위에 놓인 사진을 자동으로 감지하여 정확하게 자르는 Python 애플리케이션입니다.
+This repository's latest version lives under `;opencv/`.
 
-## ✨ 주요 기능
-
-- **3단계+ 지능형 탐색 알고리즘**: 다양한 배경에서 높은 검출 성공률
-- **PyQt6 기반 현대적 UI**: 다크/라이트 테마, 토스트 알림
-- **실시간 미리보기**: 마우스 휠로 확대/축소, 드래그로 이동
-- **배치 처리**: 대량의 이미지를 한 번에 처리 (ETA 표시)
-- **멀티포토 감지**: 한 스캔에서 여러 사진 분리
-- **워터마크/리사이즈**: 텍스트·이미지 워터마크, 다양한 리사이즈
-- **다양한 출력 포맷**: JPG, PNG, WEBP 지원
-
-## 🚀 빠른 시작
+## Quick Start
 
 ```bash
 cd ";opencv"
@@ -20,15 +10,8 @@ pip install -r requirements.txt
 python run.py
 ```
 
-자세한 내용은 [;opencv/README.md](;opencv/README.md) 를 참고하세요.
+## Docs
 
-## 📋 변경 이력
+- Korean: `;opencv/README.md`
+- English: `;opencv/README_EN.md`
 
-### v9.0 (2026-01)
-- UI/UX 리팩토링 및 성능 최적화
-- 멀티포토 감지, 워터마크, 리사이즈, 폴더 감시
-- CLI 배치 처리 지원 및 다중 스레드 처리
-
-## 📄 라이선스
-
-MIT License
