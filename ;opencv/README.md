@@ -83,6 +83,9 @@ python run.py
 # 기본 사용
 python -m photo_cropper.cli --input ./scans --output ./cropped
 
+# 정확도 우선 + 디버그 저장
+python -m photo_cropper.cli -i ./scans -o ./cropped --detect-mode accurate --debug-detect
+
 # 워터마크 추가
 python -m photo_cropper.cli -i ./scans -o ./cropped --watermark "© 2026"
 
@@ -152,6 +155,8 @@ python -m photo_cropper.cli --help
 - **CLAHE**: 저대비 이미지 향상
 - **다중 스케일**: 다양한 크기의 사진 감지
 - **코너 검출**: 추가적인 정확도 향상
+- **검출 모드 (fast/balanced/accurate)**: 속도/정확도 트레이드오프 프리셋
+- **검출 디버그 저장**: `_debug` 폴더에 엣지/마스크/후보 오버레이/`meta.json` 저장 (실패 원인 분석용)
 
 ### 출력 설정
 - **출력 포맷**: JPG, PNG, WEBP

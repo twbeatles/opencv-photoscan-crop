@@ -137,6 +137,7 @@ class BatchProcessor:
             self.settings.processing,
             self.settings.advanced,  # v9.0: Include advanced processing settings
             self.settings.performance,
+            debug_settings=self.settings.debug,
         )
 
         self._progress = BatchProgress()
@@ -216,6 +217,7 @@ class BatchProcessor:
             settings.processing,
             settings.advanced,  # v9.0: Include advanced processing settings
             settings.performance,
+            settings.debug,
         )
 
         # v9.0: Reset lazy-initialized processors so they use new settings
@@ -1107,6 +1109,7 @@ class BatchProcessor:
                 self.settings.processing,
                 self.settings.advanced,
                 self.settings.performance,
+                debug_settings=self.settings.debug,
             )
 
         # Size filtering
@@ -1199,7 +1202,12 @@ class BatchProcessor:
                 self._log(f"  멀티포토 처리 오류: {e}, 단일 모드로 전환", "warning")
 
         # Process image (standard single-photo mode)
-        result = processor.process_image(input_path)
+        debug_base = output_dir if self.settings.debug.enabled else None
+        result = processor.process_image(
+            input_path,
+            debug_dir=debug_base,
+            debug_tag="batch",
+        )
 
         processing_time = (time.time() - start_time) * 1000
 
@@ -1320,7 +1328,12 @@ class BatchProcessor:
         if not detection_result.success or detection_result.total_found == 0:
             self._log(f"  멀티포토: 사진 감지 안됨, 단일 모드로 처리", "info")
             # Fall through to standard processing
-            result = processor.process_image(input_path)
+            debug_base = output_dir if self.settings.debug.enabled else None
+            result = processor.process_image(
+                input_path,
+                debug_dir=debug_base,
+                debug_tag="multi_photo_fallback",
+            )
             processing_time = (time.time() - start_time) * 1000
 
             if result.success and result.image is not None:

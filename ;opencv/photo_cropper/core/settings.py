@@ -47,6 +47,13 @@ class OutputFormat(Enum):
 @dataclass
 class AlgorithmSettings:
     """Algorithm-related settings."""
+
+    # Detection mode presets (trade accuracy vs speed)
+    # - fast: minimize extra scoring/fallbacks
+    # - balanced: enable robust quad scoring + background-mask fallback
+    # - accurate: enable heavier fallbacks (e.g., Hough) and stricter scoring
+    detection_mode: str = "balanced"
+
     # Canny edge detection
     canny_min: int = 50
     canny_max: int = 150
@@ -73,6 +80,9 @@ class AlgorithmSettings:
     
     def __post_init__(self):
         """Validate and clamp settings to valid ranges."""
+        if self.detection_mode not in ("fast", "balanced", "accurate"):
+            self.detection_mode = "balanced"
+
         # Canny thresholds: 1-255, min < max
         self.canny_min = max(1, min(254, self.canny_min))
         self.canny_max = max(2, min(255, self.canny_max))
@@ -158,6 +168,17 @@ class UISettings:
     auto_preview: bool = True
     confirm_before_process: bool = True
     open_output_on_complete: bool = False  # Auto-open output folder after batch
+
+
+@dataclass
+class DebugSettings:
+    """Debug output settings (for detection/cropping diagnostics)."""
+
+    enabled: bool = False
+    save_detection_stages: bool = True
+    save_candidate_overlays: bool = True
+    output_dir: str = ""  # Optional. If empty, a default is chosen per caller.
+    max_files: int = 200  # Max number of debug folders to keep (best-effort pruning).
 
 
 @dataclass
@@ -359,6 +380,7 @@ class AppSettings:
     output: OutputSettings = field(default_factory=OutputSettings)
     filter: FilterSettings = field(default_factory=FilterSettings)
     ui: UISettings = field(default_factory=UISettings)
+    debug: DebugSettings = field(default_factory=DebugSettings)
     
     # v8.0 settings
     advanced: AdvancedProcessingSettings = field(default_factory=AdvancedProcessingSettings)
@@ -390,6 +412,7 @@ class AppSettings:
             "output": asdict(self.output),
             "filter": asdict(self.filter),
             "ui": asdict(self.ui),
+            "debug": asdict(self.debug),
             "advanced": asdict(self.advanced),
             "file_management": asdict(self.file_management),
             "performance": asdict(self.performance),
@@ -443,6 +466,13 @@ class AppSettings:
             )
         except TypeError:
             ui = UISettings()
+
+        try:
+            debug = DebugSettings(
+                **_filter_dataclass_kwargs(DebugSettings, data.get("debug", {}))
+            )
+        except TypeError:
+            debug = DebugSettings()
         
         # v8.0 settings
         try:
@@ -546,6 +576,7 @@ class AppSettings:
             output=output,
             filter=filter_settings,
             ui=ui,
+            debug=debug,
             advanced=advanced,
             file_management=file_management,
             performance=performance,

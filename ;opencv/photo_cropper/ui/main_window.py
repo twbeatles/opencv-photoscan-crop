@@ -113,6 +113,7 @@ class MainWindow(QMainWindow):
             self._settings.processing,
             self._settings.advanced,  # v9.0: Include advanced processing settings
             self._settings.performance,
+            debug_settings=self._settings.debug,
         )
         self.batch_processor: Optional[BatchProcessor] = None
         self.watch_batch_processor: Optional[BatchProcessor] = None
@@ -662,6 +663,7 @@ class MainWindow(QMainWindow):
             settings.processing,
             settings.advanced,  # v9.0: Include advanced processing settings
             settings.performance,
+            settings.debug,
         )
 
         # Apply theme
@@ -682,6 +684,7 @@ class MainWindow(QMainWindow):
             settings.processing,
             settings.advanced,  # v9.0: Include advanced processing settings
             settings.performance,
+            settings.debug,
         )
 
         if self.watch_batch_processor:
@@ -904,7 +907,12 @@ class MainWindow(QMainWindow):
             self._last_original = original.copy()  # Store for comparison
 
         # Process image
-        result = self.image_processor.process_image(self._current_image_path)
+        debug_base = "" if self._settings.debug.enabled else None
+        result = self.image_processor.process_image(
+            self._current_image_path,
+            debug_dir=debug_base,
+            debug_tag="preview",
+        )
 
         if result.success and result.image is not None:
             self.preview_widget.set_processed_image(result.image)
@@ -1546,6 +1554,8 @@ class MainWindow(QMainWindow):
                     self._settings.algorithm,
                     self._settings.processing,
                     self._settings.advanced,
+                    self._settings.performance,
+                    self._settings.debug,
                 )
                 ToastManager.success(f"📋 '{profile}' 프로파일 적용됨")
                 self.status_label.setText(f"프로파일 적용: {profile}")
@@ -1565,6 +1575,8 @@ class MainWindow(QMainWindow):
                 self._settings.algorithm,
                 self._settings.processing,
                 self._settings.advanced,
+                self._settings.performance,
+                self._settings.debug,
             )
             self.status_label.setText(f"'{preset_name}' 프리셋 적용됨")
             ToastManager.success(f"🎨 {preset_name} 프리셋 적용")

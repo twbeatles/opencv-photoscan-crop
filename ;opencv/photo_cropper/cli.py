@@ -111,6 +111,26 @@ Examples:
         action='store_true',
         help='Enable Harris corner detection'
     )
+
+    # Detection mode + debug (v9.x accuracy)
+    parser.add_argument(
+        '--detect-mode',
+        choices=['fast', 'balanced', 'accurate'],
+        default='balanced',
+        help='Detection mode preset (default: balanced)'
+    )
+
+    parser.add_argument(
+        '--debug-detect',
+        action='store_true',
+        help='Save detection debug artifacts (stage images, overlays, meta.json)'
+    )
+
+    parser.add_argument(
+        '--debug-dir',
+        default='',
+        help='Directory to store debug artifacts (default: output/_debug or TEMP)'
+    )
     
     # Post-processing options
     parser.add_argument(
@@ -304,6 +324,7 @@ def process_batch(args) -> int:
     from photo_cropper.core.settings import (
         AppSettings,
         AlgorithmSettings,
+        DebugSettings,
         ProcessingSettings,
         OutputSettings,
         WatermarkSettings,
@@ -332,6 +353,7 @@ def process_batch(args) -> int:
     
     # Build settings
     algorithm_settings = AlgorithmSettings(
+        detection_mode=args.detect_mode,
         canny_min=config.get('canny_min', args.canny_min),
         canny_max=config.get('canny_max', args.canny_max),
         use_clahe=not args.no_clahe,
@@ -395,10 +417,16 @@ def process_batch(args) -> int:
         thread_count=jobs
     )
 
+    debug_settings = DebugSettings(
+        enabled=bool(args.debug_detect),
+        output_dir=(args.debug_dir or "").strip(),
+    )
+
     settings = AppSettings(
         algorithm=algorithm_settings,
         processing=processing_settings,
         output=output_settings,
+        debug=debug_settings,
         watermark=watermark_settings,
         resize=resize_settings,
         filter=filter_settings,

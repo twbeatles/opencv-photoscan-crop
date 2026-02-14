@@ -87,6 +87,9 @@ python run.py
 # Basic usage
 python -m photo_cropper.cli --input ./scans --output ./cropped
 
+# Accuracy-first + debug artifacts
+python -m photo_cropper.cli -i ./scans -o ./cropped --detect-mode accurate --debug-detect
+
 # With watermark
 python -m photo_cropper.cli -i ./scans -o ./cropped --watermark "© 2026"
 
@@ -142,6 +145,8 @@ python -m photo_cropper.cli --help
 - **CLAHE**: Low contrast image enhancement
 - **Multi-scale**: Detect photos of various sizes
 - **Corner Detection**: Additional accuracy improvement
+- **Detection Mode (fast/balanced/accurate)**: Presets to trade speed vs accuracy (enables stronger fallbacks in accurate mode)
+- **Detection Debug Save**: Save stage images/overlays/`meta.json` under `_debug` for failure analysis
 
 ### Output Settings
 - **Output Format**: JPG, PNG, WEBP

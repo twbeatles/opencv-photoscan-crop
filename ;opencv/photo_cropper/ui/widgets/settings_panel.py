@@ -31,6 +31,7 @@ from PyQt6.QtGui import QWheelEvent
 from ...core.settings import (
     AppSettings,
     AlgorithmSettings,
+    DebugSettings,
     ProcessingSettings,
     OutputSettings,
     FilterSettings,
@@ -288,6 +289,42 @@ class SettingsPanel(QWidget):
 
         layout.addWidget(contour_group)
 
+        # Detection mode + debug (v9.x crop accuracy)
+        mode_group = QGroupBox("검출 모드 / 디버그")
+        mode_layout = QFormLayout(mode_group)
+
+        self.detect_mode_combo = NoScrollComboBox()
+        self.detect_mode_combo.addItems(["fast", "balanced", "accurate"])
+        self.detect_mode_combo.setCurrentText("balanced")
+        self.detect_mode_combo.currentTextChanged.connect(self._on_setting_changed)
+        mode_layout.addRow("검출 모드:", self.detect_mode_combo)
+
+        self.debug_detect_check = QCheckBox("검출 디버그 저장 (_debug 폴더)")
+        self.debug_detect_check.setToolTip(
+            "엣지/마스크/후보 오버레이 등 중간 결과를 저장해서 실패 원인 분석에 사용합니다."
+        )
+        self.debug_detect_check.stateChanged.connect(self._on_setting_changed)
+        mode_layout.addRow(self.debug_detect_check)
+
+        debug_path_row = QWidget()
+        debug_path_layout = QHBoxLayout(debug_path_row)
+        debug_path_layout.setContentsMargins(0, 0, 0, 0)
+
+        self.debug_output_dir_edit = QLineEdit()
+        self.debug_output_dir_edit.setPlaceholderText(
+            r"(선택) 디버그 폴더. 비우면 출력폴더/_debug 또는 %TEMP%/PhotoCropper/_debug"
+        )
+        self.debug_output_dir_edit.textChanged.connect(self._on_setting_changed)
+
+        debug_browse_btn = QPushButton("Browse...")
+        debug_browse_btn.clicked.connect(self._browse_debug_output_dir)
+
+        debug_path_layout.addWidget(self.debug_output_dir_edit)
+        debug_path_layout.addWidget(debug_browse_btn)
+        mode_layout.addRow("디버그 폴더:", debug_path_row)
+
+        layout.addWidget(mode_group)
+
         # Hint
         hint_label = QLabel("""💡 조정 가이드:
 • 흰색/밝은 배경: 기본값 (50-150) 권장
@@ -440,6 +477,9 @@ class SettingsPanel(QWidget):
     def _build_settings(self) -> AppSettings:
         """Build AppSettings from current UI state."""
         algorithm = AlgorithmSettings(
+            detection_mode=getattr(self, "detect_mode_combo", None)
+            and self.detect_mode_combo.currentText()
+            or "balanced",
             canny_min=self.canny_min_slider.value(),
             canny_max=self.canny_max_slider.value(),
             use_clahe=self.use_clahe_check.isChecked(),
@@ -484,6 +524,15 @@ class SettingsPanel(QWidget):
             language=language,
             auto_preview=self.auto_preview_check.isChecked(),
             show_contour_overlay=self.contour_overlay_check.isChecked(),
+        )
+
+        debug = DebugSettings(
+            enabled=getattr(self, "debug_detect_check", None)
+            and self.debug_detect_check.isChecked()
+            or False,
+            output_dir=getattr(self, "debug_output_dir_edit", None)
+            and self.debug_output_dir_edit.text().strip()
+            or "",
         )
 
         # v8.5 settings
@@ -611,6 +660,7 @@ class SettingsPanel(QWidget):
             output=output,
             filter=filter_settings,
             ui=ui,
+            debug=debug,
             advanced=advanced,
             file_management=file_management,
             performance=performance,
@@ -641,6 +691,16 @@ class SettingsPanel(QWidget):
         index = self.scoring_combo.findText(settings.algorithm.contour_scoring)
         if index >= 0:
             self.scoring_combo.setCurrentIndex(index)
+
+        if hasattr(self, "detect_mode_combo"):
+            idx = self.detect_mode_combo.findText(getattr(settings.algorithm, "detection_mode", "balanced"))
+            if idx >= 0:
+                self.detect_mode_combo.setCurrentIndex(idx)
+
+        if hasattr(self, "debug_detect_check") and hasattr(settings, "debug"):
+            self.debug_detect_check.setChecked(bool(settings.debug.enabled))
+        if hasattr(self, "debug_output_dir_edit") and hasattr(settings, "debug"):
+            self.debug_output_dir_edit.setText(getattr(settings.debug, "output_dir", "") or "")
 
         # Processing
         self.auto_contrast_check.setChecked(settings.processing.auto_contrast)
@@ -867,6 +927,19 @@ class SettingsPanel(QWidget):
             )
             if path:
                 self.watermark_font_path_edit.setText(path)
+        except Exception:
+            pass
+
+    def _browse_debug_output_dir(self):
+        """Browse for a directory to store detection debug artifacts."""
+        try:
+            path = QFileDialog.getExistingDirectory(
+                self,
+                "디버그 폴더 선택",
+                "",
+            )
+            if path:
+                self.debug_output_dir_edit.setText(path)
         except Exception:
             pass
 

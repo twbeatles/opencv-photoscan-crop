@@ -17,6 +17,9 @@ import cv2
 import numpy as np
 import logging
 import traceback
+import json
+import time
+import math
 from typing import Optional, Tuple, List
 from dataclasses import dataclass
 from enum import Enum
@@ -26,6 +29,7 @@ from .settings import (
     ProcessingSettings,
     AdvancedProcessingSettings,
     PerformanceSettings,
+    DebugSettings,
 )
 from .advanced_processing import AdvancedImageProcessor, GPUAccelerator
 
@@ -37,9 +41,11 @@ class DetectionStage(Enum):
 
     CANNY = "Canny Edge"
     MULTI_SCALE_CANNY = "Multi-Scale Canny"
+    BACKGROUND_MASK = "Background Mask"
     ADAPTIVE_THRESHOLD = "Adaptive Threshold"
     GRADIENT_SOBEL = "Gradient (Sobel)"
     CORNER_HARRIS = "Harris Corners"
+    HOUGH_RECT = "Hough Rectangle"
 
 
 @dataclass
@@ -51,6 +57,8 @@ class CropResult:
     message: str = ""
     detection_stage: Optional[DetectionStage] = None
     contour_points: Optional[np.ndarray] = None
+    confidence: float = 0.0
+    debug_dir: Optional[str] = None
     original_size: Tuple[int, int] = (0, 0)
     cropped_size: Tuple[int, int] = (0, 0)
 
@@ -92,6 +100,7 @@ class ImageProcessor:
         processing_settings: Optional[ProcessingSettings] = None,
         advanced_settings: Optional[AdvancedProcessingSettings] = None,
         performance_settings: Optional[PerformanceSettings] = None,
+        debug_settings: Optional[DebugSettings] = None,
     ):
         """
         Initialize image processor.
@@ -105,6 +114,7 @@ class ImageProcessor:
         self.proc = processing_settings or ProcessingSettings()
         self.advanced = advanced_settings or AdvancedProcessingSettings()
         self.performance = performance_settings or PerformanceSettings()
+        self.debug = debug_settings or DebugSettings()
 
         # v8.0: Advanced processor
         self._advanced_processor = AdvancedImageProcessor(
@@ -126,6 +136,7 @@ class ImageProcessor:
         processing_settings: Optional[ProcessingSettings] = None,
         advanced_settings: Optional[AdvancedProcessingSettings] = None,
         performance_settings: Optional[PerformanceSettings] = None,
+        debug_settings: Optional[DebugSettings] = None,
     ):
         """Update processor settings."""
         if algorithm_settings:
@@ -141,6 +152,8 @@ class ImageProcessor:
                 self._advanced_processor = AdvancedImageProcessor(
                     use_gpu=self.performance.use_gpu
                 )
+        if debug_settings:
+            self.debug = debug_settings
 
     @staticmethod
     def rotate_image(image: np.ndarray, angle: int) -> np.ndarray:
@@ -252,59 +265,147 @@ class ImageProcessor:
         self._clahe_settings_cache = (clip_limit, grid_size)
         return self._clahe_custom
 
-    def score_contour(self, contour: np.ndarray, image_area: int) -> float:
-        """
-        Score a contour based on multiple criteria.
+    def _quad_is_convex(self, quad: np.ndarray) -> bool:
+        try:
+            cnt = quad.reshape((-1, 1, 2)).astype(np.int32)
+            return bool(cv2.isContourConvex(cnt))
+        except Exception:
+            return False
 
-        Scoring criteria:
-            - Shape (prefer rectangles)
-            - Area ratio (prefer reasonable sizes)
-            - Convexity (prefer convex shapes)
-            - Aspect ratio (prefer photo-like ratios)
-
-        Args:
-            contour: Contour to score
-            image_area: Total image area
-
-        Returns:
-            Score between 0.0 and 1.0
-        """
-        area = cv2.contourArea(contour)
-        if area < 100:
+    def _quad_area(self, quad: np.ndarray) -> float:
+        try:
+            return float(cv2.contourArea(quad.reshape((-1, 1, 2)).astype(np.float32)))
+        except Exception:
             return 0.0
 
-        perimeter = cv2.arcLength(contour, True)
-        approx = cv2.approxPolyDP(contour, 0.02 * perimeter, True)
+    def _quad_min_side(self, quad: np.ndarray) -> float:
+        q = quad.reshape((4, 2)).astype(np.float32)
+        d = []
+        for i in range(4):
+            p1 = q[i]
+            p2 = q[(i + 1) % 4]
+            d.append(float(np.linalg.norm(p1 - p2)))
+        return min(d) if d else 0.0
 
-        # Shape score (4 vertices = rectangle)
-        if len(approx) == 4:
-            shape_score = 1.0
-        elif len(approx) in [3, 5, 6]:
-            shape_score = 0.3
-        else:
-            shape_score = 0.0
+    def _angle_score(self, quad: np.ndarray) -> float:
+        """
+        Score how close the quad's corner angles are to 90 degrees.
+        Returns 0..1.
+        """
+        q = quad.reshape((4, 2)).astype(np.float32)
+        q = self.order_points(q)
+        scores = []
+        for i in range(4):
+            p = q[i]
+            p_prev = q[(i - 1) % 4]
+            p_next = q[(i + 1) % 4]
+            v1 = p_prev - p
+            v2 = p_next - p
+            n1 = float(np.linalg.norm(v1))
+            n2 = float(np.linalg.norm(v2))
+            if n1 == 0 or n2 == 0:
+                scores.append(0.0)
+                continue
+            cosang = float(np.clip(np.dot(v1, v2) / (n1 * n2), -1.0, 1.0))
+            ang = math.degrees(math.acos(cosang))
+            # 90deg -> 1.0, 45/135deg -> 0.0
+            scores.append(max(0.0, 1.0 - min(abs(ang - 90.0) / 45.0, 1.0)))
+        return float(sum(scores) / len(scores)) if scores else 0.0
 
-        # Area ratio score (prefer 10-80% of image)
-        area_ratio = area / image_area
-        if 0.1 <= area_ratio <= 0.8:
-            area_score = 1.0 - abs(0.4 - area_ratio)  # Prefer ~40%
-        elif 0.05 <= area_ratio < 0.1:
-            area_score = 0.5
-        elif 0.8 < area_ratio <= 0.95:
-            area_score = 0.3
-        else:
-            area_score = 0.0
+    def _edge_support_score(self, quad: np.ndarray, edge_image: Optional[np.ndarray]) -> float:
+        """
+        Sample points along quad edges and measure how often they land on an edge pixel.
+        Returns 0..1.
+        """
+        if edge_image is None:
+            return 0.0
+        if edge_image.ndim != 2:
+            return 0.0
 
-        # Convexity score
-        hull = cv2.convexHull(contour)
-        hull_area = cv2.contourArea(hull)
-        convexity = area / hull_area if hull_area > 0 else 0
-        convexity_score = convexity  # Higher is better
+        h, w = edge_image.shape[:2]
+        q = self.order_points(quad.reshape((4, 2)).astype(np.float32))
 
-        # Aspect ratio score
-        x, y, w, h = cv2.boundingRect(contour)
-        aspect = w / h if h > 0 else 0
-        # Prefer aspect ratios between 0.5 and 2.0 (typical photo ratios)
+        # Total samples are kept small for performance; accurate mode increases count.
+        samples_per_edge = 12 if self.algo.detection_mode == "fast" else (18 if self.algo.detection_mode == "balanced" else 28)
+        radius = 1 if self.algo.detection_mode != "accurate" else 2
+
+        hits = 0
+        total = 0
+
+        for i in range(4):
+            p1 = q[i]
+            p2 = q[(i + 1) % 4]
+            for t in np.linspace(0.0, 1.0, samples_per_edge, endpoint=True):
+                x = int(round(p1[0] + (p2[0] - p1[0]) * float(t)))
+                y = int(round(p1[1] + (p2[1] - p1[1]) * float(t)))
+                if x < 0 or y < 0 or x >= w or y >= h:
+                    continue
+                total += 1
+                x1 = max(0, x - radius)
+                y1 = max(0, y - radius)
+                x2 = min(w - 1, x + radius)
+                y2 = min(h - 1, y + radius)
+                if int(edge_image[y1 : y2 + 1, x1 : x2 + 1].max()) > 0:
+                    hits += 1
+
+        if total == 0:
+            return 0.0
+        return float(hits / total)
+
+    def _border_penalty(self, quad: np.ndarray, image_shape: Tuple[int, int]) -> float:
+        """
+        Penalize quads that sit too close to the outer border (common false positive: scanner frame).
+        Returns 0..1 (higher = worse).
+        """
+        h, w = image_shape[:2]
+        q = quad.reshape((4, 2)).astype(np.float32)
+        min_dist = float("inf")
+        for x, y in q:
+            min_dist = min(min_dist, float(x), float(y), float(w - 1 - x), float(h - 1 - y))
+        if not math.isfinite(min_dist):
+            return 0.0
+        margin = max(4.0, min(h, w) * 0.02)  # 2% of min dim
+        if min_dist >= margin:
+            return 0.0
+        return float(min(1.0, (margin - min_dist) / margin))
+
+    def _score_quad(
+        self,
+        quad: np.ndarray,
+        image_area: int,
+        edge_image: Optional[np.ndarray] = None,
+    ) -> float:
+        """
+        Score a quad (4 points) based on geometry + edge support.
+        Returns 0..1.
+        """
+        if quad is None or quad.size == 0:
+            return 0.0
+
+        quad = quad.reshape((4, 2)).astype(np.float32)
+        if not self._quad_is_convex(quad):
+            return 0.0
+
+        area = self._quad_area(quad)
+        if area <= 0:
+            return 0.0
+
+        area_ratio = area / float(image_area) if image_area > 0 else 0.0
+        if area_ratio <= 0:
+            return 0.0
+
+        # Area score respects min/max settings.
+        min_ratio = float(self.algo.min_area_ratio)
+        max_ratio = float(self.algo.max_area_ratio)
+        if not (min_ratio <= area_ratio <= max_ratio):
+            return 0.0
+        mid = (min_ratio + max_ratio) / 2.0
+        half = max(1e-6, (max_ratio - min_ratio) / 2.0)
+        area_score = max(0.0, 1.0 - abs(area_ratio - mid) / half)
+
+        # Aspect ratio (axis-aligned bbox) – broad preference for photo-like ratios.
+        x, y, w, h = cv2.boundingRect(quad.reshape((-1, 1, 2)).astype(np.float32))
+        aspect = (w / h) if h > 0 else 0.0
         if 0.5 <= aspect <= 2.0:
             aspect_score = 1.0 - abs(1.0 - aspect) * 0.5
         elif 0.3 <= aspect <= 3.0:
@@ -312,22 +413,79 @@ class ImageProcessor:
         else:
             aspect_score = 0.2
 
-        # Weighted combination
-        if self.algo.contour_scoring == "enhanced":
-            weights = {"shape": 0.35, "area": 0.25, "convexity": 0.20, "aspect": 0.20}
-        elif self.algo.contour_scoring == "strict":
-            weights = {"shape": 0.50, "area": 0.20, "convexity": 0.15, "aspect": 0.15}
-        else:  # basic
-            weights = {"shape": 0.40, "area": 0.30, "convexity": 0.15, "aspect": 0.15}
+        angle_score = self._angle_score(quad)
+        edge_support = self._edge_support_score(quad, edge_image)
+        border_penalty = self._border_penalty(quad, edge_image.shape[:2] if edge_image is not None else (1, 1))
 
-        score = (
-            shape_score * weights["shape"]
-            + area_score * weights["area"]
-            + convexity_score * weights["convexity"]
+        # Penalize tiny quads.
+        min_side = self._quad_min_side(quad)
+        min_side_score = 1.0 if min_side >= 20 else max(0.0, min_side / 20.0)
+
+        # Weights depend on detection mode & scoring strictness.
+        mode = self.algo.detection_mode
+        if mode == "fast":
+            weights = {"area": 0.40, "aspect": 0.35, "angle": 0.15, "edge": 0.10}
+        elif mode == "accurate":
+            weights = {"area": 0.25, "aspect": 0.15, "angle": 0.30, "edge": 0.30}
+        else:  # balanced
+            weights = {"area": 0.30, "aspect": 0.20, "angle": 0.25, "edge": 0.25}
+
+        # Existing contour_scoring knob still matters; strict penalizes angle/edge failures harder.
+        if self.algo.contour_scoring == "strict":
+            border_weight = 0.20
+        elif self.algo.contour_scoring == "enhanced":
+            border_weight = 0.12
+        else:
+            border_weight = 0.08
+
+        base = (
+            area_score * weights["area"]
             + aspect_score * weights["aspect"]
+            + angle_score * weights["angle"]
+            + edge_support * weights["edge"]
         )
 
-        return score
+        base *= (0.70 + 0.30 * min_side_score)
+        base *= (1.0 - border_weight * border_penalty)
+        base *= (0.85 + 0.15 * min_side_score if mode != "fast" else 1.0)
+
+        return float(max(0.0, min(1.0, base)))
+
+    def _contour_to_quad_candidates(self, contour: np.ndarray) -> List[np.ndarray]:
+        """
+        Convert an arbitrary contour into one or more quad candidates.
+        """
+        if contour is None or len(contour) < 3:
+            return []
+
+        hull = cv2.convexHull(contour)
+        peri = cv2.arcLength(hull, True)
+        if peri <= 0:
+            return []
+
+        eps_factors = [0.01, 0.015, 0.02, 0.03, 0.04]
+        candidates: List[np.ndarray] = []
+        for f in eps_factors:
+            approx = cv2.approxPolyDP(hull, f * peri, True)
+            if approx is not None and len(approx) == 4:
+                candidates.append(approx.reshape((4, 2)).astype(np.float32))
+
+        # Rotated rectangle fallback
+        try:
+            rect = cv2.minAreaRect(hull)
+            box = cv2.boxPoints(rect)  # 4x2
+            if box is not None and len(box) == 4:
+                candidates.append(np.array(box, dtype=np.float32))
+        except Exception:
+            pass
+
+        # De-dup (rough)
+        uniq: List[np.ndarray] = []
+        for q in candidates:
+            qn = np.round(self.order_points(q), 1)
+            if not any(np.allclose(qn, np.round(self.order_points(u), 1)) for u in uniq):
+                uniq.append(q)
+        return uniq
 
     def find_best_contour(
         self,
@@ -335,67 +493,289 @@ class ImageProcessor:
         image_area: int,
         min_area_ratio: Optional[float] = None,
         max_area_ratio: Optional[float] = None,
-    ) -> Optional[np.ndarray]:
+    ) -> Tuple[Optional[np.ndarray], float, List[dict]]:
         """
-        Find the best rectangular contour from edge image.
-
-        Args:
-            edge_image: Binary edge image
-            image_area: Total image area
-            min_area_ratio: Minimum area ratio
-            max_area_ratio: Maximum area ratio
+        Find the best quad candidate from a binary edge/mask image.
 
         Returns:
-            Best contour (4 points) or None
+            (best_quad_points(4x2), best_score, candidates_for_debug)
         """
-        min_ratio = min_area_ratio or self.algo.min_area_ratio
-        max_ratio = max_area_ratio or self.algo.max_area_ratio
+        if edge_image is None or edge_image.size == 0:
+            return None, 0.0, []
 
         contours, _ = cv2.findContours(
             edge_image, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE
         )
-
         if not contours:
-            return None
+            return None, 0.0, []
 
-        # Sort by area, take top 15
-        contours = sorted(contours, key=cv2.contourArea, reverse=True)[:15]
+        top_n = 10 if self.algo.detection_mode == "fast" else (20 if self.algo.detection_mode == "balanced" else 35)
+        contours = sorted(contours, key=cv2.contourArea, reverse=True)[:top_n]
 
-        min_area = image_area * min_ratio
-        max_area = image_area * max_ratio
-
-        best_contour = None
+        best_quad = None
         best_score = 0.0
+        scored_candidates: List[dict] = []
+
+        # Temporary area ratio overrides (do not mutate settings).
+        orig_min = self.algo.min_area_ratio
+        orig_max = self.algo.max_area_ratio
+        if min_area_ratio is not None:
+            self.algo.min_area_ratio = float(min_area_ratio)
+        if max_area_ratio is not None:
+            self.algo.max_area_ratio = float(max_area_ratio)
 
         for contour in contours:
-            area = cv2.contourArea(contour)
-
-            # Filter by area
-            if not (min_area < area < max_area):
+            # Skip tiny contours quickly.
+            if cv2.contourArea(contour) < self.MIN_CONTOUR_AREA:
                 continue
 
-            # Approximate to polygon
-            perimeter = cv2.arcLength(contour, True)
-            approx = cv2.approxPolyDP(contour, 0.02 * perimeter, True)
+            for quad in self._contour_to_quad_candidates(contour):
+                score = self._score_quad(quad, image_area, edge_image=edge_image)
+                if score <= 0:
+                    continue
+                scored_candidates.append({"quad": quad, "score": float(score)})
+                if score > best_score:
+                    best_score = score
+                    best_quad = quad
 
-            # Only consider quadrilaterals
-            if len(approx) != 4:
+        scored_candidates.sort(key=lambda x: x["score"], reverse=True)
+        # Restore settings
+        self.algo.min_area_ratio = orig_min
+        self.algo.max_area_ratio = orig_max
+        return best_quad, float(best_score), scored_candidates[:10]
+
+    def _debug_enabled(self, debug_dir: Optional[str]) -> bool:
+        return bool(self.debug.enabled and debug_dir is not None)
+
+    def _resolve_debug_root(self, base_output_dir: Optional[str]) -> str:
+        """
+        Resolve debug root directory.
+
+        If DebugSettings.output_dir is set, use it.
+        Else if base_output_dir is a non-empty string, use {base_output_dir}/_debug.
+        Else use %TEMP%/PhotoCropper/_debug.
+        """
+        if self.debug.output_dir:
+            root = self.debug.output_dir
+        elif base_output_dir:
+            root = os.path.join(base_output_dir, "_debug")
+        else:
+            temp = os.environ.get("TEMP") or os.environ.get("TMP") or os.path.expanduser("~")
+            root = os.path.join(temp, "PhotoCropper", "_debug")
+        os.makedirs(root, exist_ok=True)
+        return root
+
+    def _prune_debug_root(self, root: str):
+        """Best-effort pruning of debug folders under root based on mtime."""
+        try:
+            max_keep = int(self.debug.max_files) if self.debug.max_files else 0
+            if max_keep <= 0:
+                return
+            entries = []
+            for name in os.listdir(root):
+                path = os.path.join(root, name)
+                if not os.path.isdir(path):
+                    continue
+                try:
+                    mtime = os.path.getmtime(path)
+                except Exception:
+                    mtime = 0
+                entries.append((mtime, path))
+            if len(entries) <= max_keep:
+                return
+            entries.sort(key=lambda x: x[0])  # oldest first
+            for _, path in entries[: max(0, len(entries) - max_keep)]:
+                try:
+                    # Remove directory recursively (best-effort)
+                    for root_dir, dirs, files in os.walk(path, topdown=False):
+                        for f in files:
+                            try:
+                                os.remove(os.path.join(root_dir, f))
+                            except Exception:
+                                pass
+                        for d in dirs:
+                            try:
+                                os.rmdir(os.path.join(root_dir, d))
+                            except Exception:
+                                pass
+                    os.rmdir(path)
+                except Exception:
+                    pass
+        except Exception:
+            pass
+
+    @staticmethod
+    def _save_debug_image(path: str, image: np.ndarray) -> bool:
+        """Save image to path with Unicode support (PNG)."""
+        try:
+            ext = os.path.splitext(path)[1].lower() or ".png"
+            if ext not in (".png", ".jpg", ".jpeg", ".webp", ".bmp"):
+                ext = ".png"
+                path = path + ext
+            ok, buf = cv2.imencode(ext, image)
+            if not ok:
+                return False
+            buf.tofile(path)
+            return True
+        except Exception:
+            return False
+
+    def _draw_candidates_overlay(
+        self,
+        base_bgr: np.ndarray,
+        candidates: List[dict],
+        final_quad: Optional[np.ndarray] = None,
+    ) -> np.ndarray:
+        overlay = base_bgr.copy()
+        colors = [
+            (255, 0, 0),
+            (0, 255, 0),
+            (0, 0, 255),
+            (255, 255, 0),
+            (255, 0, 255),
+            (0, 255, 255),
+        ]
+        for i, c in enumerate(candidates[:10]):
+            quad = c.get("quad")
+            if quad is None:
                 continue
+            pts = self.order_points(np.array(quad, dtype=np.float32)).astype(np.int32).reshape((-1, 1, 2))
+            color = colors[i % len(colors)]
+            cv2.polylines(overlay, [pts], True, color, 2)
+            cv2.putText(
+                overlay,
+                f"{i+1}:{c.get('score', 0.0):.2f}",
+                tuple(pts[0][0]),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.6,
+                color,
+                2,
+                cv2.LINE_AA,
+            )
+        if final_quad is not None:
+            pts = self.order_points(np.array(final_quad, dtype=np.float32)).astype(np.int32).reshape((-1, 1, 2))
+            cv2.polylines(overlay, [pts], True, (0, 180, 255), 3)
+        return overlay
 
-            # Check aspect ratio
-            x, y, w, h = cv2.boundingRect(approx)
-            aspect_ratio = w / h if h > 0 else 0
-            if not (0.1 < aspect_ratio < 10):
+    def _create_background_mask(self, gray: np.ndarray) -> np.ndarray:
+        """
+        Create a foreground mask based on corner background estimation.
+        Returns a binary image (uint8 0/255) where foreground is 255.
+        """
+        h, w = gray.shape[:2]
+        patch = max(10, min(20, min(h, w) // 20))
+
+        corners = [
+            gray[0:patch, 0:patch],
+            gray[0:patch, w - patch : w],
+            gray[h - patch : h, 0:patch],
+            gray[h - patch : h, w - patch : w],
+        ]
+        corner_mean = float(np.mean([np.mean(c) for c in corners]))
+        is_bright_bg = corner_mean >= 127.0
+
+        k = 30.0 if is_bright_bg else 30.0
+        if is_bright_bg:
+            thr = max(0.0, corner_mean - k)
+            mask = (gray < thr).astype(np.uint8) * 255
+        else:
+            thr = min(255.0, corner_mean + k)
+            mask = (gray > thr).astype(np.uint8) * 255
+
+        kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (5, 5))
+        mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel, iterations=2)
+        mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel, iterations=1)
+        return mask
+
+    @staticmethod
+    def _line_abc(x1: float, y1: float, x2: float, y2: float) -> Tuple[float, float, float]:
+        # Ax + By = C
+        a = y2 - y1
+        b = x1 - x2
+        c = a * x1 + b * y1
+        return a, b, c
+
+    @staticmethod
+    def _intersect(l1: Tuple[float, float, float], l2: Tuple[float, float, float]) -> Optional[Tuple[float, float]]:
+        a1, b1, c1 = l1
+        a2, b2, c2 = l2
+        det = a1 * b2 - a2 * b1
+        if abs(det) < 1e-6:
+            return None
+        x = (c1 * b2 - c2 * b1) / det
+        y = (a1 * c2 - a2 * c1) / det
+        return float(x), float(y)
+
+    def _detect_rectangle_by_hough(self, edges: np.ndarray) -> Optional[np.ndarray]:
+        """
+        Detect a rectangle using Hough lines as a fallback when contours are broken.
+        Returns quad points (4x2) or None.
+        """
+        if edges is None or edges.size == 0:
+            return None
+
+        h, w = edges.shape[:2]
+        lines = cv2.HoughLinesP(
+            edges,
+            rho=1,
+            theta=np.pi / 180.0,
+            threshold=80 if self.algo.detection_mode == "accurate" else 120,
+            minLineLength=max(30, min(h, w) // 6),
+            maxLineGap=15,
+        )
+        if lines is None or len(lines) == 0:
+            return None
+
+        horizontals = []
+        verticals = []
+        for l in lines[:500]:
+            x1, y1, x2, y2 = l[0]
+            dx = x2 - x1
+            dy = y2 - y1
+            length = math.hypot(dx, dy)
+            if length < 30:
                 continue
+            ang = abs(math.degrees(math.atan2(dy, dx)))
+            if ang < 15 or ang > 165:
+                y_mid = (y1 + y2) / 2.0
+                horizontals.append((length, y_mid, (x1, y1, x2, y2)))
+            elif 75 < ang < 105:
+                x_mid = (x1 + x2) / 2.0
+                verticals.append((length, x_mid, (x1, y1, x2, y2)))
 
-            # Score this contour
-            score = self.score_contour(contour, image_area)
+        if len(horizontals) < 2 or len(verticals) < 2:
+            return None
 
-            if score > best_score:
-                best_score = score
-                best_contour = approx
+        horizontals.sort(key=lambda t: t[0], reverse=True)
+        verticals.sort(key=lambda t: t[0], reverse=True)
 
-        return best_contour
+        # Take top candidates by length, then select extreme positions.
+        h_cand = horizontals[:30]
+        v_cand = verticals[:30]
+
+        top = min(h_cand, key=lambda t: t[1])
+        bottom = max(h_cand, key=lambda t: t[1])
+        left = min(v_cand, key=lambda t: t[1])
+        right = max(v_cand, key=lambda t: t[1])
+
+        # Reject degenerate selections (too close).
+        if abs(top[1] - bottom[1]) < h * 0.2:
+            return None
+        if abs(left[1] - right[1]) < w * 0.2:
+            return None
+
+        lt = self._intersect(self._line_abc(*left[2]), self._line_abc(*top[2]))
+        rt = self._intersect(self._line_abc(*right[2]), self._line_abc(*top[2]))
+        rb = self._intersect(self._line_abc(*right[2]), self._line_abc(*bottom[2]))
+        lb = self._intersect(self._line_abc(*left[2]), self._line_abc(*bottom[2]))
+        if not all([lt, rt, rb, lb]):
+            return None
+
+        quad = np.array([lt, rt, rb, lb], dtype=np.float32)
+        # Basic bounds check (allow slight out-of-bounds).
+        if np.any(np.isnan(quad)):
+            return None
+        return quad
 
     def detect_edges_multiscale(self, gray: np.ndarray) -> np.ndarray:
         """
@@ -439,21 +819,33 @@ class ImageProcessor:
 
         return edges
 
-    def process_image(self, image_path: str) -> CropResult:
+    def process_image(
+        self,
+        image_path: str,
+        *,
+        debug_dir: Optional[str] = None,
+        debug_tag: str = "",
+    ) -> CropResult:
         """
         Process image with multi-stage detection algorithm.
 
         Args:
             image_path: Path to input image
+            debug_dir: Base output directory for debug artifacts. If empty string, a default is chosen.
+            debug_tag: Optional tag recorded in debug meta.json.
 
         Returns:
             CropResult with processed image or error
         """
+
         try:
+            debug_enabled = self._debug_enabled(debug_dir)
+            debug_run_dir: Optional[str] = None
+
             # Load image
             image = self.load_image(image_path)
             if image is None:
-                return CropResult(False, message="이미지를 불러올 수 없습니다.")
+                return CropResult(False, message="Failed to load image.")
 
             height, width = image.shape[:2]
             original_size = (width, height)
@@ -461,29 +853,32 @@ class ImageProcessor:
             if height < 100 or width < 100:
                 return CropResult(
                     False,
-                    message="이미지 크기가 너무 작습니다 (최소 100x100).",
+                    message="Image is too small (min 100x100).",
                     original_size=original_size,
                 )
 
             orig = image.copy()
 
+            if debug_enabled:
+                root = self._resolve_debug_root(debug_dir if isinstance(debug_dir, str) else None)
+                self._prune_debug_root(root)
+                base = os.path.splitext(os.path.basename(image_path))[0] or "image"
+                debug_run_dir = os.path.join(root, base)
+                os.makedirs(debug_run_dir, exist_ok=True)
+
             # Resize for processing (performance optimization)
-            # Use a fixed size for detection to ensure consistent performance regardless of input size
             target_dim = 1000
             max_dim = max(height, width)
-
-            if max_dim > 1500:  # Only resize if significantly larger
+            if max_dim > 1500:
                 ratio = max_dim / target_dim
                 new_width = int(width / ratio)
                 new_height = int(height / ratio)
-                image_resized = cv2.resize(
-                    image, (new_width, new_height), interpolation=cv2.INTER_LINEAR
-                )
+                image_resized = cv2.resize(image, (new_width, new_height), interpolation=cv2.INTER_LINEAR)
             else:
                 ratio = 1.0
                 image_resized = image
 
-            image_area = image_resized.shape[0] * image_resized.shape[1]
+            image_area = int(image_resized.shape[0] * image_resized.shape[1])
 
             # Apply CLAHE for better contrast
             if self.algo.use_clahe:
@@ -491,25 +886,40 @@ class ImageProcessor:
 
             gray = cv2.cvtColor(image_resized, cv2.COLOR_BGR2GRAY)
 
-            screen_contour = None
-            detection_stage = None
+            best_quad: Optional[np.ndarray] = None
+            best_score: float = 0.0
+            best_candidates: List[dict] = []
+            detection_stage: Optional[DetectionStage] = None
 
             # ==========================================
             # Stage 1: Multi-scale Canny Edge Detection
             # ==========================================
             edges = self.detect_edges_multiscale(gray)
-            screen_contour = self.find_best_contour(edges, image_area)
-            if screen_contour is not None:
-                detection_stage = (
-                    DetectionStage.MULTI_SCALE_CANNY
-                    if self.algo.multi_scale_edge
-                    else DetectionStage.CANNY
-                )
+            quad, score, candidates = self.find_best_contour(edges, image_area)
+            if quad is not None:
+                best_quad, best_score, best_candidates = quad, score, candidates
+                detection_stage = DetectionStage.MULTI_SCALE_CANNY if self.algo.multi_scale_edge else DetectionStage.CANNY
+
+            if debug_enabled and debug_run_dir and self.debug.save_detection_stages:
+                self._save_debug_image(os.path.join(debug_run_dir, "stage_01_edges.png"), edges)
 
             # ==========================================
-            # Stage 2: Adaptive Threshold
+            # Stage 2: Background Mask (balanced/accurate)
             # ==========================================
-            if screen_contour is None:
+            if best_quad is None and self.algo.detection_mode in ("balanced", "accurate"):
+                bgmask = self._create_background_mask(gray)
+                quad, score, candidates = self.find_best_contour(bgmask, image_area)
+                if quad is not None:
+                    best_quad, best_score, best_candidates = quad, score, candidates
+                    detection_stage = DetectionStage.BACKGROUND_MASK
+
+                if debug_enabled and debug_run_dir and self.debug.save_detection_stages:
+                    self._save_debug_image(os.path.join(debug_run_dir, "stage_02_bgmask.png"), bgmask)
+
+            # ==========================================
+            # Stage 3: Adaptive Threshold
+            # ==========================================
+            if best_quad is None:
                 blurred_bilateral = cv2.bilateralFilter(gray, 9, 75, 75)
                 thresh = cv2.adaptiveThreshold(
                     blurred_bilateral,
@@ -519,61 +929,80 @@ class ImageProcessor:
                     15,
                     4,
                 )
-                screen_contour = self.find_best_contour(thresh, image_area)
-                if screen_contour is not None:
+                quad, score, candidates = self.find_best_contour(thresh, image_area)
+                if quad is not None:
+                    best_quad, best_score, best_candidates = quad, score, candidates
                     detection_stage = DetectionStage.ADAPTIVE_THRESHOLD
 
+                if debug_enabled and debug_run_dir and self.debug.save_detection_stages:
+                    self._save_debug_image(os.path.join(debug_run_dir, "stage_03_adaptive.png"), thresh)
+
             # ==========================================
-            # Stage 3: Gradient Analysis (Sobel)
+            # Stage 4: Gradient Analysis (Sobel)
             # ==========================================
-            if screen_contour is None:
+            if best_quad is None:
                 blurred = cv2.GaussianBlur(gray, (5, 5), 0)
                 grad_x = cv2.Sobel(blurred, ddepth=cv2.CV_32F, dx=1, dy=0, ksize=-1)
                 grad_y = cv2.Sobel(blurred, ddepth=cv2.CV_32F, dx=0, dy=1, ksize=-1)
                 gradient = cv2.subtract(grad_x, grad_y)
                 gradient = cv2.convertScaleAbs(gradient)
 
-                _, thresh_grad = cv2.threshold(
-                    gradient, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU
-                )
-
+                _, thresh_grad = cv2.threshold(gradient, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
                 kernel_morph = cv2.getStructuringElement(cv2.MORPH_RECT, (21, 21))
                 closed = cv2.morphologyEx(thresh_grad, cv2.MORPH_CLOSE, kernel_morph)
                 closed = cv2.erode(closed, None, iterations=4)
                 closed = cv2.dilate(closed, None, iterations=4)
 
-                screen_contour = self.find_best_contour(closed, image_area)
-                if screen_contour is not None:
+                quad, score, candidates = self.find_best_contour(closed, image_area)
+                if quad is not None:
+                    best_quad, best_score, best_candidates = quad, score, candidates
                     detection_stage = DetectionStage.GRADIENT_SOBEL
 
-            # ==========================================
-            # Stage 4: Harris Corner Detection (optional)
-            # ==========================================
-            if screen_contour is None and self.algo.use_corner_detection:
-                corners = cv2.cornerHarris(
-                    gray, self.algo.corner_block_size, 3, self.algo.corner_k
-                )
-                corners = cv2.dilate(corners, None)
+                if debug_enabled and debug_run_dir and self.debug.save_detection_stages:
+                    self._save_debug_image(os.path.join(debug_run_dir, "stage_04_sobel.png"), closed)
 
-                # Threshold corners
+            # ==========================================
+            # Stage 5: Harris Corner Detection (optional/accurate)
+            # ==========================================
+            should_use_corner = bool(self.algo.use_corner_detection or self.algo.detection_mode == "accurate")
+            if best_quad is None and should_use_corner:
+                corners = cv2.cornerHarris(gray, self.algo.corner_block_size, 3, self.algo.corner_k)
+                corners = cv2.dilate(corners, None)
                 threshold = 0.01 * corners.max()
                 corner_mask = np.zeros_like(gray)
                 corner_mask[corners > threshold] = 255
 
-                # Find contour from corner mask
-                screen_contour = self.find_best_contour(corner_mask, image_area)
-                if screen_contour is not None:
+                quad, score, candidates = self.find_best_contour(corner_mask, image_area)
+                if quad is not None:
+                    best_quad, best_score, best_candidates = quad, score, candidates
                     detection_stage = DetectionStage.CORNER_HARRIS
 
-            if screen_contour is None:
+                if debug_enabled and debug_run_dir and self.debug.save_detection_stages:
+                    self._save_debug_image(os.path.join(debug_run_dir, "stage_05_harris.png"), corner_mask)
+
+            # ==========================================
+            # Stage 6: Hough Rectangle (accurate, or final fallback in balanced)
+            # ==========================================
+            if best_quad is None and self.algo.detection_mode in ("balanced", "accurate"):
+                hquad = self._detect_rectangle_by_hough(edges)
+                if hquad is not None:
+                    hscore = self._score_quad(hquad, image_area, edge_image=edges)
+                    if hscore > 0:
+                        best_quad, best_score = hquad, float(hscore)
+                        best_candidates = [{"quad": hquad, "score": float(hscore)}]
+                        detection_stage = DetectionStage.HOUGH_RECT
+
+            if best_quad is None:
                 return CropResult(
                     False,
-                    message="사진 테두리를 찾지 못했습니다.",
+                    message="Failed to detect photo boundary.",
                     original_size=original_size,
+                    confidence=0.0,
+                    debug_dir=debug_run_dir,
                 )
 
-            # Scale contour back to original size
-            rect = self.order_points(screen_contour.reshape(4, 2) * ratio)
+            # Scale quad back to original size
+            rect = self.order_points(best_quad.reshape(4, 2) * ratio)
             (tl, tr, br, bl) = rect
 
             # Calculate output dimensions
@@ -588,15 +1017,19 @@ class ImageProcessor:
             if max_width <= 0 or max_height <= 0:
                 return CropResult(
                     False,
-                    message="검출된 영역 크기가 유효하지 않습니다.",
+                    message="Detected region has invalid size.",
                     original_size=original_size,
+                    confidence=float(best_score),
+                    debug_dir=debug_run_dir,
                 )
 
             if max_width < 50 or max_height < 50:
                 return CropResult(
                     False,
-                    message="검출된 영역이 너무 작습니다.",
+                    message="Detected region is too small.",
                     original_size=original_size,
+                    confidence=float(best_score),
+                    debug_dir=debug_run_dir,
                 )
 
             # Perspective transform
@@ -615,8 +1048,38 @@ class ImageProcessor:
 
             # Apply post-processing
             warped = self._apply_post_processing(warped)
-
             cropped_size = (warped.shape[1], warped.shape[0])
+
+            # Debug outputs (overlay + metadata)
+            if debug_enabled and debug_run_dir:
+                try:
+                    if self.debug.save_candidate_overlays:
+                        cand_overlay = self._draw_candidates_overlay(image_resized, best_candidates, final_quad=best_quad)
+                        self._save_debug_image(os.path.join(debug_run_dir, "candidates_overlay.png"), cand_overlay)
+                        final_overlay = self._draw_candidates_overlay(image_resized, [], final_quad=best_quad)
+                        self._save_debug_image(os.path.join(debug_run_dir, "final_overlay.png"), final_overlay)
+
+                    meta = {
+                        "image": os.path.basename(image_path),
+                        "debug_tag": debug_tag or "",
+                        "detection_mode": self.algo.detection_mode,
+                        "detection_stage": detection_stage.value if detection_stage else None,
+                        "confidence": float(best_score),
+                        "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S"),
+                        "candidates": [{"score": float(c.get("score", 0.0))} for c in (best_candidates or [])],
+                        "algo": {
+                            "canny_min": int(self.algo.canny_min),
+                            "canny_max": int(self.algo.canny_max),
+                            "use_clahe": bool(self.algo.use_clahe),
+                            "multi_scale_edge": bool(self.algo.multi_scale_edge),
+                            "min_area_ratio": float(self.algo.min_area_ratio),
+                            "max_area_ratio": float(self.algo.max_area_ratio),
+                        },
+                    }
+                    with open(os.path.join(debug_run_dir, "meta.json"), "w", encoding="utf-8") as f:
+                        json.dump(meta, f, indent=2, ensure_ascii=False)
+                except Exception:
+                    pass
 
             # Cleanup large variables
             del gray
@@ -630,22 +1093,23 @@ class ImageProcessor:
             return CropResult(
                 success=True,
                 image=warped,
-                message="성공",
+                message="OK",
                 detection_stage=detection_stage,
                 contour_points=rect,
+                confidence=float(best_score),
+                debug_dir=debug_run_dir,
                 original_size=original_size,
                 cropped_size=cropped_size,
             )
-
         except MemoryError:
             # Force garbage collection on memory error
             import gc
 
             gc.collect()
-            return CropResult(False, message="메모리 부족 - 이미지가 너무 큽니다.")
+            return CropResult(False, message="Out of memory.")
         except Exception as e:
             logger.error(f"Image processing error: {traceback.format_exc()}")
-            return CropResult(False, message=f"오류 발생: {str(e)}")
+            return CropResult(False, message=f"Error: {str(e)}")
 
     def _apply_post_processing(self, image: np.ndarray) -> np.ndarray:
         """
