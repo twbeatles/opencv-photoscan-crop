@@ -7,7 +7,6 @@ Provides image preview with zoom, pan, and contour overlay capabilities.
 """
 
 import numpy as np
-import cv2
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, 
     QGraphicsView, QGraphicsScene, QGraphicsPixmapItem,
@@ -41,12 +40,11 @@ def numpy_to_qimage(image: np.ndarray) -> QImage:
         # Copy to ensure QImage owns its data
         return qimage.copy()
     else:
-        # Color (BGR -> RGB) - make contiguous copy
+        # Color (BGR) - use native BGR888 format to avoid channel conversion.
         h, w, c = image.shape
-        rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-        rgb = np.ascontiguousarray(rgb)
+        bgr = np.ascontiguousarray(image)
         bytes_per_line = 3 * w
-        qimage = QImage(rgb.data, w, h, bytes_per_line, QImage.Format.Format_RGB888)
+        qimage = QImage(bgr.data, w, h, bytes_per_line, QImage.Format.Format_BGR888)
         # Copy to ensure QImage owns its data
         return qimage.copy()
 
@@ -173,6 +171,11 @@ class ImagePreviewWidget(QWidget):
         self._processed_image: np.ndarray = None
         self._contour_overlay: np.ndarray = None
         self._show_contour = True
+        self._pixmap_cache = {
+            "original": None,
+            "overlay": None,
+            "processed": None,
+        }
         
         self._setup_ui()
         self.show_placeholder()
@@ -201,6 +204,9 @@ class ImagePreviewWidget(QWidget):
         
         self.original_scene.addItem(self.original_pixmap_item)
         self.processed_scene.addItem(self.processed_pixmap_item)
+        self._pixmap_cache["original"] = None
+        self._pixmap_cache["overlay"] = None
+        self._pixmap_cache["processed"] = None
 
     def _setup_ui(self):
         """Setup UI components."""
@@ -335,6 +341,14 @@ class ImagePreviewWidget(QWidget):
         """
         self._original_image = image
         self._contour_overlay = contour_overlay
+        self._pixmap_cache["original"] = (
+            numpy_to_qpixmap(image) if image is not None else None
+        )
+        self._pixmap_cache["overlay"] = (
+            numpy_to_qpixmap(contour_overlay)
+            if contour_overlay is not None
+            else None
+        )
         self._update_original_display()
     
     def set_processed_image(self, image: np.ndarray):
@@ -345,23 +359,26 @@ class ImagePreviewWidget(QWidget):
             image: Processed/cropped image
         """
         self._processed_image = image
-        
-        if image is not None:
-            pixmap = numpy_to_qpixmap(image)
-            self.processed_pixmap_item.setPixmap(pixmap)
-            self.processed_scene.setSceneRect(pixmap.rect().toRectF())
+        self._pixmap_cache["processed"] = (
+            numpy_to_qpixmap(image) if image is not None else None
+        )
+
+        if self._pixmap_cache["processed"] is not None:
+            self.processed_pixmap_item.setPixmap(self._pixmap_cache["processed"])
+            self.processed_scene.setSceneRect(
+                self._pixmap_cache["processed"].rect().toRectF()
+            )
         else:
             self.processed_pixmap_item.setPixmap(QPixmap())
     
     def _update_original_display(self):
         """Update original image display based on contour toggle."""
-        if self._show_contour and self._contour_overlay is not None:
-            image = self._contour_overlay
+        if self._show_contour and self._pixmap_cache["overlay"] is not None:
+            pixmap = self._pixmap_cache["overlay"]
         else:
-            image = self._original_image
-        
-        if image is not None:
-            pixmap = numpy_to_qpixmap(image)
+            pixmap = self._pixmap_cache["original"]
+
+        if pixmap is not None:
             self.original_pixmap_item.setPixmap(pixmap)
             self.original_scene.setSceneRect(pixmap.rect().toRectF())
         else:
@@ -412,6 +429,9 @@ class ImagePreviewWidget(QWidget):
         self._original_image = None
         self._processed_image = None
         self._contour_overlay = None
+        self._pixmap_cache["original"] = None
+        self._pixmap_cache["overlay"] = None
+        self._pixmap_cache["processed"] = None
         
         self.show_placeholder()
     

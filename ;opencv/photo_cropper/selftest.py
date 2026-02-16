@@ -52,6 +52,142 @@ def _test_unicode_text_watermark() -> None:
         print("WARN: Unicode watermark produced no pixel changes (font fallback?)")
 
 
+def _test_preview_single_pass() -> None:
+    import os
+    import tempfile
+
+    import cv2
+    import numpy as np
+
+    from .core.image_processor import ImageProcessor
+    from .core.settings import AppSettings
+
+    settings = AppSettings()
+    processor = ImageProcessor(
+        settings.algorithm,
+        settings.processing,
+        settings.advanced,
+        settings.performance,
+        settings.debug,
+    )
+
+    calls = {"count": 0}
+    original_impl = processor._process_loaded_image
+
+    def wrapped(*args, **kwargs):
+        calls["count"] += 1
+        return original_impl(*args, **kwargs)
+
+    processor._process_loaded_image = wrapped
+
+    img = np.full((720, 960, 3), 240, dtype=np.uint8)
+    cv2.rectangle(img, (120, 120), (840, 620), (30, 30, 30), 6)
+    cv2.rectangle(img, (126, 126), (834, 614), (200, 200, 200), -1)
+
+    with tempfile.TemporaryDirectory(prefix="photocropper_preview_") as td:
+        path = os.path.join(td, "sample.png")
+        ok, buf = cv2.imencode(".png", img)
+        assert ok
+        buf.tofile(path)
+
+        preview = processor.process_preview(path, max_size=800)
+        assert preview.original_preview is not None
+        assert preview.overlay_preview is not None
+        assert preview.crop_result is not None
+        assert calls["count"] == 1, f"Expected single pass, got {calls['count']}"
+
+
+def _test_batch_thread_local_reuse() -> None:
+    import threading
+    from concurrent.futures import ThreadPoolExecutor
+
+    from .core.batch_processor import BatchProcessor
+    from .core.settings import AppSettings
+
+    settings = AppSettings()
+    settings.performance.enable_multithreading = True
+    settings.performance.thread_count = 4
+    settings.face_detection.enabled = True
+    settings.classification.enabled = True
+    settings.classification.auto_folder = True
+
+    processor = BatchProcessor(settings)
+
+    def worker_probe():
+        samples = []
+        for _ in range(3):
+            samples.append(
+                (
+                    id(processor._get_worker_processor()),
+                    id(processor._get_face_detector()),
+                    id(processor._get_classifier()),
+                )
+            )
+        first = samples[0]
+        assert all(item == first for item in samples), "Thread-local object churn detected"
+        return threading.get_ident(), first
+
+    with ThreadPoolExecutor(max_workers=4) as executor:
+        futures = [executor.submit(worker_probe) for _ in range(8)]
+        results = [f.result() for f in futures]
+
+    unique_processor_ids = {item[1][0] for item in results}
+    unique_face_ids = {item[1][1] for item in results}
+    unique_classifier_ids = {item[1][2] for item in results}
+
+    assert len(unique_processor_ids) <= settings.performance.thread_count
+    assert len(unique_face_ids) <= settings.performance.thread_count
+    assert len(unique_classifier_ids) <= settings.performance.thread_count
+
+
+def _test_settings_panel_performance_roundtrip() -> None:
+    import os
+
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    try:
+        from PyQt6.QtWidgets import QApplication
+    except Exception as e:
+        print(f"WARN: PyQt6 unavailable for settings panel test: {e}")
+        return
+
+    from .core.settings import AppSettings
+    from .ui.widgets.settings_panel import SettingsPanel
+
+    app = QApplication.instance()
+    owned_app = False
+    if app is None:
+        app = QApplication([])
+        owned_app = True
+
+    panel = SettingsPanel(AppSettings())
+    panel.max_threads_spin.setValue(7)
+    panel.low_mem_check.setChecked(True)
+
+    s1 = panel._build_settings()
+    assert s1.performance.thread_count == 7
+    assert s1.performance.enable_multithreading is True
+    assert s1.performance.max_image_size_mb == 50
+    assert s1.performance.downscale_large_images is True
+    assert abs(s1.performance.downscale_threshold_mp - 24.0) < 1e-6
+
+    panel.settings = s1
+    s2 = panel._build_settings()
+    assert s2.performance.thread_count == 7
+    assert s2.performance.max_image_size_mb == 50
+    assert abs(s2.performance.downscale_threshold_mp - 24.0) < 1e-6
+
+    panel.max_threads_spin.setValue(2)
+    panel.low_mem_check.setChecked(False)
+    s3 = panel._build_settings()
+    assert s3.performance.thread_count == 2
+    assert s3.performance.max_image_size_mb == 100
+    assert abs(s3.performance.downscale_threshold_mp - 50.0) < 1e-6
+
+    panel.deleteLater()
+    if owned_app:
+        app.quit()
+
+
 def _test_crop_accuracy_synthetic() -> None:
     import os
     import random
@@ -170,6 +306,9 @@ def main() -> int:
     try:
         _test_settings_forward_compat()
         _test_unicode_text_watermark()
+        _test_preview_single_pass()
+        _test_batch_thread_local_reuse()
+        _test_settings_panel_performance_roundtrip()
         _test_crop_accuracy_synthetic()
     except Exception as e:
         print(f"SELFTEST FAILED: {e}")

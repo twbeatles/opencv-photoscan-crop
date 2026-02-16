@@ -48,7 +48,7 @@ from PyQt6.QtWidgets import (
     QProgressBar,
     QStackedWidget,
 )
-from PyQt6.QtCore import Qt, QTimer, pyqtSlot, QSettings, QSize
+from PyQt6.QtCore import Qt, QTimer, pyqtSlot, pyqtSignal, QSettings, QSize, QObject, QThread
 from PyQt6.QtGui import QAction, QKeySequence, QDragEnterEvent, QDropEvent, QKeyEvent
 
 from .widgets.settings_panel import SettingsPanel
@@ -82,6 +82,37 @@ from ..utils.file_helpers import (
 logger = logging.getLogger(__name__)
 
 
+class PreviewWorker(QObject):
+    """Background preview worker running in a dedicated QThread."""
+
+    preview_ready = pyqtSignal(int, object)
+    preview_failed = pyqtSignal(int, str)
+
+    @pyqtSlot(int, str, object)
+    def process_preview(self, request_id: int, image_path: str, settings: object):
+        try:
+            if not image_path or not os.path.exists(image_path):
+                self.preview_failed.emit(request_id, "미리보기할 파일이 없습니다.")
+                return
+
+            app_settings = settings if isinstance(settings, AppSettings) else AppSettings()
+            processor = ImageProcessor(
+                app_settings.algorithm,
+                app_settings.processing,
+                app_settings.advanced,
+                app_settings.performance,
+                debug_settings=app_settings.debug,
+            )
+            preview_result = processor.process_preview(
+                image_path,
+                max_size=800,
+                debug_tag="preview",
+            )
+            self.preview_ready.emit(request_id, preview_result)
+        except Exception as e:
+            self.preview_failed.emit(request_id, str(e))
+
+
 class MainWindow(QMainWindow):
     """
     Main application window for Photo Cropper.
@@ -99,6 +130,10 @@ class MainWindow(QMainWindow):
 
     VERSION = "9.0"
     TITLE = f"📸 사진 자동 자르기 v{VERSION}"
+    preview_process_requested = pyqtSignal(int, str, object)
+    batch_progress_received = pyqtSignal(object)
+    batch_log_received = pyqtSignal(str, str)
+    batch_complete_received = pyqtSignal(object, object)
 
     def __init__(self):
         super().__init__()
@@ -134,11 +169,23 @@ class MainWindow(QMainWindow):
         self._preview_timer = QTimer()
         self._preview_timer.setSingleShot(True)
         self._preview_timer.timeout.connect(self._do_preview)
+        self._preview_request_id = 0
+        self._latest_preview_request_id = 0
+        self._preview_worker_thread: Optional[QThread] = None
+        self._preview_worker: Optional[PreviewWorker] = None
         self.progress_dialog: Optional[ProgressDialog] = None
 
         # Last processed result for comparison
         self._last_original: Optional[any] = None
         self._last_processed: Optional[any] = None
+
+        # Thread-safe callback bridges
+        self.batch_progress_received.connect(self._on_batch_progress)
+        self.batch_log_received.connect(self._on_batch_log)
+        self.batch_complete_received.connect(self._on_batch_complete)
+
+        # Preview worker
+        self._setup_preview_worker()
 
         # Setup UI
         self._setup_window()
@@ -172,6 +219,28 @@ class MainWindow(QMainWindow):
         self.move(
             (screen.width() - self.width()) // 2, (screen.height() - self.height()) // 2
         )
+
+    def _setup_preview_worker(self):
+        """Create background worker thread for preview processing."""
+        self._preview_worker_thread = QThread(self)
+        self._preview_worker = PreviewWorker()
+        self._preview_worker.moveToThread(self._preview_worker_thread)
+        self.preview_process_requested.connect(
+            self._preview_worker.process_preview,
+            Qt.ConnectionType.QueuedConnection,
+        )
+        self._preview_worker.preview_ready.connect(self._on_preview_ready)
+        self._preview_worker.preview_failed.connect(self._on_preview_failed)
+        self._preview_worker_thread.start()
+
+    def _teardown_preview_worker(self):
+        """Stop preview worker thread safely."""
+        if self._preview_worker_thread is None:
+            return
+        self._preview_worker_thread.quit()
+        self._preview_worker_thread.wait(2000)
+        self._preview_worker = None
+        self._preview_worker_thread = None
 
     def _setup_menu(self):
         """Create menu bar."""
@@ -840,7 +909,7 @@ class MainWindow(QMainWindow):
                 ext = os.path.splitext(path)[1].lower()
                 if ext in SUPPORTED_IMAGE_FORMATS:
                     self._current_image_path = path
-                    self._do_preview()
+                    self._request_preview()
 
     # ========================================
     # Preview
@@ -857,75 +926,103 @@ class MainWindow(QMainWindow):
 
         if path:
             self._current_image_path = path
-            self._do_preview()
+            self._request_preview()
 
     def _request_preview(self):
         """Request preview with debounce."""
         self._preview_timer.start(200)  # 200ms debounce
 
-    def _do_preview(self):
-        """Perform preview processing."""
-        if not self._current_image_path:
-            # Try to get first image from input folder
-            input_path = self.input_path_edit.text()
-            if input_path and os.path.isdir(input_path):
-                files = get_image_files(input_path)
-                if files:
-                    self._current_image_path = files[0]
+    def _resolve_preview_path(self) -> Optional[str]:
+        """Resolve target image path for preview."""
+        if self._current_image_path and os.path.exists(self._current_image_path):
+            return self._current_image_path
 
-        if not self._current_image_path or not os.path.exists(self._current_image_path):
-            return
+        input_path = self.input_path_edit.text()
+        if input_path and os.path.isdir(input_path):
+            files = get_image_files(input_path)
+            if files:
+                self._current_image_path = files[0]
+                return self._current_image_path
+        return None
 
-        self.status_label.setText(
-            f"미리보기 처리 중: {os.path.basename(self._current_image_path)}"
-        )
-        QApplication.processEvents()
-
-        # Update image info in statusbar
+    def _update_image_info_badge(self, image_path: str):
+        """Update image info badge for current preview target."""
         try:
-            info = self.image_processor.get_image_info(self._current_image_path)
+            info = self.image_processor.get_image_info(image_path)
             if info:
-                w, h, c = info
-                file_size_kb = os.path.getsize(self._current_image_path) / 1024
+                w, h, _ = info
+                file_size_kb = os.path.getsize(image_path) / 1024
                 if file_size_kb >= 1024:
                     size_str = f"{file_size_kb / 1024:.1f} MB"
                 else:
                     size_str = f"{file_size_kb:.0f} KB"
                 self.image_info_badge.setText(f"📷 {w}×{h}px | {size_str}")
-            else:
-                self.image_info_badge.setText("이미지: -")
+                return
         except Exception:
-            self.image_info_badge.setText("이미지: -")
+            pass
+        self.image_info_badge.setText("이미지: -")
 
-        # Get preview with contour
-        original, overlay, message = self.image_processor.get_preview_with_contour(
-            self._current_image_path
+    def _do_preview(self):
+        """Dispatch preview processing to background worker."""
+        image_path = self._resolve_preview_path()
+        if not image_path:
+            return
+
+        self._preview_request_id += 1
+        request_id = self._preview_request_id
+        self._latest_preview_request_id = request_id
+
+        self.status_label.setText(f"미리보기 처리 중: {os.path.basename(image_path)}")
+        self._update_image_info_badge(image_path)
+
+        settings_snapshot = AppSettings.from_dict(self._settings.to_dict())
+        self.preview_process_requested.emit(
+            request_id,
+            image_path,
+            settings_snapshot,
         )
 
-        if original is not None:
-            self.preview_widget.set_original_image(original, overlay)
-            self.histogram_widget.set_image(original)
-            self._last_original = original.copy()  # Store for comparison
+    @pyqtSlot(int, object)
+    def _on_preview_ready(self, request_id: int, preview_result: object):
+        """Apply preview result from background worker."""
+        if request_id != self._latest_preview_request_id:
+            return
 
-        # Process image
-        debug_base = "" if self._settings.debug.enabled else None
-        result = self.image_processor.process_image(
-            self._current_image_path,
-            debug_dir=debug_base,
-            debug_tag="preview",
-        )
+        if preview_result is None:
+            self.status_label.setText("미리보기 실패: 결과 없음")
+            return
 
-        if result.success and result.image is not None:
-            self.preview_widget.set_processed_image(result.image)
-            self._last_processed = result.image.copy()  # Store for comparison
+        if preview_result.original_preview is not None:
+            self.preview_widget.set_original_image(
+                preview_result.original_preview,
+                preview_result.overlay_preview,
+            )
+            self.histogram_widget.set_image(preview_result.original_preview)
+            self._last_original = preview_result.original_preview.copy()
+
+        crop_result = preview_result.crop_result
+        if crop_result.success and crop_result.image is not None:
+            self.preview_widget.set_processed_image(crop_result.image)
+            self._last_processed = crop_result.image.copy()
             stage = (
-                result.detection_stage.value if result.detection_stage else "Unknown"
+                crop_result.detection_stage.value
+                if crop_result.detection_stage
+                else "Unknown"
             )
             self.status_label.setText(f"미리보기 성공 ({stage})")
         else:
             self.preview_widget.set_processed_image(None)
             self._last_processed = None
-            self.status_label.setText(f"미리보기 실패: {result.message}")
+            self.status_label.setText(f"미리보기 실패: {crop_result.message}")
+
+    @pyqtSlot(int, str)
+    def _on_preview_failed(self, request_id: int, message: str):
+        """Handle preview worker failure."""
+        if request_id != self._latest_preview_request_id:
+            return
+        self.preview_widget.set_processed_image(None)
+        self._last_processed = None
+        self.status_label.setText(f"미리보기 오류: {message}")
 
     # ========================================
     # Batch Processing
@@ -959,9 +1056,9 @@ class MainWindow(QMainWindow):
         # Create batch processor
         self.batch_processor = BatchProcessor(self._settings)
         self.batch_processor.set_callbacks(
-            on_progress=self._on_batch_progress,
-            on_log=self._on_batch_log,
-            on_complete=self._on_batch_complete,
+            on_progress=self._emit_batch_progress,
+            on_log=self._emit_batch_log,
+            on_complete=self._emit_batch_complete,
         )
 
         # Show progress dialog
@@ -977,6 +1074,18 @@ class MainWindow(QMainWindow):
         """Cancel batch processing."""
         if self.batch_processor:
             self.batch_processor.request_stop()
+
+    def _emit_batch_progress(self, progress: BatchProgress):
+        """Bridge batch progress callback into UI thread."""
+        self.batch_progress_received.emit(progress)
+
+    def _emit_batch_log(self, message: str, level: str):
+        """Bridge batch log callback into UI thread."""
+        self.batch_log_received.emit(message, level)
+
+    def _emit_batch_complete(self, progress: BatchProgress, results: list):
+        """Bridge batch complete callback into UI thread."""
+        self.batch_complete_received.emit(progress, results)
 
     def _on_batch_progress(self, progress: BatchProgress):
         """Handle batch progress update."""
@@ -1055,9 +1164,9 @@ class MainWindow(QMainWindow):
 
                 self.batch_processor = BatchProcessor(self._settings)
                 self.batch_processor.set_callbacks(
-                    on_progress=self._on_batch_progress,
-                    on_log=self._on_batch_log,
-                    on_complete=self._on_batch_complete,
+                    on_progress=self._emit_batch_progress,
+                    on_log=self._emit_batch_log,
+                    on_complete=self._emit_batch_complete,
                 )
 
                 self.progress_dialog = ProgressDialog(self)
@@ -1275,7 +1384,7 @@ class MainWindow(QMainWindow):
             self._current_image_index = len(self._image_list) - 1  # Wrap around
 
         self._current_image_path = self._image_list[self._current_image_index]
-        self._do_preview()
+        self._request_preview()
         self._update_navigation_status()
 
     def _navigate_next(self):
@@ -1294,7 +1403,7 @@ class MainWindow(QMainWindow):
             self._current_image_index = 0  # Wrap around
 
         self._current_image_path = self._image_list[self._current_image_index]
-        self._do_preview()
+        self._request_preview()
         self._update_navigation_status()
 
     def _update_navigation_status(self):
@@ -1373,7 +1482,6 @@ class MainWindow(QMainWindow):
             return
 
         self.status_label.setText("중복 파일 검색 중...")
-        QApplication.processEvents()
 
         from ..utils.file_helpers import detect_duplicates
 
@@ -1617,7 +1725,7 @@ class MainWindow(QMainWindow):
 
         # Create auto processor
         self.watch_batch_processor = BatchProcessor(self._settings)
-        self.watch_batch_processor.set_callbacks(on_log=self._on_batch_log)
+        self.watch_batch_processor.set_callbacks(on_log=self._emit_batch_log)
 
         self.auto_processor = AutoProcessor(
             watch_path=input_path,
@@ -1668,7 +1776,7 @@ class MainWindow(QMainWindow):
         """Process a single file from watch mode."""
         if self.watch_batch_processor is None:
             self.watch_batch_processor = BatchProcessor(self._settings)
-            self.watch_batch_processor.set_callbacks(on_log=self._on_batch_log)
+            self.watch_batch_processor.set_callbacks(on_log=self._emit_batch_log)
 
         try:
             self.watch_batch_processor.update_settings(self._settings)
@@ -1727,5 +1835,7 @@ class MainWindow(QMainWindow):
         if self.auto_processor:
             self.auto_processor.stop()
             self.auto_processor = None
+
+        self._teardown_preview_worker()
 
         event.accept()

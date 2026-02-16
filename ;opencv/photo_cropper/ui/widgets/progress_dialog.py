@@ -13,7 +13,7 @@ from PyQt6.QtWidgets import (
     QFrame, QGraphicsOpacityEffect, QSizePolicy
 )
 from PyQt6.QtCore import Qt, pyqtSignal, QTimer, QPropertyAnimation, QEasingCurve
-from PyQt6.QtGui import QFont
+from PyQt6.QtGui import QFont, QTextCursor
 import time
 
 from ...core.batch_processor import BatchProgress, FileResult, ProcessStatus
@@ -119,6 +119,11 @@ class ProgressDialog(QDialog):
         self._is_cancelled = False
         self._is_complete = False
         self._start_time = None
+        self._pending_progress = None
+        self._log_line_count = 0
+        self._progress_flush_timer = QTimer(self)
+        self._progress_flush_timer.setSingleShot(True)
+        self._progress_flush_timer.timeout.connect(self._flush_progress_update)
         
         self._setup_ui()
     
@@ -225,6 +230,20 @@ class ProgressDialog(QDialog):
         Args:
             progress: BatchProgress object
         """
+        self._pending_progress = progress
+        if not progress.is_running:
+            self._flush_progress_update()
+            return
+        if not self._progress_flush_timer.isActive():
+            self._progress_flush_timer.start(100)
+
+    def _flush_progress_update(self):
+        """Apply coalesced progress updates to reduce repaint overhead."""
+        progress = self._pending_progress
+        if progress is None:
+            return
+        self._pending_progress = None
+
         # Initialize start time on first update
         if self._start_time is None and progress.is_running:
             self._start_time = time.time()
@@ -301,10 +320,27 @@ class ProgressDialog(QDialog):
         # Add colored message with icon
         html = f'<span style="color: {style["color"]}">{style["icon"]} {message}</span>'
         self.log_text.append(html)
+        self._log_line_count += 1
+
+        if self._log_line_count > 2000:
+            self._trim_log_blocks(500)
+            self._log_line_count = max(0, self._log_line_count - 500)
         
         # Auto scroll
         scrollbar = self.log_text.verticalScrollBar()
         scrollbar.setValue(scrollbar.maximum())
+
+    def _trim_log_blocks(self, block_count: int):
+        """Trim oldest log blocks from QTextEdit document."""
+        doc = self.log_text.document()
+        cursor = QTextCursor(doc)
+        cursor.movePosition(QTextCursor.MoveOperation.Start)
+        removed = 0
+        while removed < block_count and doc.blockCount() > 0:
+            cursor.select(QTextCursor.SelectionType.BlockUnderCursor)
+            cursor.removeSelectedText()
+            cursor.deleteChar()
+            removed += 1
     
     def _on_cancel(self):
         """Handle cancel button click."""
@@ -358,6 +394,9 @@ class ProgressDialog(QDialog):
     def reset(self):
         """Reset dialog for new processing session."""
         self._is_cancelled = False
+        self._pending_progress = None
+        self._progress_flush_timer.stop()
+        self._log_line_count = 0
         self._is_complete = False
         self._start_time = None
         

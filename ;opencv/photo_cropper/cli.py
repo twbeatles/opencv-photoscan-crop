@@ -463,7 +463,7 @@ def process_batch(args) -> int:
         on_log=cli_log
     )
 
-    processor.start_async(args.input, output_dir, file_list=None)
+    processor.start_async(args.input, output_dir, file_list=files)
     processor.wait_for_completion()
 
     results = processor.results

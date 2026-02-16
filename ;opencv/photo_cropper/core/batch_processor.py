@@ -160,6 +160,7 @@ class BatchProcessor:
         # Thread pool for multithreading - dynamic based on CPU cores
         self._executor: Optional[ThreadPoolExecutor] = None
         self._thread_count = self._calculate_optimal_threads()
+        self._worker_local = threading.local()
 
         # Time tracking for ETA
         self._processing_times: List[float] = []
@@ -228,6 +229,116 @@ class BatchProcessor:
         self._classifier = None
         self._naming_engine = None
         self._thread_count = self._calculate_optimal_threads()
+        self._worker_local = threading.local()
+
+    def _use_thread_local_context(self) -> bool:
+        """Check if per-thread processor context should be used."""
+        return (
+            self.settings.performance.enable_multithreading and self._thread_count > 1
+        )
+
+    def _get_worker_context(self) -> Dict[str, Any]:
+        """Get or create thread-local worker context."""
+        context = getattr(self._worker_local, "context", None)
+        if context is None:
+            context = {}
+            self._worker_local.context = context
+        return context
+
+    def _get_worker_processor(self) -> ImageProcessor:
+        if not self._use_thread_local_context():
+            return self.processor
+
+        context = self._get_worker_context()
+        processor = context.get("processor")
+        if processor is None:
+            processor = ImageProcessor(
+                self.settings.algorithm,
+                self.settings.processing,
+                self.settings.advanced,
+                self.settings.performance,
+                debug_settings=self.settings.debug,
+            )
+            context["processor"] = processor
+        return processor
+
+    def _get_resize_processor(self) -> ResizeProcessor:
+        if not self._use_thread_local_context():
+            if self._resize_processor is None:
+                self._resize_processor = ResizeProcessor()
+            return self._resize_processor
+
+        context = self._get_worker_context()
+        processor = context.get("resize_processor")
+        if processor is None:
+            processor = ResizeProcessor()
+            context["resize_processor"] = processor
+        return processor
+
+    def _get_watermark_processor(self) -> WatermarkProcessor:
+        if not self._use_thread_local_context():
+            if self._watermark_processor is None:
+                self._watermark_processor = WatermarkProcessor()
+            return self._watermark_processor
+
+        context = self._get_worker_context()
+        processor = context.get("watermark_processor")
+        if processor is None:
+            processor = WatermarkProcessor()
+            context["watermark_processor"] = processor
+        return processor
+
+    def _get_face_detector(self) -> FaceDetector:
+        use_dnn = self.settings.face_detection.use_dnn
+        if not self._use_thread_local_context():
+            if self._face_detector is None or self._face_detector.use_dnn != use_dnn:
+                self._face_detector = FaceDetector(use_dnn=use_dnn)
+            return self._face_detector
+
+        context = self._get_worker_context()
+        detector = context.get("face_detector")
+        if detector is None or detector.use_dnn != use_dnn:
+            detector = FaceDetector(use_dnn=use_dnn)
+            context["face_detector"] = detector
+        return detector
+
+    def _get_classifier(self) -> ImageClassifier:
+        if not self._use_thread_local_context():
+            if self._classifier is None:
+                self._classifier = get_classifier()
+            return self._classifier
+
+        context = self._get_worker_context()
+        classifier = context.get("classifier")
+        if classifier is None:
+            classifier = ImageClassifier()
+            context["classifier"] = classifier
+        return classifier
+
+    def _get_multi_photo_detector(self) -> MultiPhotoDetector:
+        if not self._use_thread_local_context():
+            if self._multi_photo_detector is None:
+                self._multi_photo_detector = MultiPhotoDetector(
+                    min_area_ratio=self.settings.multi_photo.min_area_ratio,
+                    max_area_ratio=self.settings.multi_photo.max_area_ratio,
+                    min_photos=self.settings.multi_photo.min_photos,
+                    max_photos=self.settings.multi_photo.max_photos,
+                    merge_distance=self.settings.multi_photo.merge_distance,
+                )
+            return self._multi_photo_detector
+
+        context = self._get_worker_context()
+        detector = context.get("multi_photo_detector")
+        if detector is None:
+            detector = MultiPhotoDetector(
+                min_area_ratio=self.settings.multi_photo.min_area_ratio,
+                max_area_ratio=self.settings.multi_photo.max_area_ratio,
+                min_photos=self.settings.multi_photo.min_photos,
+                max_photos=self.settings.multi_photo.max_photos,
+                merge_distance=self.settings.multi_photo.merge_distance,
+            )
+            context["multi_photo_detector"] = detector
+        return detector
 
     def _log(self, message: str, level: str = "info"):
         """Send log message through callback."""
@@ -339,16 +450,7 @@ class BatchProcessor:
             return image
 
         try:
-            use_local = (
-                self.settings.performance.enable_multithreading
-                and self._thread_count > 1
-            )
-            if use_local:
-                resize_processor = ResizeProcessor()
-            else:
-                if self._resize_processor is None:
-                    self._resize_processor = ResizeProcessor()
-                resize_processor = self._resize_processor
+            resize_processor = self._get_resize_processor()
 
             resize_settings = self._build_resize_settings()
             resize_result = resize_processor.resize(image, resize_settings)
@@ -385,16 +487,7 @@ class BatchProcessor:
             return image
 
         try:
-            use_local = (
-                self.settings.performance.enable_multithreading
-                and self._thread_count > 1
-            )
-            if use_local:
-                watermark_processor = WatermarkProcessor()
-            else:
-                if self._watermark_processor is None:
-                    self._watermark_processor = WatermarkProcessor()
-                watermark_processor = self._watermark_processor
+            watermark_processor = self._get_watermark_processor()
 
             # Settings store colors as RGB; OpenCV functions use BGR.
             r = int(getattr(self.settings.watermark, "text_color_r", 255))
@@ -459,22 +552,7 @@ class BatchProcessor:
             return image
 
         try:
-            use_local = (
-                self.settings.performance.enable_multithreading
-                and self._thread_count > 1
-            )
-            if use_local:
-                detector = FaceDetector(use_dnn=self.settings.face_detection.use_dnn)
-            else:
-                if (
-                    self._face_detector is None
-                    or self._face_detector.use_dnn
-                    != self.settings.face_detection.use_dnn
-                ):
-                    self._face_detector = FaceDetector(
-                        use_dnn=self.settings.face_detection.use_dnn
-                    )
-                detector = self._face_detector
+            detector = self._get_face_detector()
 
             detect_eyes = self.settings.face_detection.detect_eyes
             detect_result = detector.detect(
@@ -525,16 +603,7 @@ class BatchProcessor:
             return output_dir
 
         try:
-            use_local = (
-                self.settings.performance.enable_multithreading
-                and self._thread_count > 1
-            )
-            if use_local:
-                classifier = ImageClassifier()
-            else:
-                if self._classifier is None:
-                    self._classifier = get_classifier()
-                classifier = self._classifier
+            classifier = self._get_classifier()
 
             classify_result = classifier.classify(image)
             category_key = classify_result.category.value
@@ -736,6 +805,7 @@ class BatchProcessor:
         self._failed_files = []
         self._processing_times = []  # v9.0: Reset timing data
         self._start_time = time.time()  # v9.0: Track start time
+        self._worker_local = threading.local()
 
         with self._lock:
             self._progress = BatchProgress(is_running=True)
@@ -943,61 +1013,65 @@ class BatchProcessor:
             )
 
             if use_threads:
-                self._executor = ThreadPoolExecutor(max_workers=self._thread_count)
                 futures = {}
+                pending = set()
+                try:
+                    self._executor = ThreadPoolExecutor(max_workers=self._thread_count)
+                    for i, (filename, output_path_override) in enumerate(work_items, 1):
+                        if self._is_stop_requested():
+                            break
+                        future = self._executor.submit(
+                            self._process_single_file,
+                            input_dir,
+                            output_dir,
+                            filename,
+                            backup_dir,
+                            i,
+                            total,
+                            output_path_override,
+                        )
+                        futures[future] = (filename, output_path_override)
 
-                for i, (filename, output_path_override) in enumerate(work_items, 1):
-                    if self._is_stop_requested():
-                        break
-                    future = self._executor.submit(
-                        self._process_single_file,
-                        input_dir,
-                        output_dir,
-                        filename,
-                        backup_dir,
-                        i,
-                        total,
-                        output_path_override,
-                    )
-                    futures[future] = (filename, output_path_override)
+                    pending = set(futures.keys())
+                    processed = 0
+                    while pending:
+                        done, pending = wait(
+                            pending,
+                            timeout=0.2,
+                            return_when=FIRST_COMPLETED,
+                        )
 
-                pending = set(futures.keys())
-                processed = 0
-                while pending:
-                    done, pending = wait(
-                        pending,
-                        timeout=0.2,
-                        return_when=FIRST_COMPLETED,
-                    )
+                        if not done:
+                            if self._is_stop_requested():
+                                for pending_future in pending:
+                                    pending_future.cancel()
+                                break
+                            continue
 
-                    if not done:
+                        for future in done:
+                            processed += 1
+                            try:
+                                result = future.result()
+                            except Exception as e:
+                                result = FileResult(
+                                    filename=os.path.basename(futures[future][0]),
+                                    status=ProcessStatus.FAILED,
+                                    message=str(e),
+                                )
+                            self._handle_result(
+                                result, input_dir, futures[future][0], processed
+                            )
+
                         if self._is_stop_requested():
                             for pending_future in pending:
                                 pending_future.cancel()
                             break
-                        continue
-
-                    for future in done:
-                        processed += 1
-                        try:
-                            result = future.result()
-                        except Exception as e:
-                            result = FileResult(
-                                filename=os.path.basename(futures[future][0]),
-                                status=ProcessStatus.FAILED,
-                                message=str(e),
-                            )
-                        self._handle_result(
-                            result, input_dir, futures[future][0], processed
-                        )
-
-                    if self._is_stop_requested():
-                        for pending_future in pending:
-                            pending_future.cancel()
-                        break
-
-                self._executor.shutdown(wait=True)
-                self._executor = None
+                finally:
+                    for pending_future in pending:
+                        pending_future.cancel()
+                    if self._executor is not None:
+                        self._executor.shutdown(wait=True)
+                        self._executor = None
             else:
                 for i, (filename, output_path_override) in enumerate(work_items, 1):
                     if self._is_stop_requested():
@@ -1099,18 +1173,7 @@ class BatchProcessor:
 
         self._log(f"[{current}/{total}] 처리 중: {display_name}", "info")
 
-        use_local_processor = (
-            self.settings.performance.enable_multithreading and self._thread_count > 1
-        )
-        processor = self.processor
-        if use_local_processor:
-            processor = ImageProcessor(
-                self.settings.algorithm,
-                self.settings.processing,
-                self.settings.advanced,
-                self.settings.performance,
-                debug_settings=self.settings.debug,
-            )
+        processor = self._get_worker_processor()
 
         # Size filtering
         if self.settings.filter.skip_small_images:
@@ -1288,27 +1351,7 @@ class BatchProcessor:
         import cv2
         import numpy as np
 
-        use_local_detector = (
-            self.settings.performance.enable_multithreading and self._thread_count > 1
-        )
-        if use_local_detector:
-            detector = MultiPhotoDetector(
-                min_area_ratio=self.settings.multi_photo.min_area_ratio,
-                max_area_ratio=self.settings.multi_photo.max_area_ratio,
-                min_photos=self.settings.multi_photo.min_photos,
-                max_photos=self.settings.multi_photo.max_photos,
-                merge_distance=self.settings.multi_photo.merge_distance,
-            )
-        else:
-            if self._multi_photo_detector is None:
-                self._multi_photo_detector = MultiPhotoDetector(
-                    min_area_ratio=self.settings.multi_photo.min_area_ratio,
-                    max_area_ratio=self.settings.multi_photo.max_area_ratio,
-                    min_photos=self.settings.multi_photo.min_photos,
-                    max_photos=self.settings.multi_photo.max_photos,
-                    merge_distance=self.settings.multi_photo.merge_distance,
-                )
-            detector = self._multi_photo_detector
+        detector = self._get_multi_photo_detector()
 
         # Load image with Unicode support
         img_array = np.fromfile(input_path, np.uint8)

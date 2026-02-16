@@ -63,6 +63,16 @@ class CropResult:
     cropped_size: Tuple[int, int] = (0, 0)
 
 
+@dataclass
+class PreviewProcessResult:
+    """Result bundle for preview rendering."""
+
+    original_preview: Optional[np.ndarray]
+    overlay_preview: Optional[np.ndarray]
+    crop_result: CropResult
+    message: str = ""
+
+
 class ImageProcessor:
     """
     Advanced image processor for automatic photo detection and cropping.
@@ -128,6 +138,7 @@ class ImageProcessor:
 
         # Performance: Cached kernels
         self._kernel_3x3 = np.ones((3, 3), np.uint8)
+        self._kernel_5x5 = cv2.getStructuringElement(cv2.MORPH_RECT, (5, 5))
         self._kernel_morph_21x21 = cv2.getStructuringElement(cv2.MORPH_RECT, (21, 21))
 
     def update_settings(
@@ -682,9 +693,8 @@ class ImageProcessor:
             thr = min(255.0, corner_mean + k)
             mask = (gray > thr).astype(np.uint8) * 255
 
-        kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (5, 5))
-        mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel, iterations=2)
-        mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel, iterations=1)
+        mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, self._kernel_5x5, iterations=2)
+        mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, self._kernel_5x5, iterations=1)
         return mask
 
     @staticmethod
@@ -805,7 +815,9 @@ class ImageProcessor:
 
             # Combine: prioritize normal, fill with low, validate with high
             edges = cv2.bitwise_or(edges_normal, edges_low)
-            edges = cv2.bitwise_and(edges, cv2.dilate(edges_high, None, iterations=2))
+            edges = cv2.bitwise_and(
+                edges, cv2.dilate(edges_high, self._kernel_3x3, iterations=2)
+            )
 
             # If combined is too sparse, use normal
             if cv2.countNonZero(edges) < cv2.countNonZero(edges_normal) * 0.3:
@@ -814,38 +826,59 @@ class ImageProcessor:
             edges = cv2.Canny(blurred, self.algo.canny_min, self.algo.canny_max)
 
         # Dilate to connect edges
-        kernel = np.ones((3, 3), np.uint8)
-        edges = cv2.dilate(edges, kernel, iterations=1)
+        edges = cv2.dilate(edges, self._kernel_3x3, iterations=1)
 
         return edges
 
-    def process_image(
+    def _prepare_detection_image(
+        self, image: np.ndarray
+    ) -> Tuple[np.ndarray, float]:
+        """
+        Prepare an image for detection-only stages.
+
+        Downscaling affects only contour detection; final crop still uses the
+        original full-resolution image.
+        """
+        if image is None or image.size == 0:
+            return image, 1.0
+
+        h, w = image.shape[:2]
+        if h <= 0 or w <= 0:
+            return image, 1.0
+
+        if not self.performance.downscale_large_images:
+            return image, 1.0
+
+        threshold_mp = float(self.performance.downscale_threshold_mp or 50.0)
+        threshold_mp = max(1.0, threshold_mp)
+        current_mp = (h * w) / 1_000_000.0
+
+        if current_mp <= threshold_mp:
+            return image, 1.0
+
+        scale = math.sqrt(threshold_mp / current_mp)
+        new_w = max(1, int(w * scale))
+        new_h = max(1, int(h * scale))
+
+        if new_w >= w and new_h >= h:
+            return image, 1.0
+
+        resized = cv2.resize(image, (new_w, new_h), interpolation=cv2.INTER_LINEAR)
+        ratio = w / float(new_w)
+        return resized, ratio
+
+    def _process_loaded_image(
         self,
+        image: np.ndarray,
         image_path: str,
         *,
         debug_dir: Optional[str] = None,
         debug_tag: str = "",
     ) -> CropResult:
-        """
-        Process image with multi-stage detection algorithm.
-
-        Args:
-            image_path: Path to input image
-            debug_dir: Base output directory for debug artifacts. If empty string, a default is chosen.
-            debug_tag: Optional tag recorded in debug meta.json.
-
-        Returns:
-            CropResult with processed image or error
-        """
-
+        """Process a pre-loaded image using the full detection/cropping pipeline."""
         try:
             debug_enabled = self._debug_enabled(debug_dir)
             debug_run_dir: Optional[str] = None
-
-            # Load image
-            image = self.load_image(image_path)
-            if image is None:
-                return CropResult(False, message="Failed to load image.")
 
             height, width = image.shape[:2]
             original_size = (width, height)
@@ -860,24 +893,16 @@ class ImageProcessor:
             orig = image.copy()
 
             if debug_enabled:
-                root = self._resolve_debug_root(debug_dir if isinstance(debug_dir, str) else None)
+                root = self._resolve_debug_root(
+                    debug_dir if isinstance(debug_dir, str) else None
+                )
                 self._prune_debug_root(root)
                 base = os.path.splitext(os.path.basename(image_path))[0] or "image"
                 debug_run_dir = os.path.join(root, base)
                 os.makedirs(debug_run_dir, exist_ok=True)
 
-            # Resize for processing (performance optimization)
-            target_dim = 1000
-            max_dim = max(height, width)
-            if max_dim > 1500:
-                ratio = max_dim / target_dim
-                new_width = int(width / ratio)
-                new_height = int(height / ratio)
-                image_resized = cv2.resize(image, (new_width, new_height), interpolation=cv2.INTER_LINEAR)
-            else:
-                ratio = 1.0
-                image_resized = image
-
+            # Detection-only downscaling for performance.
+            image_resized, ratio = self._prepare_detection_image(image)
             image_area = int(image_resized.shape[0] * image_resized.shape[1])
 
             # Apply CLAHE for better contrast
@@ -898,10 +923,16 @@ class ImageProcessor:
             quad, score, candidates = self.find_best_contour(edges, image_area)
             if quad is not None:
                 best_quad, best_score, best_candidates = quad, score, candidates
-                detection_stage = DetectionStage.MULTI_SCALE_CANNY if self.algo.multi_scale_edge else DetectionStage.CANNY
+                detection_stage = (
+                    DetectionStage.MULTI_SCALE_CANNY
+                    if self.algo.multi_scale_edge
+                    else DetectionStage.CANNY
+                )
 
             if debug_enabled and debug_run_dir and self.debug.save_detection_stages:
-                self._save_debug_image(os.path.join(debug_run_dir, "stage_01_edges.png"), edges)
+                self._save_debug_image(
+                    os.path.join(debug_run_dir, "stage_01_edges.png"), edges
+                )
 
             # ==========================================
             # Stage 2: Background Mask (balanced/accurate)
@@ -914,7 +945,9 @@ class ImageProcessor:
                     detection_stage = DetectionStage.BACKGROUND_MASK
 
                 if debug_enabled and debug_run_dir and self.debug.save_detection_stages:
-                    self._save_debug_image(os.path.join(debug_run_dir, "stage_02_bgmask.png"), bgmask)
+                    self._save_debug_image(
+                        os.path.join(debug_run_dir, "stage_02_bgmask.png"), bgmask
+                    )
 
             # ==========================================
             # Stage 3: Adaptive Threshold
@@ -935,7 +968,9 @@ class ImageProcessor:
                     detection_stage = DetectionStage.ADAPTIVE_THRESHOLD
 
                 if debug_enabled and debug_run_dir and self.debug.save_detection_stages:
-                    self._save_debug_image(os.path.join(debug_run_dir, "stage_03_adaptive.png"), thresh)
+                    self._save_debug_image(
+                        os.path.join(debug_run_dir, "stage_03_adaptive.png"), thresh
+                    )
 
             # ==========================================
             # Stage 4: Gradient Analysis (Sobel)
@@ -947,11 +982,14 @@ class ImageProcessor:
                 gradient = cv2.subtract(grad_x, grad_y)
                 gradient = cv2.convertScaleAbs(gradient)
 
-                _, thresh_grad = cv2.threshold(gradient, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
-                kernel_morph = cv2.getStructuringElement(cv2.MORPH_RECT, (21, 21))
-                closed = cv2.morphologyEx(thresh_grad, cv2.MORPH_CLOSE, kernel_morph)
-                closed = cv2.erode(closed, None, iterations=4)
-                closed = cv2.dilate(closed, None, iterations=4)
+                _, thresh_grad = cv2.threshold(
+                    gradient, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU
+                )
+                closed = cv2.morphologyEx(
+                    thresh_grad, cv2.MORPH_CLOSE, self._kernel_morph_21x21
+                )
+                closed = cv2.erode(closed, self._kernel_3x3, iterations=4)
+                closed = cv2.dilate(closed, self._kernel_3x3, iterations=4)
 
                 quad, score, candidates = self.find_best_contour(closed, image_area)
                 if quad is not None:
@@ -959,14 +997,21 @@ class ImageProcessor:
                     detection_stage = DetectionStage.GRADIENT_SOBEL
 
                 if debug_enabled and debug_run_dir and self.debug.save_detection_stages:
-                    self._save_debug_image(os.path.join(debug_run_dir, "stage_04_sobel.png"), closed)
+                    self._save_debug_image(
+                        os.path.join(debug_run_dir, "stage_04_sobel.png"), closed
+                    )
 
             # ==========================================
             # Stage 5: Harris Corner Detection (optional/accurate)
             # ==========================================
-            should_use_corner = bool(self.algo.use_corner_detection or self.algo.detection_mode == "accurate")
+            should_use_corner = bool(
+                self.algo.use_corner_detection
+                or self.algo.detection_mode == "accurate"
+            )
             if best_quad is None and should_use_corner:
-                corners = cv2.cornerHarris(gray, self.algo.corner_block_size, 3, self.algo.corner_k)
+                corners = cv2.cornerHarris(
+                    gray, self.algo.corner_block_size, 3, self.algo.corner_k
+                )
                 corners = cv2.dilate(corners, None)
                 threshold = 0.01 * corners.max()
                 corner_mask = np.zeros_like(gray)
@@ -978,7 +1023,9 @@ class ImageProcessor:
                     detection_stage = DetectionStage.CORNER_HARRIS
 
                 if debug_enabled and debug_run_dir and self.debug.save_detection_stages:
-                    self._save_debug_image(os.path.join(debug_run_dir, "stage_05_harris.png"), corner_mask)
+                    self._save_debug_image(
+                        os.path.join(debug_run_dir, "stage_05_harris.png"), corner_mask
+                    )
 
             # ==========================================
             # Stage 6: Hough Rectangle (accurate, or final fallback in balanced)
@@ -1054,19 +1101,34 @@ class ImageProcessor:
             if debug_enabled and debug_run_dir:
                 try:
                     if self.debug.save_candidate_overlays:
-                        cand_overlay = self._draw_candidates_overlay(image_resized, best_candidates, final_quad=best_quad)
-                        self._save_debug_image(os.path.join(debug_run_dir, "candidates_overlay.png"), cand_overlay)
-                        final_overlay = self._draw_candidates_overlay(image_resized, [], final_quad=best_quad)
-                        self._save_debug_image(os.path.join(debug_run_dir, "final_overlay.png"), final_overlay)
+                        cand_overlay = self._draw_candidates_overlay(
+                            image_resized, best_candidates, final_quad=best_quad
+                        )
+                        self._save_debug_image(
+                            os.path.join(debug_run_dir, "candidates_overlay.png"),
+                            cand_overlay,
+                        )
+                        final_overlay = self._draw_candidates_overlay(
+                            image_resized, [], final_quad=best_quad
+                        )
+                        self._save_debug_image(
+                            os.path.join(debug_run_dir, "final_overlay.png"),
+                            final_overlay,
+                        )
 
                     meta = {
                         "image": os.path.basename(image_path),
                         "debug_tag": debug_tag or "",
                         "detection_mode": self.algo.detection_mode,
-                        "detection_stage": detection_stage.value if detection_stage else None,
+                        "detection_stage": (
+                            detection_stage.value if detection_stage else None
+                        ),
                         "confidence": float(best_score),
                         "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S"),
-                        "candidates": [{"score": float(c.get("score", 0.0))} for c in (best_candidates or [])],
+                        "candidates": [
+                            {"score": float(c.get("score", 0.0))}
+                            for c in (best_candidates or [])
+                        ],
                         "algo": {
                             "canny_min": int(self.algo.canny_min),
                             "canny_max": int(self.algo.canny_max),
@@ -1076,19 +1138,14 @@ class ImageProcessor:
                             "max_area_ratio": float(self.algo.max_area_ratio),
                         },
                     }
-                    with open(os.path.join(debug_run_dir, "meta.json"), "w", encoding="utf-8") as f:
+                    with open(
+                        os.path.join(debug_run_dir, "meta.json"),
+                        "w",
+                        encoding="utf-8",
+                    ) as f:
                         json.dump(meta, f, indent=2, ensure_ascii=False)
                 except Exception:
                     pass
-
-            # Cleanup large variables
-            del gray
-            if "edges" in locals():
-                del edges
-            if "thresh" in locals():
-                del thresh
-            if "image_resized" in locals() and image_resized is not image:
-                del image_resized
 
             return CropResult(
                 success=True,
@@ -1110,6 +1167,79 @@ class ImageProcessor:
         except Exception as e:
             logger.error(f"Image processing error: {traceback.format_exc()}")
             return CropResult(False, message=f"Error: {str(e)}")
+
+    def process_image(
+        self,
+        image_path: str,
+        *,
+        debug_dir: Optional[str] = None,
+        debug_tag: str = "",
+    ) -> CropResult:
+        """
+        Process image with multi-stage detection algorithm.
+
+        Args:
+            image_path: Path to input image
+            debug_dir: Base output directory for debug artifacts. If empty string, a default is chosen.
+            debug_tag: Optional tag recorded in debug meta.json.
+
+        Returns:
+            CropResult with processed image or error
+        """
+        image = self.load_image(image_path)
+        if image is None:
+            return CropResult(False, message="Failed to load image.")
+        return self._process_loaded_image(
+            image,
+            image_path,
+            debug_dir=debug_dir,
+            debug_tag=debug_tag,
+        )
+
+    def process_preview(
+        self, image_path: str, max_size: int = 800, debug_tag: str = "preview"
+    ) -> PreviewProcessResult:
+        """
+        Build preview images and crop result in a single image-load pass.
+        """
+        image = self.load_image(image_path)
+        if image is None:
+            crop_result = CropResult(False, message="이미지를 불러올 수 없습니다.")
+            return PreviewProcessResult(
+                original_preview=None,
+                overlay_preview=None,
+                crop_result=crop_result,
+                message=crop_result.message,
+            )
+
+        h, w = image.shape[:2]
+        scale = min(max_size / w, max_size / h, 1.0)
+        preview_size = (int(w * scale), int(h * scale))
+        original_preview = cv2.resize(image, preview_size, interpolation=cv2.INTER_AREA)
+
+        debug_base = "" if self.debug.enabled else None
+        crop_result = self._process_loaded_image(
+            image,
+            image_path,
+            debug_dir=debug_base,
+            debug_tag=debug_tag,
+        )
+
+        if crop_result.success and crop_result.contour_points is not None:
+            overlay = original_preview.copy()
+            scaled_contour = (crop_result.contour_points * scale).astype(np.int32)
+            cv2.polylines(overlay, [scaled_contour], True, (0, 255, 0), 2)
+            for point in scaled_contour:
+                cv2.circle(overlay, tuple(point), 5, (0, 0, 255), -1)
+        else:
+            overlay = original_preview.copy()
+
+        return PreviewProcessResult(
+            original_preview=original_preview,
+            overlay_preview=overlay,
+            crop_result=crop_result,
+            message=crop_result.message,
+        )
 
     def _apply_post_processing(self, image: np.ndarray) -> np.ndarray:
         """
@@ -1315,33 +1445,16 @@ class ImageProcessor:
             Tuple of (original_preview, contour_overlay, message)
         """
         try:
-            image = self.load_image(image_path)
-            if image is None:
-                return None, None, "이미지를 불러올 수 없습니다."
-
-            # Resize for preview
-            h, w = image.shape[:2]
-            scale = min(max_size / w, max_size / h, 1.0)
-            preview_size = (int(w * scale), int(h * scale))
-            original_preview = cv2.resize(image, preview_size)
-
-            # Process to get contour
-            result = self.process_image(image_path)
-
-            if result.success and result.contour_points is not None:
-                # Draw contour on overlay
-                overlay = original_preview.copy()
-                scaled_contour = (result.contour_points * scale).astype(np.int32)
-                cv2.polylines(overlay, [scaled_contour], True, (0, 255, 0), 2)
-
-                # Draw corner points
-                for point in scaled_contour:
-                    cv2.circle(overlay, tuple(point), 5, (0, 0, 255), -1)
-
-                return original_preview, overlay, result.message
-            else:
-                return original_preview, original_preview.copy(), result.message
-
+            preview_result = self.process_preview(
+                image_path,
+                max_size=max_size,
+                debug_tag="preview_legacy",
+            )
+            return (
+                preview_result.original_preview,
+                preview_result.overlay_preview,
+                preview_result.message,
+            )
         except Exception as e:
             logger.error(f"Preview generation error: {e}")
             return None, None, f"미리보기 오류: {str(e)}"

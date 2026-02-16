@@ -992,16 +992,19 @@ class SettingsPanel(QWidget):
                 log_format=self.log_format_combo.currentText(),
             )
 
-        # v8.0 Performance settings
-        performance = PerformanceSettings()
-        if hasattr(self, "use_gpu_check"):
-            performance = PerformanceSettings(
-                use_gpu=self.use_gpu_check.isChecked(),
-                enable_multithreading=self.multithreading_check.isChecked(),
-                thread_count=self.thread_count_spin.value(),
-                max_image_size_mb=self.max_size_spin.value(),
-                downscale_large_images=self.downscale_check.isChecked(),
-            )
+        # v9.x Performance settings (management tab controls)
+        prev_perf = getattr(self._settings, "performance", PerformanceSettings())
+        thread_count = max(1, int(self.max_threads_spin.value()))
+        low_mem_mode = self.low_mem_check.isChecked()
+        performance = PerformanceSettings(
+            use_gpu=getattr(prev_perf, "use_gpu", False),
+            gpu_device_id=getattr(prev_perf, "gpu_device_id", 0),
+            enable_multithreading=thread_count > 1,
+            thread_count=thread_count,
+            max_image_size_mb=50 if low_mem_mode else 100,
+            downscale_large_images=True,
+            downscale_threshold_mp=24.0 if low_mem_mode else 50.0,
+        )
 
         # v9.0 Classification settings
         classification = ClassificationSettings()
@@ -1188,6 +1191,16 @@ class SettingsPanel(QWidget):
             self.notification_enable_check.setChecked(ns.enabled)
             self.notification_sound_check.setChecked(ns.play_sound)
             self.notification_error_only_check.setChecked(ns.on_error)
+
+        # Performance (management tab)
+        if hasattr(settings, "performance"):
+            perf = settings.performance
+            self.max_threads_spin.setValue(max(1, int(perf.thread_count)))
+            low_mem_mode = (
+                int(getattr(perf, "max_image_size_mb", 100)) <= 50
+                or float(getattr(perf, "downscale_threshold_mp", 50.0)) <= 24.0
+            )
+            self.low_mem_check.setChecked(low_mem_mode)
 
         self._block_signals = False
 
@@ -1390,12 +1403,15 @@ class SettingsPanel(QWidget):
         )
 
         # Add performance settings
+        low_mem_mode = self.low_mem_check.isChecked()
         settings.performance = PerformanceSettings(
-            use_gpu=self.use_gpu_check.isChecked(),
-            enable_multithreading=self.multithreading_check.isChecked(),
-            thread_count=self.thread_count_spin.value(),
-            max_image_size_mb=self.max_size_spin.value(),
-            downscale_large_images=self.downscale_check.isChecked(),
+            use_gpu=getattr(settings.performance, "use_gpu", False),
+            gpu_device_id=getattr(settings.performance, "gpu_device_id", 0),
+            enable_multithreading=self.max_threads_spin.value() > 1,
+            thread_count=self.max_threads_spin.value(),
+            max_image_size_mb=50 if low_mem_mode else 100,
+            downscale_large_images=True,
+            downscale_threshold_mp=24.0 if low_mem_mode else 50.0,
         )
 
         return settings
@@ -1436,11 +1452,13 @@ class SettingsPanel(QWidget):
         # Performance settings
         if hasattr(settings, "performance"):
             perf = settings.performance
-            self.use_gpu_check.setChecked(perf.use_gpu)
-            self.multithreading_check.setChecked(perf.enable_multithreading)
-            self.thread_count_spin.setValue(perf.thread_count)
-            self.max_size_spin.setValue(perf.max_image_size_mb)
-            self.downscale_check.setChecked(perf.downscale_large_images)
+            if hasattr(self, "max_threads_spin"):
+                self.max_threads_spin.setValue(max(1, int(perf.thread_count)))
+            if hasattr(self, "low_mem_check"):
+                self.low_mem_check.setChecked(
+                    int(getattr(perf, "max_image_size_mb", 100)) <= 50
+                    or float(getattr(perf, "downscale_threshold_mp", 50.0)) <= 24.0
+                )
 
     @property
     def settings(self) -> AppSettings:
