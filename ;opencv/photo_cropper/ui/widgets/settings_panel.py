@@ -1007,27 +1007,59 @@ class SettingsPanel(QWidget):
         )
 
         # v9.0 Classification settings
+        prev_cls = getattr(self._settings, "classification", ClassificationSettings())
         classification = ClassificationSettings()
         if hasattr(self, "classification_enable_check"):
             classification = ClassificationSettings(
                 enabled=self.classification_enable_check.isChecked(),
+                model=self.classification_model_combo.currentText()
+                if hasattr(self, "classification_model_combo")
+                else "basic",
                 auto_folder=self.classification_subfolders_check.isChecked(),
+                categories_enabled=dict(
+                    getattr(prev_cls, "categories_enabled", {}) or {}
+                ),
+                min_confidence=float(getattr(prev_cls, "min_confidence", 0.5)),
             )
 
         # v9.0 Face detection settings
+        prev_face = getattr(self._settings, "face_detection", FaceDetectionSettings())
         face_detection = FaceDetectionSettings()
         if hasattr(self, "face_detect_enable_check"):
             face_detection = FaceDetectionSettings(
                 enabled=self.face_detect_enable_check.isChecked(),
+                use_dnn=self.face_use_dnn_check.isChecked()
+                if hasattr(self, "face_use_dnn_check")
+                else False,
                 auto_rotate=self.face_auto_orient_check.isChecked(),
                 auto_center_crop=self.face_enhance_check.isChecked(),
+                show_overlay=bool(getattr(prev_face, "show_overlay", True)),
+                detect_eyes=bool(getattr(prev_face, "detect_eyes", True)),
+                min_face_size=self.face_min_size_spin.value()
+                if hasattr(self, "face_min_size_spin")
+                else 30,
             )
 
         # v9.0 Smart enhancement settings
+        prev_smart = getattr(
+            self._settings, "smart_enhancement", SmartEnhancementSettings()
+        )
         smart_enhancement = SmartEnhancementSettings()
         if hasattr(self, "smart_enhance_enable_check"):
             smart_enhancement = SmartEnhancementSettings(
                 enabled=self.smart_enhance_enable_check.isChecked(),
+                auto_preset=bool(getattr(prev_smart, "auto_preset", True)),
+                default_preset=str(getattr(prev_smart, "default_preset", "none")),
+                apply_to_batch=bool(getattr(prev_smart, "apply_to_batch", True)),
+                adjust_exposure=self.smart_exposure_check.isChecked()
+                if hasattr(self, "smart_exposure_check")
+                else True,
+                adjust_color_balance=self.smart_color_balance_check.isChecked()
+                if hasattr(self, "smart_color_balance_check")
+                else True,
+                strength=self.smart_strength_spin.value()
+                if hasattr(self, "smart_strength_spin")
+                else 50,
             )
 
         # v9.0 Notification settings
@@ -1175,16 +1207,38 @@ class SettingsPanel(QWidget):
             cs = settings.classification
             self.classification_enable_check.setChecked(cs.enabled)
             self.classification_subfolders_check.setChecked(cs.auto_folder)
+            if hasattr(self, "classification_model_combo"):
+                idx = self.classification_model_combo.findText(
+                    getattr(cs, "model", "basic")
+                )
+                if idx >= 0:
+                    self.classification_model_combo.setCurrentIndex(idx)
 
         if hasattr(settings, "face_detection"):
             fd = settings.face_detection
             self.face_detect_enable_check.setChecked(fd.enabled)
+            if hasattr(self, "face_use_dnn_check"):
+                self.face_use_dnn_check.setChecked(getattr(fd, "use_dnn", False))
             self.face_auto_orient_check.setChecked(fd.auto_rotate)
             self.face_enhance_check.setChecked(fd.auto_center_crop)
+            if hasattr(self, "face_min_size_spin"):
+                self.face_min_size_spin.setValue(
+                    int(getattr(fd, "min_face_size", 30))
+                )
 
         if hasattr(settings, "smart_enhancement"):
             se = settings.smart_enhancement
             self.smart_enhance_enable_check.setChecked(se.enabled)
+            if hasattr(self, "smart_exposure_check"):
+                self.smart_exposure_check.setChecked(
+                    bool(getattr(se, "adjust_exposure", True))
+                )
+            if hasattr(self, "smart_color_balance_check"):
+                self.smart_color_balance_check.setChecked(
+                    bool(getattr(se, "adjust_color_balance", True))
+                )
+            if hasattr(self, "smart_strength_spin"):
+                self.smart_strength_spin.setValue(int(getattr(se, "strength", 50)))
 
         if hasattr(settings, "notification"):
             ns = settings.notification
@@ -1284,6 +1338,13 @@ class SettingsPanel(QWidget):
         self.face_detect_enable_check.toggled.connect(self._on_setting_changed)
         face_layout.addWidget(self.face_detect_enable_check)
 
+        self.face_use_dnn_check = QCheckBox("DNN 얼굴 감지 사용 (초기 모델 다운로드)")
+        self.face_use_dnn_check.setToolTip(
+            "활성화 시 더 정확한 얼굴 감지를 시도합니다. 네트워크 실패 시 기본(Haar) 방식으로 자동 전환됩니다."
+        )
+        self.face_use_dnn_check.stateChanged.connect(self._on_setting_changed)
+        face_layout.addWidget(self.face_use_dnn_check)
+
         self.face_auto_orient_check = QCheckBox("얼굴 기준 자동 회전")
         self.face_auto_orient_check.stateChanged.connect(self._on_setting_changed)
         face_layout.addWidget(self.face_auto_orient_check)
@@ -1296,7 +1357,7 @@ class SettingsPanel(QWidget):
         min_size_row.addWidget(QLabel("최소 얼굴 크기 (px):"))
         self.face_min_size_spin = NoScrollSpinBox()
         self.face_min_size_spin.setRange(20, 500)
-        self.face_min_size_spin.setValue(50)
+        self.face_min_size_spin.setValue(30)
         self.face_min_size_spin.valueChanged.connect(self._on_setting_changed)
         min_size_row.addWidget(self.face_min_size_spin)
         face_layout.addLayout(min_size_row)

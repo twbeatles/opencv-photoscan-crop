@@ -60,7 +60,10 @@
 ### Stability-Critical Flow
 
 - Watch Mode는 `ui/main_window.py`에서 `BatchProcessor.process_single()`을 호출해 배치와 동일 파이프라인을 재사용합니다.
-- 저장 전 후처리 순서는 단일/멀티포토 모두 얼굴 보정 → 리사이즈 → 워터마크 → 분류 폴더 라우팅입니다.
+- 저장 전 후처리 순서는 단일/멀티포토 모두 얼굴 보정 → 스마트 보정 → 리사이즈 → 분류 폴더 라우팅(워터마크 전) → 워터마크입니다.
+- `performance.max_image_size_mb`는 실제 처리 전에 파일 크기 제한으로 적용됩니다.
+- `skip_processed`는 자동 분류 하위 폴더까지 포함해 중복 결과를 탐지합니다.
+- 얼굴 감지 `use_dnn=True`는 모델 자동 다운로드/체크섬 검증 후 로드하며, 실패 시 Haar로 즉시 폴백합니다.
 - 멀티스레드 취소는 pending future를 우선 취소해 중단 응답성을 확보합니다.
 
 ### UI Components
@@ -87,14 +90,18 @@
     │  scales: [0.5, 1.0, 1.5]
     │  thresholds: canny_min, canny_max
     ▼ ─────────────────────────────────
-    │  Stage 2: Adaptive Threshold
+    │  Stage 2: Background Mask (balanced/accurate)
+    ▼ ─────────────────────────────────
+    │  Stage 3: Adaptive Threshold
     │  method: cv2.ADAPTIVE_THRESH_GAUSSIAN_C
     ▼ ─────────────────────────────────
-    │  Stage 3: Gradient Analysis (Sobel)
+    │  Stage 4: Gradient Analysis (Sobel)
     │  combined X, Y gradients
     ▼ ─────────────────────────────────
-    │  Stage 4: Harris Corner (optional)
+    │  Stage 5: Harris Corner (optional)
     │  corner_block_size, corner_k
+    ▼ ─────────────────────────────────
+    │  Stage 6: Hough Rectangle (balanced/accurate fallback)
     ▼ ─────────────────────────────────
     │
     ▼ Contour Scoring + Best Selection
@@ -140,6 +147,23 @@ class AppSettings:
     output: OutputSettings
     ui: UISettings
     # ... more settings
+
+# v9.0+ 추가 예시
+@dataclass
+class ClassificationSettings:
+    enabled: bool = False
+    model: str = "basic"   # basic | advanced | custom(custom=advanced)
+
+@dataclass
+class FaceDetectionSettings:
+    use_dnn: bool = False
+    min_face_size: int = 30
+
+@dataclass
+class SmartEnhancementSettings:
+    adjust_exposure: bool = True
+    adjust_color_balance: bool = True
+    strength: int = 50
 ```
 
 ## Common Tasks

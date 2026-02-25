@@ -200,6 +200,64 @@ class SmartEnhancer:
             EnhancementResult with processed image
         """
         return self._apply_settings(image, settings, EnhancementPreset.AUTO)
+
+    def apply_runtime_adjustments(
+        self,
+        image: np.ndarray,
+        *,
+        adjust_exposure: bool = True,
+        adjust_color_balance: bool = True,
+        strength: int = 50,
+    ) -> np.ndarray:
+        """
+        Apply lightweight runtime adjustments controlled by UI options.
+
+        This is intentionally conservative so existing successful outputs are not
+        heavily altered.
+        """
+        if image is None or image.size == 0:
+            return image
+
+        level = max(0, min(100, int(strength))) / 100.0
+        if level <= 0.0:
+            return image
+
+        result = image.copy()
+        try:
+            # Work in BGR 3-channel space for stable downstream behavior.
+            if result.ndim == 2:
+                result = cv2.cvtColor(result, cv2.COLOR_GRAY2BGR)
+            elif result.ndim == 3 and result.shape[2] == 1:
+                result = cv2.cvtColor(result, cv2.COLOR_GRAY2BGR)
+
+            if adjust_exposure:
+                # Nudge luminance toward a mid target using a bounded delta.
+                lab = cv2.cvtColor(result, cv2.COLOR_BGR2LAB)
+                l = lab[:, :, 0].astype(np.float32)
+                mean_l = float(np.mean(l))
+                delta = np.clip((128.0 - mean_l) * (0.20 + 0.50 * level), -24.0, 24.0)
+                lab[:, :, 0] = np.clip(l + delta, 0, 255).astype(np.uint8)
+                result = cv2.cvtColor(lab, cv2.COLOR_LAB2BGR)
+
+            if adjust_color_balance:
+                # Gray-world style channel balancing blended by strength.
+                float_img = result.astype(np.float32)
+                channel_means = np.mean(float_img, axis=(0, 1))
+                mean_gray = float(np.mean(channel_means))
+                gains = np.ones(3, dtype=np.float32)
+                for i in range(3):
+                    if channel_means[i] > 1e-6:
+                        gains[i] = np.clip(mean_gray / channel_means[i], 0.85, 1.15)
+
+                blend = 0.20 + 0.60 * level
+                effective = 1.0 + (gains - 1.0) * blend
+                float_img *= effective.reshape((1, 1, 3))
+                result = np.clip(float_img, 0, 255).astype(np.uint8)
+        except Exception as e:
+            logger.warning(f"Runtime smart adjustments failed: {e}")
+            return image
+
+        return result
     
     def _apply_settings(self, image: np.ndarray,
                         settings: EnhancementSettings,

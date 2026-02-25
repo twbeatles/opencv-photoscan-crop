@@ -1044,7 +1044,10 @@ class MainWindow(QMainWindow):
             self.output_path_edit.setText(output_path)
 
         # Get files
-        files = get_image_files(input_path)
+        recursive = bool(
+            getattr(self._settings.file_management, "recursive_search", False)
+        )
+        files = get_image_files(input_path, recursive=recursive)
         if not files:
             QMessageBox.information(self, "알림", "처리할 이미지 파일이 없습니다.")
             return
@@ -1066,9 +1069,8 @@ class MainWindow(QMainWindow):
         self.progress_dialog.cancel_requested.connect(self._cancel_processing)
         self.progress_dialog.show()
 
-        # Start processing
-        file_names = [os.path.basename(f) for f in files]
-        self.batch_processor.start_async(input_path, output_path, file_names)
+        # Start processing (keep absolute paths to avoid basename collisions)
+        self.batch_processor.start_async(input_path, output_path, files)
 
     def _cancel_processing(self):
         """Cancel batch processing."""
@@ -1561,7 +1563,10 @@ class MainWindow(QMainWindow):
         import cv2
         import numpy as np
 
-        detector = get_face_detector()
+        detector = get_face_detector(
+            use_dnn=getattr(self._settings.face_detection, "use_dnn", False),
+            min_face_size=getattr(self._settings.face_detection, "min_face_size", 30),
+        )
 
         # Load and detect faces
         image = cv2.imdecode(
@@ -1781,7 +1786,7 @@ class MainWindow(QMainWindow):
         try:
             self.watch_batch_processor.update_settings(self._settings)
             result = self.watch_batch_processor.process_single(input_path, output_path)
-            return result.status.name == "SUCCESS"
+            return result.status.name in {"SUCCESS", "SKIPPED"}
         except Exception as e:
             logger.error(f"Watch mode processing error: {e}")
             return False

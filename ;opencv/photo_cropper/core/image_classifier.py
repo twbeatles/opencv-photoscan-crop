@@ -77,6 +77,7 @@ class ImageClassifier:
         self._face_cascade = None
         self._eye_cascade = None
         self._dnn_net = None
+        self._custom_model_notice_logged = False
         
         self._load_classifiers()
     
@@ -93,12 +94,32 @@ class ImageClassifier:
         except Exception as e:
             logger.error(f"Error loading classifiers: {e}")
     
-    def classify(self, image: np.ndarray) -> ClassificationResult:
+    @staticmethod
+    def _normalize_model(model: str) -> str:
+        """Normalize classification model name."""
+        mode = str(model or "basic").lower()
+        if mode not in ("basic", "advanced", "custom"):
+            mode = "basic"
+        return mode
+
+    @staticmethod
+    def _normalize_input_image(image: np.ndarray) -> np.ndarray:
+        """Normalize input image into BGR layout."""
+        if image is None:
+            return image
+        if image.ndim == 2:
+            return cv2.cvtColor(image, cv2.COLOR_GRAY2BGR)
+        if image.ndim == 3 and image.shape[2] == 1:
+            return cv2.cvtColor(image, cv2.COLOR_GRAY2BGR)
+        return image
+
+    def classify(self, image: np.ndarray, model: str = "basic") -> ClassificationResult:
         """
         Classify an image into categories.
         
         Args:
-            image: Input BGR image
+            image: Input image (BGR/Gray)
+            model: Classification profile ("basic", "advanced", "custom")
             
         Returns:
             ClassificationResult with category and confidence
@@ -108,6 +129,17 @@ class ImageClassifier:
                 category=ImageCategory.OTHER,
                 confidence=0.0
             )
+
+        model = self._normalize_model(model)
+        if model == "custom":
+            if not self._custom_model_notice_logged:
+                logger.info(
+                    "Classification model 'custom' currently maps to 'advanced' profile."
+                )
+                self._custom_model_notice_logged = True
+            model = "advanced"
+
+        image = self._normalize_input_image(image)
         
         # Collect all metrics
         metrics = {}
@@ -117,27 +149,36 @@ class ImageClassifier:
         metrics['saturation'] = saturation_mean
         
         # 2. Detect faces
-        faces = self._detect_faces(image)
+        faces = self._detect_faces(image, model=model)
         face_area_ratio = self._calculate_face_area_ratio(faces, image.shape)
         metrics['face_area_ratio'] = face_area_ratio
         metrics['face_count'] = len(faces)
         
         # 3. Analyze document features
-        doc_score = self._analyze_document_features(image)
+        doc_score = self._analyze_document_features(image, model=model)
         metrics['document_score'] = doc_score
         
         # 4. Analyze scene/texture
-        scene_score = self._analyze_scene(image)
+        scene_score = self._analyze_scene(image, model=model)
         metrics['scene_score'] = scene_score
         
         # Classification logic
-        category, confidence = self._determine_category(
-            is_grayscale=is_grayscale,
-            face_area_ratio=face_area_ratio,
-            face_count=len(faces),
-            doc_score=doc_score,
-            scene_score=scene_score
-        )
+        if model == "advanced":
+            category, confidence = self._determine_category_advanced(
+                is_grayscale=is_grayscale,
+                face_area_ratio=face_area_ratio,
+                face_count=len(faces),
+                doc_score=doc_score,
+                scene_score=scene_score,
+            )
+        else:
+            category, confidence = self._determine_category_basic(
+                is_grayscale=is_grayscale,
+                face_area_ratio=face_area_ratio,
+                face_count=len(faces),
+                doc_score=doc_score,
+                scene_score=scene_score,
+            )
         
         return ClassificationResult(
             category=category,
@@ -171,21 +212,29 @@ class ImageClassifier:
         
         return is_grayscale, float(mean_saturation)
     
-    def _detect_faces(self, image: np.ndarray) -> List[Tuple[int, int, int, int]]:
+    def _detect_faces(
+        self, image: np.ndarray, model: str = "basic"
+    ) -> List[Tuple[int, int, int, int]]:
         """
         Detect faces in image using Haar cascade.
         
         Args:
             image: Input BGR image
+            model: Classification model profile
             
         Returns:
             List of face rectangles (x, y, w, h)
         """
         if self._face_cascade is None:
             return []
-        
+
         # Convert to grayscale for detection
-        gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+        if image.ndim == 2:
+            gray = image
+        elif image.ndim == 3 and image.shape[2] == 1:
+            gray = image[:, :, 0]
+        else:
+            gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
         
         # Resize for faster detection if image is large
         max_dim = 800
@@ -196,10 +245,11 @@ class ImageClassifier:
             gray = cv2.resize(gray, None, fx=scale, fy=scale)
         
         # Detect faces
+        min_neighbors = 6 if model == "advanced" else 5
         faces = self._face_cascade.detectMultiScale(
             gray,
             scaleFactor=1.1,
-            minNeighbors=5,
+            minNeighbors=min_neighbors,
             minSize=(30, 30),
             flags=cv2.CASCADE_SCALE_IMAGE
         )
@@ -232,7 +282,9 @@ class ImageClassifier:
         
         return min(1.0, face_area / image_area)
     
-    def _analyze_document_features(self, image: np.ndarray) -> float:
+    def _analyze_document_features(
+        self, image: np.ndarray, model: str = "basic"
+    ) -> float:
         """
         Analyze if image has document-like features.
         
@@ -248,7 +300,12 @@ class ImageClassifier:
             Document score (0.0 to 1.0)
         """
         # Convert to grayscale
-        gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+        if image.ndim == 2:
+            gray = image
+        elif image.ndim == 3 and image.shape[2] == 1:
+            gray = image[:, :, 0]
+        else:
+            gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
         
         # Resize for faster processing
         max_dim = 500
@@ -258,12 +315,22 @@ class ImageClassifier:
             gray = cv2.resize(gray, None, fx=scale, fy=scale)
         
         # Edge detection
-        edges = cv2.Canny(gray, 50, 150)
+        if model == "advanced":
+            edges = cv2.Canny(gray, 40, 120)
+        else:
+            edges = cv2.Canny(gray, 50, 150)
         edge_density = np.count_nonzero(edges) / edges.size
         
         # Line detection using Hough transform
-        lines = cv2.HoughLinesP(edges, 1, np.pi/180, 50, 
-                                minLineLength=30, maxLineGap=10)
+        line_threshold = 45 if model == "advanced" else 50
+        lines = cv2.HoughLinesP(
+            edges,
+            1,
+            np.pi / 180,
+            line_threshold,
+            minLineLength=30,
+            maxLineGap=10,
+        )
         
         line_score = 0.0
         if lines is not None:
@@ -286,7 +353,7 @@ class ImageClassifier:
         doc_score = (edge_density * 2 + line_score) / 3
         return min(1.0, doc_score)
     
-    def _analyze_scene(self, image: np.ndarray) -> float:
+    def _analyze_scene(self, image: np.ndarray, model: str = "basic") -> float:
         """
         Analyze scene characteristics for landscape detection.
         
@@ -302,6 +369,7 @@ class ImageClassifier:
             Landscape score (0.0 to 1.0)
         """
         # Resize for faster processing
+        image = self._normalize_input_image(image)
         small = cv2.resize(image, (200, 200))
         
         # Convert to LAB for better color analysis
@@ -321,18 +389,29 @@ class ImageClassifier:
         green_ratio = np.count_nonzero(green_mask) / green_mask.size
         
         # Combine scores
-        scene_score = (color_variety * 0.4 + 
-                      sky_ratio * 0.3 + 
-                      green_ratio * 0.3)
+        if model == "advanced":
+            scene_score = (
+                color_variety * 0.45
+                + sky_ratio * 0.30
+                + green_ratio * 0.25
+            )
+        else:
+            scene_score = (
+                color_variety * 0.4
+                + sky_ratio * 0.3
+                + green_ratio * 0.3
+            )
         
         return min(1.0, scene_score)
     
-    def _determine_category(self, 
-                           is_grayscale: bool,
-                           face_area_ratio: float,
-                           face_count: int,
-                           doc_score: float,
-                           scene_score: float) -> Tuple[ImageCategory, float]:
+    def _determine_category_basic(
+        self,
+        is_grayscale: bool,
+        face_area_ratio: float,
+        face_count: int,
+        doc_score: float,
+        scene_score: float,
+    ) -> Tuple[ImageCategory, float]:
         """
         Determine final category based on all metrics.
         
@@ -389,6 +468,57 @@ class ImageClassifier:
             best_category = ImageCategory.OTHER
             confidence = 1.0 - max(scores.values())
         
+        return best_category, confidence
+
+    def _determine_category_advanced(
+        self,
+        is_grayscale: bool,
+        face_area_ratio: float,
+        face_count: int,
+        doc_score: float,
+        scene_score: float,
+    ) -> Tuple[ImageCategory, float]:
+        """
+        Advanced category scoring profile.
+
+        This profile is slightly stricter against false positives and uses
+        smoother weighted scores.
+        """
+        portrait_score = 0.0
+        if face_count > 0:
+            portrait_score = min(
+                0.95,
+                face_count * 0.25 + min(1.0, face_area_ratio * 3.5) * 0.70,
+            )
+
+        document_score = float(np.clip(doc_score * 1.35 - face_count * 0.05, 0.0, 1.0))
+
+        if is_grayscale:
+            bw_score = 0.86 if doc_score < 0.35 else 0.48
+        else:
+            bw_score = 0.0
+
+        landscape_score = float(np.clip(scene_score * 1.30, 0.0, 1.0))
+        if face_count > 0:
+            landscape_score *= 0.45
+        if doc_score > 0.35:
+            landscape_score *= 0.65
+
+        scores = {
+            ImageCategory.PORTRAIT: portrait_score,
+            ImageCategory.DOCUMENT: document_score,
+            ImageCategory.BLACKWHITE: bw_score,
+            ImageCategory.LANDSCAPE: landscape_score,
+            ImageCategory.OTHER: 0.28,
+        }
+
+        best_category = max(scores, key=scores.get)
+        confidence = float(scores[best_category])
+
+        if confidence < 0.46:
+            best_category = ImageCategory.OTHER
+            confidence = float(max(0.0, 1.0 - max(scores.values())))
+
         return best_category, confidence
     
     def get_output_folder(self, category: ImageCategory) -> str:

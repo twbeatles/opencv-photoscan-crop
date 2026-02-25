@@ -555,6 +555,58 @@ class ImageProcessor:
         self.algo.max_area_ratio = orig_max
         return best_quad, float(best_score), scored_candidates[:10]
 
+    def _min_accept_score_for_stage(self, stage: DetectionStage) -> float:
+        """
+        Conservative per-stage confidence gate.
+
+        Higher-fallback stages require stronger evidence to reduce false positives.
+        """
+        mode = self.algo.detection_mode
+        stage_thresholds = {
+            "fast": {
+                DetectionStage.CANNY: 0.30,
+                DetectionStage.MULTI_SCALE_CANNY: 0.30,
+                DetectionStage.BACKGROUND_MASK: 0.35,
+                DetectionStage.ADAPTIVE_THRESHOLD: 0.45,
+                DetectionStage.GRADIENT_SOBEL: 0.48,
+                DetectionStage.CORNER_HARRIS: 0.52,
+                DetectionStage.HOUGH_RECT: 0.60,
+            },
+            "balanced": {
+                DetectionStage.CANNY: 0.45,
+                DetectionStage.MULTI_SCALE_CANNY: 0.45,
+                DetectionStage.BACKGROUND_MASK: 0.55,
+                DetectionStage.ADAPTIVE_THRESHOLD: 0.72,
+                DetectionStage.GRADIENT_SOBEL: 0.68,
+                DetectionStage.CORNER_HARRIS: 0.70,
+                DetectionStage.HOUGH_RECT: 0.82,
+            },
+            "accurate": {
+                DetectionStage.CANNY: 0.72,
+                DetectionStage.MULTI_SCALE_CANNY: 0.72,
+                DetectionStage.BACKGROUND_MASK: 0.80,
+                DetectionStage.ADAPTIVE_THRESHOLD: 0.97,
+                DetectionStage.GRADIENT_SOBEL: 0.94,
+                DetectionStage.CORNER_HARRIS: 0.92,
+                DetectionStage.HOUGH_RECT: 0.98,
+            },
+        }
+        threshold = stage_thresholds.get(mode, stage_thresholds["balanced"]).get(
+            stage, 0.60
+        )
+
+        scoring_delta = {
+            "basic": -0.03,
+            "enhanced": 0.00,
+            "strict": 0.04,
+        }.get(self.algo.contour_scoring, 0.0)
+
+        return float(max(0.15, min(0.995, threshold + scoring_delta)))
+
+    def _accept_stage_candidate(self, stage: DetectionStage, score: float) -> bool:
+        """Check whether a candidate score passes stage-specific gate."""
+        return float(score) >= self._min_accept_score_for_stage(stage)
+
     def _debug_enabled(self, debug_dir: Optional[str]) -> bool:
         return bool(self.debug.enabled and debug_dir is not None)
 
@@ -921,13 +973,14 @@ class ImageProcessor:
             # ==========================================
             edges = self.detect_edges_multiscale(gray)
             quad, score, candidates = self.find_best_contour(edges, image_area)
-            if quad is not None:
+            stage_1 = (
+                DetectionStage.MULTI_SCALE_CANNY
+                if self.algo.multi_scale_edge
+                else DetectionStage.CANNY
+            )
+            if quad is not None and self._accept_stage_candidate(stage_1, score):
                 best_quad, best_score, best_candidates = quad, score, candidates
-                detection_stage = (
-                    DetectionStage.MULTI_SCALE_CANNY
-                    if self.algo.multi_scale_edge
-                    else DetectionStage.CANNY
-                )
+                detection_stage = stage_1
 
             if debug_enabled and debug_run_dir and self.debug.save_detection_stages:
                 self._save_debug_image(
@@ -940,7 +993,9 @@ class ImageProcessor:
             if best_quad is None and self.algo.detection_mode in ("balanced", "accurate"):
                 bgmask = self._create_background_mask(gray)
                 quad, score, candidates = self.find_best_contour(bgmask, image_area)
-                if quad is not None:
+                if quad is not None and self._accept_stage_candidate(
+                    DetectionStage.BACKGROUND_MASK, score
+                ):
                     best_quad, best_score, best_candidates = quad, score, candidates
                     detection_stage = DetectionStage.BACKGROUND_MASK
 
@@ -963,7 +1018,9 @@ class ImageProcessor:
                     4,
                 )
                 quad, score, candidates = self.find_best_contour(thresh, image_area)
-                if quad is not None:
+                if quad is not None and self._accept_stage_candidate(
+                    DetectionStage.ADAPTIVE_THRESHOLD, score
+                ):
                     best_quad, best_score, best_candidates = quad, score, candidates
                     detection_stage = DetectionStage.ADAPTIVE_THRESHOLD
 
@@ -992,7 +1049,9 @@ class ImageProcessor:
                 closed = cv2.dilate(closed, self._kernel_3x3, iterations=4)
 
                 quad, score, candidates = self.find_best_contour(closed, image_area)
-                if quad is not None:
+                if quad is not None and self._accept_stage_candidate(
+                    DetectionStage.GRADIENT_SOBEL, score
+                ):
                     best_quad, best_score, best_candidates = quad, score, candidates
                     detection_stage = DetectionStage.GRADIENT_SOBEL
 
@@ -1018,7 +1077,9 @@ class ImageProcessor:
                 corner_mask[corners > threshold] = 255
 
                 quad, score, candidates = self.find_best_contour(corner_mask, image_area)
-                if quad is not None:
+                if quad is not None and self._accept_stage_candidate(
+                    DetectionStage.CORNER_HARRIS, score
+                ):
                     best_quad, best_score, best_candidates = quad, score, candidates
                     detection_stage = DetectionStage.CORNER_HARRIS
 
@@ -1034,7 +1095,9 @@ class ImageProcessor:
                 hquad = self._detect_rectangle_by_hough(edges)
                 if hquad is not None:
                     hscore = self._score_quad(hquad, image_area, edge_image=edges)
-                    if hscore > 0:
+                    if hscore > 0 and self._accept_stage_candidate(
+                        DetectionStage.HOUGH_RECT, hscore
+                    ):
                         best_quad, best_score = hquad, float(hscore)
                         best_candidates = [{"quad": hquad, "score": float(hscore)}]
                         detection_stage = DetectionStage.HOUGH_RECT

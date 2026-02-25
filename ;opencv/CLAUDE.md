@@ -98,7 +98,8 @@ class ImageProcessor:
 `PerformanceSettings`로 병렬 처리 스레드 수를 제어합니다.
 
 - `process_single(input_path, output_dir)`를 제공하여 Watch Mode에서도 배치와 동일한 파이프라인을 사용합니다.
-- 단일/멀티포토 모두 얼굴 보정 → 리사이즈 → 워터마크 → 분류 폴더 라우팅 순서가 동일합니다.
+- 단일/멀티포토 모두 얼굴 보정 → 스마트 보정 → 리사이즈 → 분류 폴더 라우팅(워터마크 전 기준) → 워터마크 순서를 공통 적용합니다.
+- 얼굴 감지 `use_dnn=True` 시 모델 자동 다운로드/체크섬 검증을 시도하며, 실패 시 Haar 감지로 즉시 폴백합니다.
 - 취소 시 pending future를 빠르게 정리해 중단 응답성을 높였습니다.
 
 ## 주요 기능 흐름
@@ -173,7 +174,11 @@ pyinstaller photo_cropper.spec --clean
 
 ### Watch Mode/Batch 결과 불일치
 - Watch Mode는 `BatchProcessor.process_single()` 경로를 사용해야 함
-- 직접 `ImageProcessor.process_image()`만 호출하면 후처리(워터마크/리사이즈/분류)가 누락될 수 있음
+- 직접 `ImageProcessor.process_image()`만 호출하면 후처리(얼굴/스마트 보정, 리사이즈, 분류 라우팅, 워터마크)가 누락될 수 있음
+
+### DNN 얼굴 감지 모델 다운로드 실패
+- 네트워크/모델 파일 문제 시 경고 로그 후 Haar 캐스케이드로 자동 폴백됨
+- 처리 실패가 아니라 정확도 저하 모드로 계속 진행됨
 
 ### 중단 응답 지연
 - 멀티스레드 배치 취소는 in-flight 작업 완료를 일부 기다릴 수 있음

@@ -117,9 +117,16 @@ class MultiPhotoDetector:
                 contours3 = self._detect_color_segmentation(image)
                 all_contours.extend(contours3)
             
+            # Decompose overly connected candidates to reduce over-merge.
+            expanded_contours: List[np.ndarray] = []
+            for contour in all_contours:
+                expanded_contours.extend(
+                    self._split_connected_candidates(contour, gray, min_area)
+                )
+
             # Filter and score contours
             detected_photos = []
-            for contour in all_contours:
+            for contour in expanded_contours:
                 area = cv2.contourArea(contour)
                 if area < min_area or area > max_area:
                     continue
@@ -152,7 +159,7 @@ class MultiPhotoDetector:
                     aspect_ratio=aspect_ratio
                 ))
             
-            # Remove duplicates and merge overlapping regions
+            # Remove duplicates and near-identical regions (IoU-based)
             detected_photos = self._merge_overlapping(detected_photos)
             
             # Sort by area (largest first) and limit count
@@ -254,54 +261,128 @@ class MultiPhotoDetector:
         )
         
         return list(contours)
-    
+
+    def _split_connected_candidates(
+        self, contour: np.ndarray, gray: np.ndarray, min_area: int
+    ) -> List[np.ndarray]:
+        """
+        Try splitting connected regions caused by thin bridges/noise.
+
+        Uses morphological opening + connected components inside contour ROI.
+        """
+        if contour is None or len(contour) < 3:
+            return []
+
+        x, y, w, h = cv2.boundingRect(contour)
+        if w <= 4 or h <= 4:
+            return [contour]
+
+        roi_mask = np.zeros((h, w), dtype=np.uint8)
+        shifted = contour - np.array([[[x, y]]], dtype=contour.dtype)
+        cv2.drawContours(roi_mask, [shifted], -1, 255, thickness=-1)
+
+        kernel_size = max(3, min(11, int(min(w, h) * 0.04)))
+        if kernel_size % 2 == 0:
+            kernel_size += 1
+        kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (kernel_size, kernel_size))
+        opened = cv2.morphologyEx(roi_mask, cv2.MORPH_OPEN, kernel, iterations=1)
+
+        num_labels, labels, stats, _ = cv2.connectedComponentsWithStats(opened, 8)
+        if num_labels <= 2:
+            return [contour]
+
+        min_component_area = max(200, int(min_area * 0.35))
+        parts: List[np.ndarray] = []
+        for label in range(1, num_labels):
+            area = int(stats[label, cv2.CC_STAT_AREA])
+            if area < min_component_area:
+                continue
+
+            component = (labels == label).astype(np.uint8) * 255
+            cnts, _ = cv2.findContours(
+                component, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE
+            )
+            if not cnts:
+                continue
+            c = max(cnts, key=cv2.contourArea)
+            c = c + np.array([[[x, y]]], dtype=c.dtype)
+            parts.append(c)
+
+        if len(parts) >= 2:
+            return parts
+        return [contour]
+
+    @staticmethod
+    def _bbox_iou(a: Tuple[int, int, int, int], b: Tuple[int, int, int, int]) -> float:
+        ax, ay, aw, ah = a
+        bx, by, bw, bh = b
+        ax2, ay2 = ax + aw, ay + ah
+        bx2, by2 = bx + bw, by + bh
+
+        inter_w = max(0, min(ax2, bx2) - max(ax, bx))
+        inter_h = max(0, min(ay2, by2) - max(ay, by))
+        inter = inter_w * inter_h
+        if inter <= 0:
+            return 0.0
+
+        union = aw * ah + bw * bh - inter
+        if union <= 0:
+            return 0.0
+        return float(inter) / float(union)
+
+    @staticmethod
+    def _bbox_contains(
+        outer: Tuple[int, int, int, int], inner: Tuple[int, int, int, int], margin: int = 3
+    ) -> bool:
+        ox, oy, ow, oh = outer
+        ix, iy, iw, ih = inner
+        return (
+            ix >= ox - margin
+            and iy >= oy - margin
+            and ix + iw <= ox + ow + margin
+            and iy + ih <= oy + oh + margin
+        )
+
     def _merge_overlapping(self, photos: List[DetectedPhoto]) -> List[DetectedPhoto]:
-        """Merge overlapping or nearby photo regions."""
+        """Deduplicate highly-overlapping detections without proximity over-merge."""
         if len(photos) <= 1:
             return photos
-        
-        # Sort by area
-        photos.sort(key=lambda p: p.area, reverse=True)
-        
-        merged = []
-        used = set()
-        
-        for i, photo1 in enumerate(photos):
-            if i in used:
-                continue
-            
-            x1, y1, w1, h1 = photo1.bounding_box
-            
-            # Check overlap with other photos
-            merge_candidates = [i]
-            for j, photo2 in enumerate(photos[i+1:], i+1):
-                if j in used:
-                    continue
-                
-                x2, y2, w2, h2 = photo2.bounding_box
-                
-                # Calculate overlap or distance
-                overlap_x = max(0, min(x1+w1, x2+w2) - max(x1, x2))
-                overlap_y = max(0, min(y1+h1, y2+h2) - max(y1, y2))
-                
-                if overlap_x > 0 and overlap_y > 0:
-                    # Regions overlap
-                    merge_candidates.append(j)
-                    used.add(j)
-                else:
-                    # Check if nearby
-                    dist_x = min(abs(x1 - (x2+w2)), abs(x2 - (x1+w1)))
-                    dist_y = min(abs(y1 - (y2+h2)), abs(y2 - (y1+h1)))
-                    
-                    if dist_x < self.merge_distance and dist_y < self.merge_distance:
-                        merge_candidates.append(j)
-                        used.add(j)
-            
-            # Keep the largest from merge candidates
-            used.add(i)
-            merged.append(photo1)
-        
-        return merged
+
+        candidates = sorted(
+            photos,
+            key=lambda p: (float(p.confidence), int(p.area)),
+            reverse=True,
+        )
+
+        kept: List[DetectedPhoto] = []
+        for photo in candidates:
+            drop = False
+            replace_index = -1
+            for idx, existing in enumerate(kept):
+                iou = self._bbox_iou(photo.bounding_box, existing.bounding_box)
+                if iou >= 0.55:
+                    # Keep the higher-confidence one for near-duplicate regions.
+                    drop = True
+                    if (
+                        photo.confidence > existing.confidence + 0.03
+                        or (
+                            abs(photo.confidence - existing.confidence) <= 0.03
+                            and photo.area > existing.area
+                        )
+                    ):
+                        replace_index = idx
+                    break
+
+                if self._bbox_contains(existing.bounding_box, photo.bounding_box):
+                    drop = True
+                    break
+
+            if replace_index >= 0:
+                kept[replace_index] = photo
+            elif not drop:
+                kept.append(photo)
+
+        return kept
     
     def crop_photos(
         self,

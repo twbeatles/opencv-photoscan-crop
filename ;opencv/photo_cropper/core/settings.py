@@ -330,6 +330,7 @@ class MultiPhotoSettings:
 class ClassificationSettings:
     """Image classification settings for v9.0."""
     enabled: bool = False
+    model: str = "basic"  # basic, advanced, custom(custom=advanced for now)
     auto_folder: bool = True  # Create category folders automatically
     categories_enabled: dict = field(default_factory=lambda: {
         "portrait": True,
@@ -339,6 +340,13 @@ class ClassificationSettings:
         "other": True
     })
     min_confidence: float = 0.5
+
+    def __post_init__(self):
+        self.min_confidence = max(0.0, min(1.0, float(self.min_confidence)))
+        model = str(self.model or "basic").lower()
+        if model not in ("basic", "advanced", "custom"):
+            model = "basic"
+        self.model = model
 
 
 @dataclass
@@ -350,6 +358,10 @@ class FaceDetectionSettings:
     show_overlay: bool = True  # Show face rectangles in preview
     auto_rotate: bool = False  # Auto-rotate based on eye positions
     detect_eyes: bool = True
+    min_face_size: int = 30
+
+    def __post_init__(self):
+        self.min_face_size = max(20, min(500, int(self.min_face_size)))
 
 
 @dataclass
@@ -359,6 +371,12 @@ class SmartEnhancementSettings:
     auto_preset: bool = True  # Automatically select preset based on classification
     default_preset: str = "none"  # Default preset if auto is off
     apply_to_batch: bool = True
+    adjust_exposure: bool = True
+    adjust_color_balance: bool = True
+    strength: int = 50
+
+    def __post_init__(self):
+        self.strength = max(0, min(100, int(self.strength)))
 
 
 @dataclass

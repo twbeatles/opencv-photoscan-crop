@@ -87,6 +87,29 @@ class WatermarkProcessor:
         self._cached_font_size: int = 0
         self._cached_pil_font = None
 
+    @staticmethod
+    def _normalize_to_bgr(image: np.ndarray) -> Tuple[np.ndarray, str]:
+        """Normalize input into BGR and return original layout hint."""
+        if image is None:
+            return image, "bgr"
+        if image.ndim == 2:
+            return cv2.cvtColor(image, cv2.COLOR_GRAY2BGR), "gray2d"
+        if image.ndim == 3 and image.shape[2] == 1:
+            return cv2.cvtColor(image, cv2.COLOR_GRAY2BGR), "gray1ch"
+        return image, "bgr"
+
+    @staticmethod
+    def _restore_layout(image_bgr: np.ndarray, layout: str) -> np.ndarray:
+        """Restore original layout from normalized BGR image."""
+        if image_bgr is None:
+            return image_bgr
+        if layout == "gray2d":
+            return cv2.cvtColor(image_bgr, cv2.COLOR_BGR2GRAY)
+        if layout == "gray1ch":
+            gray = cv2.cvtColor(image_bgr, cv2.COLOR_BGR2GRAY)
+            return gray[:, :, None]
+        return image_bgr
+
     def apply_text_watermark(
         self, image: np.ndarray, settings: TextWatermarkSettings
     ) -> np.ndarray:
@@ -103,13 +126,17 @@ class WatermarkProcessor:
         if not settings.text:
             return image
 
+        image_bgr, layout = self._normalize_to_bgr(image)
+        if image_bgr is None or image_bgr.size == 0:
+            return image
+
         # Use Pillow when text includes non-ASCII (e.g., Korean) or a font path is provided.
         if settings.font_path or any(ord(ch) > 127 for ch in settings.text):
-            pil_result = self._apply_text_watermark_pillow(image, settings)
+            pil_result = self._apply_text_watermark_pillow(image_bgr, settings)
             if pil_result is not None:
-                return pil_result
+                return self._restore_layout(pil_result, layout)
 
-        result = image.copy()
+        result = image_bgr.copy()
         height, width = result.shape[:2]
 
         # Get font and calculate text size
@@ -158,7 +185,7 @@ class WatermarkProcessor:
             overlay, settings.opacity, result, 1 - settings.opacity, 0, result
         )
 
-        return result
+        return self._restore_layout(result, layout)
 
     def _apply_text_watermark_pillow(
         self, image: np.ndarray, settings: TextWatermarkSettings
@@ -280,13 +307,17 @@ class WatermarkProcessor:
         if not settings.image_path:
             return image
 
+        image_bgr, layout = self._normalize_to_bgr(image)
+        if image_bgr is None or image_bgr.size == 0:
+            return image
+
         # Load watermark image (with caching)
         watermark = self._load_watermark_image(settings.image_path)
         if watermark is None:
             logger.warning(f"Failed to load watermark image: {settings.image_path}")
             return image
 
-        result = image.copy()
+        result = image_bgr.copy()
         height, width = result.shape[:2]
 
         # Scale watermark
@@ -315,7 +346,7 @@ class WatermarkProcessor:
         # Apply watermark with transparency
         self._blend_watermark(result, watermark_resized, x, y, settings.opacity)
 
-        return result
+        return self._restore_layout(result, layout)
 
     def _load_watermark_image(self, path: str) -> Optional[np.ndarray]:
         """Load watermark image with caching."""
@@ -421,9 +452,13 @@ class WatermarkProcessor:
         Returns:
             Image with tiled watermark
         """
+        image_bgr, layout = self._normalize_to_bgr(image)
+        if image_bgr is None or image_bgr.size == 0:
+            return image
+
         if text and any(ord(ch) > 127 for ch in text):
             pil_result = self._create_tiled_watermark_pillow(
-                image,
+                image_bgr,
                 text=text,
                 spacing=spacing,
                 angle=angle,
@@ -433,9 +468,9 @@ class WatermarkProcessor:
                 opacity=opacity,
             )
             if pil_result is not None:
-                return pil_result
+                return self._restore_layout(pil_result, layout)
 
-        result = image.copy()
+        result = image_bgr.copy()
         height, width = result.shape[:2]
 
         font = cv2.FONT_HERSHEY_SIMPLEX
@@ -467,7 +502,7 @@ class WatermarkProcessor:
         # Apply opacity
         cv2.addWeighted(overlay, opacity, result, 1 - opacity, 0, result)
 
-        return result
+        return self._restore_layout(result, layout)
 
     def _create_tiled_watermark_pillow(
         self,
@@ -549,7 +584,11 @@ class WatermarkProcessor:
         Returns:
             Preview image with watermarks
         """
-        result = image.copy()
+        image_bgr, layout = self._normalize_to_bgr(image)
+        if image_bgr is None or image_bgr.size == 0:
+            return image
+
+        result = image_bgr.copy()
 
         if image_settings:
             result = self.apply_image_watermark(result, image_settings)
@@ -557,4 +596,4 @@ class WatermarkProcessor:
         if text_settings:
             result = self.apply_text_watermark(result, text_settings)
 
-        return result
+        return self._restore_layout(result, layout)

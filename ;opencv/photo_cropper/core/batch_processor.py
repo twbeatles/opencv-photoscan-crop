@@ -16,6 +16,7 @@ import logging
 import threading
 import traceback
 import time
+import cv2
 from concurrent.futures import ThreadPoolExecutor, wait, FIRST_COMPLETED
 from datetime import datetime
 from typing import Optional, List, Dict, Any, Callable, Tuple
@@ -26,7 +27,8 @@ from queue import Queue
 from .image_processor import ImageProcessor, CropResult
 from .settings import AppSettings
 from .face_detector import FaceDetector
-from .image_classifier import ImageClassifier, get_classifier
+from .image_classifier import ImageClassifier, ImageCategory, get_classifier
+from .smart_enhancer import SmartEnhancer, EnhancementPreset
 from .watermark_processor import (
     WatermarkProcessor,
     TextWatermarkSettings,
@@ -175,6 +177,7 @@ class BatchProcessor:
         self._multi_photo_detector: Optional[MultiPhotoDetector] = None
         self._face_detector: Optional[FaceDetector] = None
         self._classifier: Optional[ImageClassifier] = None
+        self._smart_enhancer: Optional[SmartEnhancer] = None
 
         # Callbacks
         self._on_progress: Optional[Callable[[BatchProgress], None]] = None
@@ -227,6 +230,7 @@ class BatchProcessor:
         self._resize_processor = None
         self._face_detector = None
         self._classifier = None
+        self._smart_enhancer = None
         self._naming_engine = None
         self._thread_count = self._calculate_optimal_threads()
         self._worker_local = threading.local()
@@ -290,15 +294,26 @@ class BatchProcessor:
 
     def _get_face_detector(self) -> FaceDetector:
         use_dnn = self.settings.face_detection.use_dnn
+        min_face_size = int(getattr(self.settings.face_detection, "min_face_size", 30))
         if not self._use_thread_local_context():
-            if self._face_detector is None or self._face_detector.use_dnn != use_dnn:
-                self._face_detector = FaceDetector(use_dnn=use_dnn)
+            if (
+                self._face_detector is None
+                or self._face_detector.use_dnn != use_dnn
+                or int(getattr(self._face_detector, "min_face_size", 30)) != min_face_size
+            ):
+                self._face_detector = FaceDetector(
+                    use_dnn=use_dnn, min_face_size=min_face_size
+                )
             return self._face_detector
 
         context = self._get_worker_context()
         detector = context.get("face_detector")
-        if detector is None or detector.use_dnn != use_dnn:
-            detector = FaceDetector(use_dnn=use_dnn)
+        if (
+            detector is None
+            or detector.use_dnn != use_dnn
+            or int(getattr(detector, "min_face_size", 30)) != min_face_size
+        ):
+            detector = FaceDetector(use_dnn=use_dnn, min_face_size=min_face_size)
             context["face_detector"] = detector
         return detector
 
@@ -314,6 +329,19 @@ class BatchProcessor:
             classifier = ImageClassifier()
             context["classifier"] = classifier
         return classifier
+
+    def _get_smart_enhancer(self) -> SmartEnhancer:
+        if not self._use_thread_local_context():
+            if self._smart_enhancer is None:
+                self._smart_enhancer = SmartEnhancer()
+            return self._smart_enhancer
+
+        context = self._get_worker_context()
+        enhancer = context.get("smart_enhancer")
+        if enhancer is None:
+            enhancer = SmartEnhancer()
+            context["smart_enhancer"] = enhancer
+        return enhancer
 
     def _get_multi_photo_detector(self) -> MultiPhotoDetector:
         if not self._use_thread_local_context():
@@ -481,6 +509,93 @@ class BatchProcessor:
             candidate = f"{base}_{counter}{ext}"
         return candidate
 
+    @staticmethod
+    def _to_bgr(image: np.ndarray) -> Tuple[np.ndarray, str]:
+        """
+        Normalize image to BGR for processors that expect 3-channel input.
+
+        Returns:
+            (bgr_image, layout) where layout is one of: bgr, gray2d, gray1ch.
+        """
+        if image is None:
+            return image, "bgr"
+        if image.ndim == 2:
+            return cv2.cvtColor(image, cv2.COLOR_GRAY2BGR), "gray2d"
+        if image.ndim == 3 and image.shape[2] == 1:
+            return cv2.cvtColor(image, cv2.COLOR_GRAY2BGR), "gray1ch"
+        return image, "bgr"
+
+    @staticmethod
+    def _from_bgr_layout(image_bgr: np.ndarray, layout: str) -> np.ndarray:
+        """Restore the channel layout captured by _to_bgr."""
+        if image_bgr is None:
+            return image_bgr
+        if layout == "gray2d":
+            return cv2.cvtColor(image_bgr, cv2.COLOR_BGR2GRAY)
+        if layout == "gray1ch":
+            gray = cv2.cvtColor(image_bgr, cv2.COLOR_BGR2GRAY)
+            return gray[:, :, None]
+        return image_bgr
+
+    def _maybe_apply_smart_enhancement(self, image: np.ndarray) -> np.ndarray:
+        """Apply smart enhancement in batch/watch pipelines if enabled."""
+        se = self.settings.smart_enhancement
+        if not se.enabled or not se.apply_to_batch:
+            return image
+
+        try:
+            enhancer = self._get_smart_enhancer()
+            working, layout = self._to_bgr(image)
+            if working is None:
+                return image
+
+            preset = EnhancementPreset.NONE
+            if se.auto_preset:
+                classifier = self._get_classifier()
+                cls_model = getattr(self.settings.classification, "model", "basic")
+                classify_result = classifier.classify(working, model=cls_model)
+                category_key = classify_result.category.value
+                preset = enhancer.recommend_preset(category_key)
+            else:
+                preset_name = str(getattr(se, "default_preset", "none") or "none").lower()
+                try:
+                    preset = EnhancementPreset(preset_name)
+                except Exception:
+                    preset = EnhancementPreset.NONE
+
+            enhanced = enhancer.apply_preset(working, preset).image
+            enhanced = enhancer.apply_runtime_adjustments(
+                enhanced,
+                adjust_exposure=bool(getattr(se, "adjust_exposure", True)),
+                adjust_color_balance=bool(getattr(se, "adjust_color_balance", True)),
+                strength=int(getattr(se, "strength", 50)),
+            )
+            self._log(f"  ✨ 스마트 보정 적용: {preset.value}", "info")
+            return self._from_bgr_layout(enhanced, layout)
+        except Exception as e:
+            self._log(f"  스마트 보정 오류: {e}", "warning")
+            return image
+
+    def _run_post_pipeline(self, image: np.ndarray, output_dir: str) -> Tuple[np.ndarray, str]:
+        """
+        Unified post-processing pipeline.
+
+        Order:
+            face adjust -> smart enhance -> resize -> classification routing -> watermark.
+        """
+        processed = self._maybe_apply_face_adjustments(image)
+        processed = self._maybe_apply_smart_enhancement(processed)
+        processed = self._maybe_apply_resize(processed)
+
+        # Classification should use pre-watermark pixels.
+        resolved_output_dir = self._resolve_output_dir_for_classification(
+            processed,
+            output_dir,
+        )
+
+        processed = self._maybe_apply_watermark(processed)
+        return processed, resolved_output_dir
+
     def _maybe_apply_watermark(self, image: np.ndarray) -> np.ndarray:
         """Apply watermark settings if enabled."""
         if not self.settings.watermark.enabled:
@@ -488,6 +603,9 @@ class BatchProcessor:
 
         try:
             watermark_processor = self._get_watermark_processor()
+            working, layout = self._to_bgr(image)
+            if working is None:
+                return image
 
             # Settings store colors as RGB; OpenCV functions use BGR.
             r = int(getattr(self.settings.watermark, "text_color_r", 255))
@@ -498,8 +616,8 @@ class BatchProcessor:
 
             # Tiled watermark takes precedence
             if self.settings.watermark.tiled and self.settings.watermark.text:
-                image = watermark_processor.create_tiled_watermark(
-                    image,
+                working = watermark_processor.create_tiled_watermark(
+                    working,
                     self.settings.watermark.text,
                     spacing=self.settings.watermark.tile_spacing,
                     angle=self.settings.watermark.tile_angle,
@@ -509,7 +627,7 @@ class BatchProcessor:
                     opacity=self.settings.watermark.opacity,
                 )
                 self._log("  타일 워터마크 적용", "info")
-                return image
+                return self._from_bgr_layout(working, layout)
 
             # Image watermark
             if self.settings.watermark.image_path:
@@ -520,7 +638,9 @@ class BatchProcessor:
                     position=WatermarkPosition(self.settings.watermark.position),
                     margin=self.settings.watermark.margin,
                 )
-                image = watermark_processor.apply_image_watermark(image, image_settings)
+                working = watermark_processor.apply_image_watermark(
+                    working, image_settings
+                )
                 self._log("  이미지 워터마크 적용", "info")
 
             # Text watermark
@@ -535,7 +655,7 @@ class BatchProcessor:
                     margin=self.settings.watermark.margin,
                     shadow=self.settings.watermark.text_shadow,
                 )
-                image = watermark_processor.apply_text_watermark(image, text_settings)
+                working = watermark_processor.apply_text_watermark(working, text_settings)
                 self._log(
                     f"  텍스트 워터마크 적용: '{self.settings.watermark.text}'",
                     "info",
@@ -543,8 +663,9 @@ class BatchProcessor:
 
         except Exception as e:
             self._log(f"  워터마크 오류: {e}", "warning")
+            return image
 
-        return image
+        return self._from_bgr_layout(working, layout)
 
     def _maybe_apply_face_adjustments(self, image: np.ndarray) -> np.ndarray:
         """Apply face-based auto crop/rotate if enabled."""
@@ -553,10 +674,13 @@ class BatchProcessor:
 
         try:
             detector = self._get_face_detector()
+            working, layout = self._to_bgr(image)
+            if working is None:
+                return image
 
             detect_eyes = self.settings.face_detection.detect_eyes
             detect_result = detector.detect(
-                image,
+                working,
                 detect_eyes=detect_eyes,
                 suggest_crop=self.settings.face_detection.auto_center_crop,
             )
@@ -564,7 +688,7 @@ class BatchProcessor:
             if not detect_result.has_faces:
                 return image
 
-            adjusted = image
+            adjusted = working
             if (
                 self.settings.face_detection.auto_center_crop
                 and detect_result.suggested_crop is not None
@@ -586,7 +710,7 @@ class BatchProcessor:
                     )
 
             self._log(f"  👤 얼굴 보정 적용: {len(detect_result.faces)}개 얼굴", "info")
-            return adjusted
+            return self._from_bgr_layout(adjusted, layout)
 
         except Exception as e:
             self._log(f"  얼굴 보정 오류: {e}", "warning")
@@ -604,8 +728,9 @@ class BatchProcessor:
 
         try:
             classifier = self._get_classifier()
-
-            classify_result = classifier.classify(image)
+            model = getattr(cls_settings, "model", "basic")
+            classify_input, _ = self._to_bgr(image)
+            classify_result = classifier.classify(classify_input, model=model)
             category_key = classify_result.category.value
             min_conf = max(0.0, min(1.0, cls_settings.min_confidence))
 
@@ -627,6 +752,59 @@ class BatchProcessor:
         except Exception as e:
             self._log(f"  이미지 분류 오류: {e}", "warning")
             return output_dir
+
+    def _iter_candidate_output_dirs(self, output_dir: str) -> List[str]:
+        """
+        Candidate output directories for duplicate probing.
+
+        Includes classification category folders when auto-folder routing is enabled.
+        """
+        dirs = [output_dir]
+        cls_settings = self.settings.classification
+        if not cls_settings.enabled or not cls_settings.auto_folder:
+            return dirs
+
+        try:
+            classifier = self._get_classifier()
+            enabled_map = cls_settings.categories_enabled or {}
+            for category in ImageCategory:
+                if enabled_map.get(category.value, True):
+                    dirs.append(
+                        os.path.join(output_dir, classifier.get_output_folder(category))
+                    )
+        except Exception:
+            # Best-effort: keep base output_dir only.
+            pass
+
+        # Preserve order while removing duplicates.
+        return list(dict.fromkeys(dirs))
+
+    def _find_existing_output(
+        self,
+        base_name: str,
+        ext: str,
+        output_dir: str,
+        *,
+        multi_photo: bool = False,
+    ) -> Optional[str]:
+        """
+        Find existing output path for skip-processed checks across candidate dirs.
+        """
+        for candidate_dir in self._iter_candidate_output_dirs(output_dir):
+            expected = os.path.join(candidate_dir, f"{base_name}_cropped{ext}")
+            if os.path.exists(expected):
+                return expected
+
+            if multi_photo:
+                try:
+                    prefix = f"{base_name}_photo"
+                    if os.path.isdir(candidate_dir):
+                        for entry in os.listdir(candidate_dir):
+                            if entry.startswith(prefix):
+                                return os.path.join(candidate_dir, entry)
+                except Exception:
+                    pass
+        return None
 
     def _safe_callback(self, callback: Optional[Callable], *args, **kwargs):
         """
@@ -975,7 +1153,11 @@ class BatchProcessor:
             for filename in file_list:
                 input_path, _ = self._resolve_input_path(input_dir, filename)
                 output_path_override = None
-                if not self.settings.multi_photo.enabled:
+                classification_routing = (
+                    self.settings.classification.enabled
+                    and self.settings.classification.auto_folder
+                )
+                if not self.settings.multi_photo.enabled and not classification_routing:
                     if preview_engine:
                         output_path_override = preview_engine.generate_name(
                             input_path,
@@ -1189,6 +1371,24 @@ class BatchProcessor:
                         message=f"크기 미달 ({w}x{h})",
                     )
 
+        # File-size filtering (performance guard)
+        max_size_mb = int(getattr(self.settings.performance, "max_image_size_mb", 0) or 0)
+        if max_size_mb > 0:
+            try:
+                size_mb = os.path.getsize(input_path) / (1024 * 1024)
+                if size_mb > max_size_mb:
+                    self._log(
+                        f"  건너뜀: 파일 크기 {size_mb:.1f}MB > 제한 {max_size_mb}MB",
+                        "skip",
+                    )
+                    return FileResult(
+                        filename=display_name,
+                        status=ProcessStatus.SKIPPED,
+                        message=f"파일 크기 제한 초과 ({size_mb:.1f}MB)",
+                    )
+            except Exception:
+                pass
+
         # Skip already processed files
         if self.settings.filter.skip_processed:
             if output_path_override is not None:
@@ -1215,31 +1415,21 @@ class BatchProcessor:
             else:
                 base_name = os.path.splitext(display_name)[0]
                 ext = "." + self.settings.output.output_format.lower()
-                expected_output = os.path.join(output_dir, f"{base_name}_cropped{ext}")
-                if os.path.exists(expected_output):
+                existing = self._find_existing_output(
+                    base_name,
+                    ext,
+                    output_dir,
+                    multi_photo=self.settings.multi_photo.enabled,
+                )
+                if existing:
                     self._log(
-                        f"  건너뜀: 이미 처리됨 - {base_name}_cropped{ext}", "skip"
+                        f"  건너뜀: 이미 처리됨 - {os.path.basename(existing)}", "skip"
                     )
                     return FileResult(
                         filename=display_name,
                         status=ProcessStatus.SKIPPED,
                         message="이미 처리됨",
                     )
-                if self.settings.multi_photo.enabled:
-                    try:
-                        prefix = f"{base_name}_photo"
-                        for entry in os.listdir(output_dir):
-                            if entry.startswith(prefix):
-                                self._log(
-                                    f"  건너뜀: 멀티포토 결과 존재 - {entry}", "skip"
-                                )
-                                return FileResult(
-                                    filename=display_name,
-                                    status=ProcessStatus.SKIPPED,
-                                    message="이미 처리됨",
-                                )
-                    except Exception:
-                        pass
 
         # Backup
         if backup_dir:
@@ -1275,15 +1465,8 @@ class BatchProcessor:
         processing_time = (time.time() - start_time) * 1000
 
         if result.success and result.image is not None:
-            processed_image = result.image
-
-            # v9.0: Apply face adjustment, resize and watermark if enabled
-            processed_image = self._maybe_apply_face_adjustments(processed_image)
-            processed_image = self._maybe_apply_resize(processed_image)
-            processed_image = self._maybe_apply_watermark(processed_image)
-
-            resolved_output_dir = self._resolve_output_dir_for_classification(
-                processed_image,
+            processed_image, resolved_output_dir = self._run_post_pipeline(
+                result.image,
                 output_dir,
             )
 
@@ -1409,12 +1592,8 @@ class BatchProcessor:
             if self._is_stop_requested():
                 break
 
-            processed_img = self._maybe_apply_face_adjustments(cropped_img)
-            processed_img = self._maybe_apply_resize(processed_img)
-            processed_img = self._maybe_apply_watermark(processed_img)
-
-            resolved_output_dir = self._resolve_output_dir_for_classification(
-                processed_img,
+            processed_img, resolved_output_dir = self._run_post_pipeline(
+                cropped_img,
                 output_dir,
             )
             output_path = self._build_output_path(
@@ -1475,12 +1654,8 @@ class BatchProcessor:
     ) -> FileResult:
         """Save a single processed result."""
         active_processor = processor or self.processor
-        processed_image = self._maybe_apply_face_adjustments(result.image)
-        processed_image = self._maybe_apply_resize(processed_image)
-        processed_image = self._maybe_apply_watermark(processed_image)
-
-        resolved_output_dir = self._resolve_output_dir_for_classification(
-            processed_image,
+        processed_image, resolved_output_dir = self._run_post_pipeline(
+            result.image,
             output_dir,
         )
         output_path = self._build_output_path(
