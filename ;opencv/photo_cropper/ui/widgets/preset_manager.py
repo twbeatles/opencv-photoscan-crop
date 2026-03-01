@@ -20,7 +20,7 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtGui import QIcon, QAction
 
-from ...core.settings import AppSettings, get_settings_manager
+from ...core.settings_model import AppSettings, get_settings_manager
 
 logger = logging.getLogger(__name__)
 

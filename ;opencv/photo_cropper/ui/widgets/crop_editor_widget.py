@@ -644,7 +644,7 @@ class CropEditorWidget(QWidget):
         if self._original_image is None:
             return
         
-        from ...core.advanced_processing import AdvancedImageProcessor
+        from ...core.advanced import AdvancedImageProcessor
         processor = AdvancedImageProcessor()
         
         image = self._original_image.copy()

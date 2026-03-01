@@ -18,7 +18,7 @@ from dataclasses import dataclass, field, asdict
 from typing import Optional, List, Dict, Any
 from datetime import datetime
 
-from .settings import AppSettings, get_settings_manager
+from .settings_model import AppSettings, get_settings_manager
 
 logger = logging.getLogger(__name__)
 

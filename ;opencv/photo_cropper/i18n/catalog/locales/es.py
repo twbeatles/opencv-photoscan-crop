@@ -1,0 +1,5 @@
+from ..manager import DEFAULT_TRANSLATIONS
+
+TRANSLATIONS = DEFAULT_TRANSLATIONS.get('es', {})
+
+__all__ = ['TRANSLATIONS']

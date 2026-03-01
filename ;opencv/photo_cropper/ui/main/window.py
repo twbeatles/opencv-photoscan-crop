@@ -1,4 +1,4 @@
-﻿#!/usr/bin/env python3
+#!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
 Main Window for Photo Cropper v9.0 PyQt6 Application.
@@ -51,28 +51,28 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtCore import Qt, QTimer, pyqtSlot, pyqtSignal, QSettings, QSize, QObject, QThread
 from PyQt6.QtGui import QAction, QKeySequence, QDragEnterEvent, QDropEvent, QKeyEvent
 
-from .widgets.settings_panel import SettingsPanel
-from .widgets.preview_widget import ImagePreviewWidget
-from .widgets.progress_dialog import ProgressDialog
-from .widgets.histogram_widget import HistogramWidget
-from .widgets.toast_notification import ToastManager
-from .widgets.compare_widget import BeforeAfterCompareWidget
-from .widgets.crop_editor_widget import CropEditorWidget
-from .widgets.preset_manager import PresetComboBox, get_preset_manager
-from .widgets.thumbnail_grid_widget import ThumbnailGridWidget
-from .widgets.fullscreen_viewer import FullscreenViewerManager
-from .widgets.floating_action_button import QuickActionFAB
-from .styles.themes import get_theme, get_available_themes
+from ..widgets.settings import SettingsPanel
+from ..widgets.preview_widget import ImagePreviewWidget
+from ..widgets.progress_dialog import ProgressDialog
+from ..widgets.histogram_widget import HistogramWidget
+from ..widgets.toast_notification import ToastManager
+from ..widgets.compare_widget import BeforeAfterCompareWidget
+from ..widgets.crop_editor_widget import CropEditorWidget
+from ..widgets.preset_manager import PresetComboBox, get_preset_manager
+from ..widgets.thumbnail_grid_widget import ThumbnailGridWidget
+from ..widgets.fullscreen_viewer import FullscreenViewerManager
+from ..widgets.floating_action_button import QuickActionFAB
+from ..styles.themes import get_theme, get_available_themes
 
-from ..core.settings import AppSettings, SettingsManager
-from ..core.image_processor import ImageProcessor
-from ..core.batch_processor import BatchProcessor, BatchProgress, FileResult
-from ..core.history_manager import HistoryManager, ImageHolder
-from ..core.folder_watcher import FolderWatcher, AutoProcessor
-from ..core.smart_enhancer import SmartEnhancer, EnhancementPreset, get_smart_enhancer
-from ..core.face_detector import FaceDetector, get_face_detector
-from ..core.image_classifier import ImageClassifier, ImageCategory, get_classifier
-from ..utils.file_helpers import (
+from ...core.settings_model import AppSettings, SettingsManager
+from ...core.image import ImageProcessor
+from ...core.batch import BatchProcessor, BatchProgress, FileResult
+from ...core.history_manager import HistoryManager, ImageHolder
+from ...core.folder_watcher import FolderWatcher, AutoProcessor
+from ...core.smart_enhancer import SmartEnhancer, EnhancementPreset, get_smart_enhancer
+from ...core.face import FaceDetector, get_face_detector
+from ...core.image_classifier import ImageClassifier, ImageCategory, get_classifier
+from ...utils.file_helpers import (
     get_image_files,
     open_file_explorer,
     validate_directory,
@@ -88,22 +88,51 @@ class PreviewWorker(QObject):
     preview_ready = pyqtSignal(int, object)
     preview_failed = pyqtSignal(int, str)
 
-    @pyqtSlot(int, str, object)
-    def process_preview(self, request_id: int, image_path: str, settings: object):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self._processor: Optional[ImageProcessor] = None
+        self._settings_revision: int = -1
+
+    @pyqtSlot(int, str, int, object)
+    def process_preview(
+        self,
+        request_id: int,
+        image_path: str,
+        settings_revision: int,
+        settings_snapshot: object,
+    ):
         try:
             if not image_path or not os.path.exists(image_path):
                 self.preview_failed.emit(request_id, "미리보기할 파일이 없습니다.")
                 return
 
-            app_settings = settings if isinstance(settings, AppSettings) else AppSettings()
-            processor = ImageProcessor(
-                app_settings.algorithm,
-                app_settings.processing,
-                app_settings.advanced,
-                app_settings.performance,
-                debug_settings=app_settings.debug,
-            )
-            preview_result = processor.process_preview(
+            if isinstance(settings_snapshot, AppSettings):
+                app_settings = settings_snapshot
+            elif isinstance(settings_snapshot, dict):
+                app_settings = AppSettings.from_dict(settings_snapshot)
+            else:
+                app_settings = AppSettings()
+
+            if self._processor is None:
+                self._processor = ImageProcessor(
+                    app_settings.algorithm,
+                    app_settings.processing,
+                    app_settings.advanced,
+                    app_settings.performance,
+                    debug_settings=app_settings.debug,
+                )
+                self._settings_revision = settings_revision
+            elif settings_revision != self._settings_revision:
+                self._processor.update_settings(
+                    app_settings.algorithm,
+                    app_settings.processing,
+                    app_settings.advanced,
+                    app_settings.performance,
+                    app_settings.debug,
+                )
+                self._settings_revision = settings_revision
+
+            preview_result = self._processor.process_preview(
                 image_path,
                 max_size=800,
                 debug_tag="preview",
@@ -130,7 +159,7 @@ class MainWindow(QMainWindow):
 
     VERSION = "9.0"
     TITLE = f"📸 사진 자동 자르기 v{VERSION}"
-    preview_process_requested = pyqtSignal(int, str, object)
+    preview_process_requested = pyqtSignal(int, str, int, object)
     batch_progress_received = pyqtSignal(object)
     batch_log_received = pyqtSignal(str, str)
     batch_complete_received = pyqtSignal(object, object)
@@ -171,9 +200,17 @@ class MainWindow(QMainWindow):
         self._preview_timer.timeout.connect(self._do_preview)
         self._preview_request_id = 0
         self._latest_preview_request_id = 0
+        self._applied_preview_request_id = -1
+        self._preview_settings_revision = 0
+        self._preview_settings_snapshot = self._settings.to_dict()
         self._preview_worker_thread: Optional[QThread] = None
         self._preview_worker: Optional[PreviewWorker] = None
         self.progress_dialog: Optional[ProgressDialog] = None
+
+        self._input_path_scan_timer = QTimer(self)
+        self._input_path_scan_timer.setSingleShot(True)
+        self._input_path_scan_timer.timeout.connect(self._flush_input_path_change)
+        self._pending_input_path: str = ""
 
         # Last processed result for comparison
         self._last_original: Optional[any] = None
@@ -723,6 +760,11 @@ class MainWindow(QMainWindow):
     # Settings and Theme
     # ========================================
 
+    def _bump_preview_settings_snapshot(self):
+        """Refresh immutable settings snapshot for preview worker."""
+        self._preview_settings_revision += 1
+        self._preview_settings_snapshot = self._settings.to_dict()
+
     def _apply_settings(self, settings: AppSettings):
         """Apply settings to UI and processors."""
         self._settings = settings
@@ -735,6 +777,7 @@ class MainWindow(QMainWindow):
             settings.performance,
             settings.debug,
         )
+        self._bump_preview_settings_snapshot()
 
         # Apply theme
         self._set_theme(settings.ui.theme)
@@ -756,6 +799,7 @@ class MainWindow(QMainWindow):
             settings.performance,
             settings.debug,
         )
+        self._bump_preview_settings_snapshot()
 
         if self.watch_batch_processor:
             self.watch_batch_processor.update_settings(settings)
@@ -858,6 +902,12 @@ class MainWindow(QMainWindow):
 
     def _on_input_path_changed(self, path: str):
         """Handle input path change."""
+        self._pending_input_path = path or ""
+        self._input_path_scan_timer.start(250)
+
+    def _flush_input_path_change(self):
+        """Apply debounced input-path side effects."""
+        path = self._pending_input_path
         if os.path.isdir(path):
             files = get_image_files(path)
             self.file_count_badge.setText(f" 파일: {len(files)}개 ")
@@ -975,17 +1025,19 @@ class MainWindow(QMainWindow):
         self.status_label.setText(f"미리보기 처리 중: {os.path.basename(image_path)}")
         self._update_image_info_badge(image_path)
 
-        settings_snapshot = AppSettings.from_dict(self._settings.to_dict())
         self.preview_process_requested.emit(
             request_id,
             image_path,
-            settings_snapshot,
+            self._preview_settings_revision,
+            self._preview_settings_snapshot,
         )
 
     @pyqtSlot(int, object)
     def _on_preview_ready(self, request_id: int, preview_result: object):
         """Apply preview result from background worker."""
         if request_id != self._latest_preview_request_id:
+            return
+        if request_id == self._applied_preview_request_id:
             return
 
         if preview_result is None:
@@ -998,12 +1050,12 @@ class MainWindow(QMainWindow):
                 preview_result.overlay_preview,
             )
             self.histogram_widget.set_image(preview_result.original_preview)
-            self._last_original = preview_result.original_preview.copy()
+            self._last_original = preview_result.original_preview
 
         crop_result = preview_result.crop_result
         if crop_result.success and crop_result.image is not None:
             self.preview_widget.set_processed_image(crop_result.image)
-            self._last_processed = crop_result.image.copy()
+            self._last_processed = crop_result.image
             stage = (
                 crop_result.detection_stage.value
                 if crop_result.detection_stage
@@ -1014,6 +1066,8 @@ class MainWindow(QMainWindow):
             self.preview_widget.set_processed_image(None)
             self._last_processed = None
             self.status_label.setText(f"미리보기 실패: {crop_result.message}")
+
+        self._applied_preview_request_id = request_id
 
     @pyqtSlot(int, str)
     def _on_preview_failed(self, request_id: int, message: str):
@@ -1520,7 +1574,7 @@ class MainWindow(QMainWindow):
 
     def _show_classification_settings(self):
         """Show AI classification settings dialog."""
-        from ..core.settings import ClassificationSettings
+        from ...core.settings_model import ClassificationSettings
 
         # Toggle classification in settings panel
         enabled = not self._settings.classification.enabled
@@ -1559,7 +1613,7 @@ class MainWindow(QMainWindow):
         if not self._current_image_path:
             return
 
-        from ..core.face_detector import get_face_detector
+        from ...core.face import get_face_detector
         import cv2
         import numpy as np
 

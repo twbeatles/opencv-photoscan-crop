@@ -176,6 +176,11 @@ class ImagePreviewWidget(QWidget):
             "overlay": None,
             "processed": None,
         }
+        self._source_cache = {
+            "original": None,
+            "overlay": None,
+            "processed": None,
+        }
         
         self._setup_ui()
         self.show_placeholder()
@@ -207,6 +212,9 @@ class ImagePreviewWidget(QWidget):
         self._pixmap_cache["original"] = None
         self._pixmap_cache["overlay"] = None
         self._pixmap_cache["processed"] = None
+        self._source_cache["original"] = None
+        self._source_cache["overlay"] = None
+        self._source_cache["processed"] = None
 
     def _setup_ui(self):
         """Setup UI components."""
@@ -328,9 +336,6 @@ class ImagePreviewWidget(QWidget):
         self.original_view.zoom_changed.connect(self._on_zoom_changed)
         self.processed_view.zoom_changed.connect(self._on_zoom_changed)
         
-        # Initialize placeholder
-        self.show_placeholder()
-    
     def set_original_image(self, image: np.ndarray, contour_overlay: np.ndarray = None):
         """
         Set original image with optional contour overlay.
@@ -341,14 +346,21 @@ class ImagePreviewWidget(QWidget):
         """
         self._original_image = image
         self._contour_overlay = contour_overlay
-        self._pixmap_cache["original"] = (
-            numpy_to_qpixmap(image) if image is not None else None
-        )
-        self._pixmap_cache["overlay"] = (
-            numpy_to_qpixmap(contour_overlay)
-            if contour_overlay is not None
-            else None
-        )
+
+        if image is not self._source_cache["original"]:
+            self._pixmap_cache["original"] = (
+                numpy_to_qpixmap(image) if image is not None else None
+            )
+            self._source_cache["original"] = image
+
+        if contour_overlay is not self._source_cache["overlay"]:
+            self._pixmap_cache["overlay"] = (
+                numpy_to_qpixmap(contour_overlay)
+                if contour_overlay is not None
+                else None
+            )
+            self._source_cache["overlay"] = contour_overlay
+
         self._update_original_display()
     
     def set_processed_image(self, image: np.ndarray):
@@ -359,9 +371,11 @@ class ImagePreviewWidget(QWidget):
             image: Processed/cropped image
         """
         self._processed_image = image
-        self._pixmap_cache["processed"] = (
-            numpy_to_qpixmap(image) if image is not None else None
-        )
+        if image is not self._source_cache["processed"]:
+            self._pixmap_cache["processed"] = (
+                numpy_to_qpixmap(image) if image is not None else None
+            )
+            self._source_cache["processed"] = image
 
         if self._pixmap_cache["processed"] is not None:
             self.processed_pixmap_item.setPixmap(self._pixmap_cache["processed"])
@@ -432,6 +446,9 @@ class ImagePreviewWidget(QWidget):
         self._pixmap_cache["original"] = None
         self._pixmap_cache["overlay"] = None
         self._pixmap_cache["processed"] = None
+        self._source_cache["original"] = None
+        self._source_cache["overlay"] = None
+        self._source_cache["processed"] = None
         
         self.show_placeholder()
     

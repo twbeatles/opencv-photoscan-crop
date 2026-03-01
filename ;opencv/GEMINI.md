@@ -23,7 +23,7 @@
 └─────────────────┬─────────────────────────┘
                   ▼
 ┌───────────────────────────────────────────┐
-│         ui/main_window.py                 │
+│         ui/main/window.py                 │
 │         (MainWindow - 메인 UI)             │
 │  ┌─────────────┬───────────────────────┐  │
 │  │ SettingsPanel│ PreviewWidget        │  │
@@ -50,16 +50,16 @@
 
 | 파일 | 역할 |
 |------|------|
-| `image_processor.py` | 핵심 크롭 알고리즘 (Canny, CLAHE, Sobel) |
-| `batch_processor.py` | 다중 이미지 배치 처리 |
-| `settings.py` | 모든 설정 dataclass 정의 |
+| `image/processor.py` | 핵심 크롭 알고리즘 (Canny, CLAHE, Sobel) |
+| `batch/processor.py` | 다중 이미지 배치 처리 |
+| `settings_model/app_settings.py` | 모든 설정 dataclass 정의 |
 | `multi_photo_detector.py` | 한 스캔에서 여러 사진 분리 |
 | `watermark_processor.py` | 텍스트/이미지 워터마크 |
 | `resize_processor.py` | 이미지 리사이즈 |
 
 ### Stability-Critical Flow
 
-- Watch Mode는 `ui/main_window.py`에서 `BatchProcessor.process_single()`을 호출해 배치와 동일 파이프라인을 재사용합니다.
+- Watch Mode는 `ui/main/window.py`에서 `BatchProcessor.process_single()`을 호출해 배치와 동일 파이프라인을 재사용합니다.
 - 저장 전 후처리 순서는 단일/멀티포토 모두 얼굴 보정 → 스마트 보정 → 리사이즈 → 분류 폴더 라우팅(워터마크 전) → 워터마크입니다.
 - `performance.max_image_size_mb`는 실제 처리 전에 파일 크기 제한으로 적용됩니다.
 - `skip_processed`는 자동 분류 하위 폴더까지 포함해 중복 결과를 탐지합니다.
@@ -70,8 +70,8 @@
 
 | 파일 | 역할 |
 |------|------|
-| `main_window.py` | 메인 윈도우 (60KB+, 1500+ lines) |
-| `settings_panel.py` | 모든 설정 UI 패널 |
+| `main/window.py` | 메인 윈도우 (60KB+, 1500+ lines) |
+| `settings/panel.py` | 모든 설정 UI 패널 |
 | `preview_widget.py` | 이미지 미리보기 위젯 |
 | `toast_notification.py` | 토스트 알림 시스템 |
 | `thumbnail_grid_widget.py` | 썸네일 그리드 뷰 |
@@ -116,7 +116,7 @@
 ## Settings Dataclasses
 
 ```python
-# core/settings.py 주요 클래스
+# core/settings_model/app_settings.py 주요 클래스
 
 @dataclass
 class AlgorithmSettings:
@@ -170,9 +170,9 @@ class SmartEnhancementSettings:
 
 ### 1. 새 처리 옵션 추가
 
-1. `core/settings.py`에 dataclass 필드 추가
-2. `ui/widgets/settings_panel.py`에 UI 위젯 추가
-3. `core/image_processor.py`에 처리 로직 추가
+1. `core/settings_model/app_settings.py`에 dataclass 필드 추가
+2. `ui/widgets/settings/panel.py`에 UI 위젯 추가
+3. `core/image/processor.py`에 처리 로직 추가
 
 ### 2. 새 알고리즘 단계 추가
 
@@ -260,3 +260,12 @@ pyinstaller photo_cropper.spec --clean
 - Recursive watch mode now scans newly watched subdirectories immediately for pre-existing images.
 - Watch timeout is configurable through watch_mode.max_wait_seconds (default 30.0).
 - Selftest coverage was extended for CLI merge precedence, recursive watch ingestion, and max-wait roundtrip.
+
+
+## 2026-03-02 Split Refactor Notes
+
+- Split long modules into package paths:
+  - `core/settings_model`, `core/advanced`, `core/face`, `core/image`, `core/batch`
+  - `ui/main`, `ui/widgets/settings`, `i18n/catalog`
+- Updated internal imports and packaging metadata (`photo_cropper.spec`) for the new package layout.
+- Runtime behavior target remains unchanged: CLI options, settings schema, output rules, watch/batch contracts.

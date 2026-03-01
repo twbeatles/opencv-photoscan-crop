@@ -9,7 +9,7 @@ Optimized for:
 """
 
 import sys
-from PyInstaller.utils.hooks import collect_data_files, collect_submodules
+from PyInstaller.utils.hooks import collect_data_files
 
 block_cipher = None
 
@@ -96,9 +96,17 @@ a = Analysis(
         'cv2',
         'numpy',
         'PIL',
-        'photo_cropper.core.settings',
+        'photo_cropper.core.settings_model',
         'photo_cropper.core.batch_profile_manager',
         'photo_cropper.core.folder_watcher',
+        'photo_cropper.core.advanced',
+        'photo_cropper.core.face',
+        'photo_cropper.core.batch',
+        'photo_cropper.core.image',
+        'photo_cropper.core.settings_model.app_settings',
+        'photo_cropper.ui.main',
+        'photo_cropper.ui.widgets.settings',
+        'photo_cropper.i18n.catalog',
         'PyQt6.QtCore',
         'PyQt6.QtGui', 
         'PyQt6.QtWidgets',
@@ -207,4 +215,11 @@ Tips for further size reduction:
       alignment changes.
     - Hidden imports above explicitly pin core modules touched by the update to
       keep frozen-build module discovery stable.
+
+2026-03-02 note:
+    - Core/UI/i18n modules were split into package directories:
+      core/settings_model, core/advanced, core/face, core/image, core/batch,
+      ui/main, ui/widgets/settings, i18n/catalog.
+    - Hidden imports were expanded to include package-level entry points used
+      after the split refactor.
 """

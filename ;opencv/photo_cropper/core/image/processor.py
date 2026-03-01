@@ -24,14 +24,14 @@ from typing import Optional, Tuple, List
 from dataclasses import dataclass
 from enum import Enum
 
-from .settings import (
+from ..settings_model import (
     AlgorithmSettings,
     ProcessingSettings,
     AdvancedProcessingSettings,
     PerformanceSettings,
     DebugSettings,
 )
-from .advanced_processing import AdvancedImageProcessor, GPUAccelerator
+from ..advanced import AdvancedImageProcessor, GPUAccelerator
 
 logger = logging.getLogger(__name__)
 
@@ -103,6 +103,7 @@ class ImageProcessor:
     DEFAULT_BILATERAL_SIGMA = 75
     MIN_CONTOUR_AREA = 100
     MIN_CROP_SIZE = 50
+    PREVIEW_DETECTION_MAX_MP = 8.0
 
     def __init__(
         self,
@@ -1260,7 +1261,12 @@ class ImageProcessor:
         )
 
     def process_preview(
-        self, image_path: str, max_size: int = 800, debug_tag: str = "preview"
+        self,
+        image_path: str,
+        max_size: int = 800,
+        debug_tag: str = "preview",
+        fast_preview: bool = True,
+        preview_detection_max_mp: float = PREVIEW_DETECTION_MAX_MP,
     ) -> PreviewProcessResult:
         """
         Build preview images and crop result in a single image-load pass.
@@ -1280,13 +1286,55 @@ class ImageProcessor:
         preview_size = (int(w * scale), int(h * scale))
         original_preview = cv2.resize(image, preview_size, interpolation=cv2.INTER_AREA)
 
+        detection_image = image
+        contour_scale_back = 1.0
+
+        if fast_preview:
+            max_mp = max(1.0, float(preview_detection_max_mp or self.PREVIEW_DETECTION_MAX_MP))
+            current_mp = (h * w) / 1_000_000.0
+            if current_mp > max_mp:
+                detect_scale = math.sqrt(max_mp / current_mp)
+                detect_w = max(1, int(w * detect_scale))
+                detect_h = max(1, int(h * detect_scale))
+                detection_image = cv2.resize(
+                    image,
+                    (detect_w, detect_h),
+                    interpolation=cv2.INTER_AREA,
+                )
+                contour_scale_back = w / float(detect_w)
+
         debug_base = "" if self.debug.enabled else None
         crop_result = self._process_loaded_image(
-            image,
+            detection_image,
             image_path,
             debug_dir=debug_base,
             debug_tag=debug_tag,
         )
+
+        if crop_result.contour_points is not None and contour_scale_back != 1.0:
+            crop_result.contour_points = crop_result.contour_points * contour_scale_back
+
+        # Keep preview metadata aligned to the source image dimensions.
+        crop_result.original_size = (w, h)
+
+        # Preview output is display-only; keep it bounded for UI responsiveness.
+        if crop_result.image is not None:
+            ch, cw = crop_result.image.shape[:2]
+            display_scale = min(max_size / cw, max_size / ch, 1.0)
+            if display_scale < 1.0:
+                display_size = (
+                    max(1, int(cw * display_scale)),
+                    max(1, int(ch * display_scale)),
+                )
+                crop_result.image = cv2.resize(
+                    crop_result.image,
+                    display_size,
+                    interpolation=cv2.INTER_AREA,
+                )
+                crop_result.cropped_size = (
+                    crop_result.image.shape[1],
+                    crop_result.image.shape[0],
+                )
 
         if crop_result.success and crop_result.contour_points is not None:
             overlay = original_preview.copy()

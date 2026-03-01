@@ -1,0 +1,5 @@
+from ..manager import DEFAULT_TRANSLATIONS
+
+TRANSLATIONS = DEFAULT_TRANSLATIONS.get('ko', {})
+
+__all__ = ['TRANSLATIONS']

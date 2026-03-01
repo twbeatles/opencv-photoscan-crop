@@ -9,8 +9,9 @@ from __future__ import annotations
 import logging
 import os
 import time
+from collections import deque
 from dataclasses import dataclass
-from typing import Any, Callable, Dict, List, Optional, Set, Tuple
+from typing import Any, Callable, Deque, Dict, List, Optional, Set, Tuple
 
 from PyQt6.QtCore import QObject, QFileSystemWatcher, QTimer, pyqtSignal
 
@@ -322,7 +323,7 @@ class AutoProcessor(QObject):
         )
         self._watcher.new_file_detected.connect(self._on_new_file)
 
-        self._queue: List[str] = []
+        self._queue: Deque[str] = deque()
         self._queued_files: Set[str] = set()
         self._enqueue_times: Dict[str, float] = {}
         self._wait_samples_ms: List[int] = []
@@ -505,7 +506,7 @@ class AutoProcessor(QObject):
             return
 
         self._is_processing = True
-        filepath = self._queue.pop(0)
+        filepath = self._queue.popleft()
         self._queued_files.discard(filepath)
 
         now = time.monotonic()
@@ -544,7 +545,7 @@ class AutoProcessor(QObject):
                 return
 
             # Requeue at front and retry later.
-            self._queue.insert(0, filepath)
+            self._queue.appendleft(filepath)
             self._queued_files.add(filepath)
             self._emit_queue_metrics()
             self._process_timer.start(self._retry_interval_ms)

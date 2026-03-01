@@ -165,7 +165,7 @@ python -m photo_cropper.cli --help
 
 ## 🧪 Stability Checklist
 
-- **Syntax validation**: `python -m py_compile photo_cropper/core/*.py photo_cropper/ui/*.py photo_cropper/ui/widgets/*.py`
+- **Syntax validation**: `python -m compileall -q photo_cropper`
 - **CLI smoke test**: `python -m photo_cropper.cli -i ./scans -o ./cropped --multi-photo --max-size 1920 --skip-processed`
 - **Watch mode parity**: verify new files in Watch Mode go through same resize/watermark/classification behavior as batch mode
 - **Unicode path test**: use a watermark image in a non-ASCII path and verify output succeeds
@@ -178,9 +178,9 @@ photo_cropper/
 ├── main.py                  # Entry point
 ├── cli.py                   # CLI interface (v8.5)
 ├── core/
-│   ├── image_processor.py   # Core image processing
-│   ├── batch_processor.py   # Batch processing
-│   ├── settings.py          # Settings management
+│   ├── image/processor.py   # Core image processing
+│   ├── batch/processor.py   # Batch processing
+│   ├── settings_model/app_settings.py          # Settings dataclasses/manager
 │   ├── multi_photo_detector.py  # Multi-photo detection (v8.5)
 │   ├── watermark_processor.py   # Watermark (v8.5)
 │   ├── resize_processor.py      # Resize (v8.5)
@@ -188,15 +188,15 @@ photo_cropper/
 │   ├── scheduler.py             # Scheduler (v8.5)
 │   └── history_manager.py       # History management (v8.5)
 ├── ui/
-│   ├── main_window.py
+│   ├── main/window.py
 │   └── widgets/
-│       ├── settings_panel.py
+│       ├── settings/panel.py
 │       ├── preview_widget.py
 │       ├── thumbnail_grid_widget.py  # Thumbnail grid (v8.5)
 │       ├── fullscreen_viewer.py      # Fullscreen viewer (v8.5)
 │       └── floating_action_button.py # FAB (v8.5)
 ├── i18n/                    # Internationalization (v8.5)
-│   └── translations.py
+│   └── catalog/manager.py
 └── utils/
     └── file_helpers.py
 ```
@@ -287,5 +287,19 @@ Please report bugs or feature suggestions in Issues.
 - Watch timeout is configurable with watch_mode.max_wait_seconds (default 30.0).
 - Profile key compatibility is maintained on read, while save/export normalizes to dvanced.
 - Self-tests were added for import smoke, CLI merge precedence, recursive watch ingestion, and watch max-wait roundtrip.
+- Preview pipeline now has a fast-path mode (default on) that caps detection to 8MP for lower latency, while batch/save quality behavior is unchanged.
+- Preview worker now reuses a persistent ImageProcessor and updates it only when settings revision changes, reducing repeated initialization overhead.
+- Batch multithreading now uses bounded in-flight scheduling (max_workers * 3) instead of full upfront future submission for better throughput/memory balance.
+- Watch mode queue internals were optimized from list pop(0)/insert(0) to deque popleft/appendleft for lower queue overhead at scale.
+- Input-path file counting in UI is now debounced (250ms) to avoid repeated directory scans during typing.
 
 > Note: full processing self-tests require OpenCV (cv2).
+
+
+## 2026-03-02 Split Refactor Notes
+
+- Split long modules into package paths:
+  - `core/settings_model`, `core/advanced`, `core/face`, `core/image`, `core/batch`
+  - `ui/main`, `ui/widgets/settings`, `i18n/catalog`
+- Updated internal imports and packaging metadata (`photo_cropper.spec`) for the new package layout.
+- Runtime behavior target remains unchanged: CLI options, settings schema, output rules, watch/batch contracts.

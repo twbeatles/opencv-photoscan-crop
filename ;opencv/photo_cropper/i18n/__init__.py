@@ -4,7 +4,7 @@
 i18n package for Photo Cropper.
 """
 
-from .translations import (
+from .catalog import (
     TranslationManager,
     get_translator,
     t,

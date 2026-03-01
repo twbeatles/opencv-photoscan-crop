@@ -176,7 +176,7 @@ python -m photo_cropper.cli --help
 
 ## 🧪 안정성 체크 포인트
 
-- **문법 검증**: `python -m py_compile photo_cropper/core/*.py photo_cropper/ui/*.py photo_cropper/ui/widgets/*.py`
+- **문법 검증**: `python -m compileall -q photo_cropper`
 - **CLI 스모크 테스트**: `python -m photo_cropper.cli -i ./scans -o ./cropped --multi-photo --max-size 1920 --skip-processed`
 - **워치 모드 검증**: GUI에서 Watch Mode 시작 후 신규 파일 투입 시 배치와 동일한 출력(워터마크/리사이즈/분류 폴더) 확인
 - **유니코드 경로 검증**: 한글 경로의 워터마크 이미지 파일을 지정해 저장 성공 여부 확인
@@ -189,9 +189,9 @@ photo_cropper/
 ├── main.py                  # 진입점
 ├── cli.py                   # CLI 인터페이스 (v8.5)
 ├── core/
-│   ├── image_processor.py   # 핵심 이미지 처리
-│   ├── batch_processor.py   # 배치 처리
-│   ├── settings.py          # 설정 관리
+│   ├── image/processor.py   # 핵심 이미지 처리
+│   ├── batch/processor.py   # 배치 처리
+│   ├── settings_model/app_settings.py          # 설정 관리
 │   ├── multi_photo_detector.py  # 다중 사진 감지 (v8.5)
 │   ├── watermark_processor.py   # 워터마크 (v8.5)
 │   ├── resize_processor.py      # 리사이즈 (v8.5)
@@ -199,15 +199,15 @@ photo_cropper/
 │   ├── scheduler.py             # 스케줄러 (v8.5)
 │   └── history_manager.py       # 히스토리 관리 (v8.5)
 ├── ui/
-│   ├── main_window.py
+│   ├── main/window.py
 │   └── widgets/
-│       ├── settings_panel.py
+│       ├── settings/panel.py
 │       ├── preview_widget.py
 │       ├── thumbnail_grid_widget.py  # 썸네일 그리드 (v8.5)
 │       ├── fullscreen_viewer.py      # 전체화면 뷰어 (v8.5)
 │       └── floating_action_button.py # FAB (v8.5)
 ├── i18n/                    # 다국어 지원 (v8.5)
-│   └── translations.py
+│   └── catalog/manager.py
 └── utils/
     └── file_helpers.py
 ```
@@ -316,3 +316,12 @@ MIT License
 - 회귀 테스트가 보강되었습니다(수동 크롭 import, CLI 병합 우선순위, 재귀 감시 유입, max wait roundtrip).
 
 > 참고: 전체 처리 selftest는 OpenCV(cv2) 설치가 필요합니다.
+
+
+## 2026-03-02 Split Refactor Notes
+
+- Split long modules into package paths:
+  - `core/settings_model`, `core/advanced`, `core/face`, `core/image`, `core/batch`
+  - `ui/main`, `ui/widgets/settings`, `i18n/catalog`
+- Updated internal imports and packaging metadata (`photo_cropper.spec`) for the new package layout.
+- Runtime behavior target remains unchanged: CLI options, settings schema, output rules, watch/batch contracts.

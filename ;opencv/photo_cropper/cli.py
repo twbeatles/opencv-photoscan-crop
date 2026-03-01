@@ -21,12 +21,12 @@ from typing import Any, Dict, Optional, Tuple
 
 try:
     from .core.batch_profile_manager import get_batch_profile_manager
-    from .core.settings import AppSettings
+    from .core.settings_model import AppSettings
 except ImportError:
     # Support direct execution: python photo_cropper/cli.py
     sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     from photo_cropper.core.batch_profile_manager import get_batch_profile_manager
-    from photo_cropper.core.settings import AppSettings
+    from photo_cropper.core.settings_model import AppSettings
 
 
 logger = logging.getLogger(__name__)
@@ -372,9 +372,9 @@ def _list_presets() -> int:
 
 def process_batch(args: argparse.Namespace) -> int:
     try:
-        from .core.batch_processor import BatchProcessor
+        from .core.batch import BatchProcessor
     except ImportError:
-        from photo_cropper.core.batch_processor import BatchProcessor
+        from photo_cropper.core.batch import BatchProcessor
 
     try:
         _validate_io_paths(args.input, args.output)

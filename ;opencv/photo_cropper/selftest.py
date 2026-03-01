@@ -28,7 +28,7 @@ def _test_cli_settings_merge_priority() -> None:
 
     from . import cli as cli_mod
     from .core.batch_profile_manager import BatchProfileManager
-    from .core.settings import AppSettings
+    from .core.settings_model import AppSettings
 
     with tempfile.TemporaryDirectory(prefix="photocropper_cli_merge_") as td:
         profiles_dir = os.path.join(td, "profiles")
@@ -147,8 +147,8 @@ def _test_watch_max_wait_roundtrip() -> None:
         return
 
     from .core.folder_watcher import AutoProcessor
-    from .core.settings import AppSettings
-    from .ui.widgets.settings_panel import SettingsPanel
+    from .core.settings_model import AppSettings
+    from .ui.widgets.settings import SettingsPanel
 
     app = QApplication.instance()
     owned_app = False
@@ -167,6 +167,7 @@ def _test_watch_max_wait_roundtrip() -> None:
 
     auto = AutoProcessor(max_wait_seconds=rebuilt.watch_mode.max_wait_seconds)
     assert abs(float(auto._max_wait_s) - 47.5) < 1e-6
+    assert hasattr(auto._queue, "popleft"), "Watch queue must support O(1) front pop"
 
     panel.deleteLater()
     auto.stop()
@@ -176,7 +177,7 @@ def _test_watch_max_wait_roundtrip() -> None:
 
 
 def _test_settings_forward_compat() -> None:
-    from .core.settings import AppSettings
+    from .core.settings_model import AppSettings
 
     data = {
         "algorithm": {"canny_min": 12, "canny_max": 200, "new_field_future": 123},
@@ -222,8 +223,8 @@ def _test_preview_single_pass() -> None:
     import cv2
     import numpy as np
 
-    from .core.image_processor import ImageProcessor
-    from .core.settings import AppSettings
+    from .core.image import ImageProcessor
+    from .core.settings_model import AppSettings
 
     settings = AppSettings()
     processor = ImageProcessor(
@@ -259,13 +260,25 @@ def _test_preview_single_pass() -> None:
         assert preview.crop_result is not None
         assert calls["count"] == 1, f"Expected single pass, got {calls['count']}"
 
+        # Preview fast path: force low detection cap, while preserving source metadata.
+        preview_fast = processor.process_preview(
+            path,
+            max_size=256,
+            fast_preview=True,
+            preview_detection_max_mp=1.0,
+        )
+        assert preview_fast.crop_result.original_size == (960, 720)
+        if preview_fast.crop_result.image is not None:
+            ph, pw = preview_fast.crop_result.image.shape[:2]
+            assert max(pw, ph) <= 256
+
 
 def _test_batch_thread_local_reuse() -> None:
     import threading
     from concurrent.futures import ThreadPoolExecutor
 
-    from .core.batch_processor import BatchProcessor
-    from .core.settings import AppSettings
+    from .core.batch import BatchProcessor
+    from .core.settings_model import AppSettings
 
     settings = AppSettings()
     settings.performance.enable_multithreading = True
@@ -316,8 +329,8 @@ def _test_settings_panel_performance_roundtrip() -> None:
         print(f"WARN: PyQt6 unavailable for settings panel test: {e}")
         return
 
-    from .core.settings import AppSettings
-    from .ui.widgets.settings_panel import SettingsPanel
+    from .core.settings_model import AppSettings
+    from .ui.widgets.settings import SettingsPanel
 
     app = QApplication.instance()
     owned_app = False
@@ -362,8 +375,8 @@ def _test_crop_accuracy_synthetic() -> None:
     import cv2
     import numpy as np
 
-    from .core.image_processor import ImageProcessor
-    from .core.settings import AlgorithmSettings, ProcessingSettings, DebugSettings
+    from .core.image import ImageProcessor
+    from .core.settings_model import AlgorithmSettings, ProcessingSettings, DebugSettings
 
     random.seed(0)
     np.random.seed(0)
@@ -476,8 +489,8 @@ def _test_no_photo_false_positive_regression() -> None:
     import cv2
     import numpy as np
 
-    from .core.image_processor import ImageProcessor
-    from .core.settings import AlgorithmSettings, ProcessingSettings, DebugSettings
+    from .core.image import ImageProcessor
+    from .core.settings_model import AlgorithmSettings, ProcessingSettings, DebugSettings
 
     random.seed(1)
     np.random.seed(1)
@@ -604,8 +617,8 @@ def _test_max_image_size_limit_applied() -> None:
     import cv2
     import numpy as np
 
-    from .core.batch_processor import BatchProcessor, ProcessStatus
-    from .core.settings import AppSettings
+    from .core.batch import BatchProcessor, ProcessStatus
+    from .core.settings_model import AppSettings
 
     settings = AppSettings()
     settings.performance.max_image_size_mb = 1
@@ -634,7 +647,7 @@ def _test_max_image_size_limit_applied() -> None:
 def _test_face_dnn_fallback_when_download_fails() -> None:
     import numpy as np
 
-    from .core import face_detector as fd_mod
+    from .core.face import detector as fd_mod
 
     original = fd_mod.FaceDetector._ensure_dnn_models
 
@@ -665,8 +678,8 @@ def _test_settings_panel_ai_roundtrip() -> None:
         print(f"WARN: PyQt6 unavailable for AI roundtrip test: {e}")
         return
 
-    from .core.settings import AppSettings
-    from .ui.widgets.settings_panel import SettingsPanel
+    from .core.settings_model import AppSettings
+    from .ui.widgets.settings import SettingsPanel
 
     app = QApplication.instance()
     owned_app = False
@@ -704,8 +717,8 @@ def _test_settings_panel_ai_roundtrip() -> None:
 def _test_batch_post_pipeline_order() -> None:
     import numpy as np
 
-    from .core.batch_processor import BatchProcessor
-    from .core.settings import AppSettings
+    from .core.batch import BatchProcessor
+    from .core.settings_model import AppSettings
 
     settings = AppSettings()
     processor = BatchProcessor(settings)
@@ -753,10 +766,10 @@ def _test_skip_processed_with_classification_subfolder() -> None:
     import cv2
     import numpy as np
 
-    from .core.batch_processor import BatchProcessor, ProcessStatus
+    from .core.batch import BatchProcessor, ProcessStatus
     from .core.image_classifier import ClassificationResult, ImageCategory
-    from .core.image_processor import CropResult, DetectionStage
-    from .core.settings import AppSettings
+    from .core.image import CropResult, DetectionStage
+    from .core.settings_model import AppSettings
 
     settings = AppSettings()
     settings.classification.enabled = True

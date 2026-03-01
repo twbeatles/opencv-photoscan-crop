@@ -16,7 +16,7 @@ from PyQt6.QtCore import Qt, pyqtSignal, QTimer, QPropertyAnimation, QEasingCurv
 from PyQt6.QtGui import QFont, QTextCursor
 import time
 
-from ...core.batch_processor import BatchProgress, FileResult, ProcessStatus
+from ...core.batch import BatchProgress, FileResult, ProcessStatus
 
 
 class StatCard(QFrame):

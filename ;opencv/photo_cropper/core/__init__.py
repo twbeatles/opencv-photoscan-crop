@@ -17,7 +17,7 @@ except Exception:  # pragma: no cover - optional runtime dependency (cv2)
     get_classifier = None  # type: ignore[assignment]
 
 try:
-    from .face_detector import FaceDetectionResult, FaceDetector, get_face_detector
+    from .face import FaceDetectionResult, FaceDetector, get_face_detector
 except Exception:  # pragma: no cover - optional runtime dependency (cv2)
     FaceDetectionResult = None  # type: ignore[assignment]
     FaceDetector = None  # type: ignore[assignment]

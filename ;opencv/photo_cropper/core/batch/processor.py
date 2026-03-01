@@ -24,31 +24,31 @@ from dataclasses import dataclass
 from enum import Enum
 from queue import Queue
 
-from .image_processor import ImageProcessor, CropResult
-from .settings import AppSettings
-from .face_detector import FaceDetector
-from .image_classifier import ImageClassifier, ImageCategory, get_classifier
-from .smart_enhancer import SmartEnhancer, EnhancementPreset
-from .watermark_processor import (
+from ..image import ImageProcessor, CropResult
+from ..settings_model import AppSettings
+from ..face import FaceDetector
+from ..image_classifier import ImageClassifier, ImageCategory, get_classifier
+from ..smart_enhancer import SmartEnhancer, EnhancementPreset
+from ..watermark_processor import (
     WatermarkProcessor,
     TextWatermarkSettings,
     ImageWatermarkSettings,
     WatermarkPosition,
 )
-from .resize_processor import (
+from ..resize_processor import (
     ResizeProcessor,
     ResizeSettings as ResizeProcessorSettings,
     ResizeMode,
 )
-from .multi_photo_detector import MultiPhotoDetector
-from ..utils.file_helpers import (
+from ..multi_photo_detector import MultiPhotoDetector
+from ...utils.file_helpers import (
     SUPPORTED_IMAGE_FORMATS,
     get_image_files,
     classify_failed_files,
     get_unique_filename,
 )
-from ..utils.processing_log import ProcessingLogger, get_processing_logger
-from ..utils.naming_rules import NamingRule, NamingRuleEngine
+from ...utils.processing_log import ProcessingLogger, get_processing_logger
+from ...utils.naming_rules import NamingRule, NamingRuleEngine
 
 logger = logging.getLogger(__name__)
 
@@ -1199,22 +1199,35 @@ class BatchProcessor:
                 pending = set()
                 try:
                     self._executor = ThreadPoolExecutor(max_workers=self._thread_count)
-                    for i, (filename, output_path_override) in enumerate(work_items, 1):
-                        if self._is_stop_requested():
-                            break
+                    max_in_flight = max(self._thread_count * 3, self._thread_count)
+                    work_iter = iter(enumerate(work_items, 1))
+
+                    def submit_next() -> bool:
+                        try:
+                            item_index, (filename, output_path_override) = next(work_iter)
+                        except StopIteration:
+                            return False
                         future = self._executor.submit(
                             self._process_single_file,
                             input_dir,
                             output_dir,
                             filename,
                             backup_dir,
-                            i,
+                            item_index,
                             total,
                             output_path_override,
                         )
-                        futures[future] = (filename, output_path_override)
+                        futures[future] = (filename, item_index)
+                        pending.add(future)
+                        return True
 
-                    pending = set(futures.keys())
+                    while (
+                        not self._is_stop_requested()
+                        and len(pending) < max_in_flight
+                        and submit_next()
+                    ):
+                        pass
+
                     processed = 0
                     while pending:
                         done, pending = wait(
@@ -1232,17 +1245,23 @@ class BatchProcessor:
 
                         for future in done:
                             processed += 1
+                            filename, _ = futures.pop(future, ("", 0))
                             try:
                                 result = future.result()
                             except Exception as e:
                                 result = FileResult(
-                                    filename=os.path.basename(futures[future][0]),
+                                    filename=os.path.basename(filename),
                                     status=ProcessStatus.FAILED,
                                     message=str(e),
                                 )
-                            self._handle_result(
-                                result, input_dir, futures[future][0], processed
-                            )
+                            self._handle_result(result, input_dir, filename, processed)
+
+                        while (
+                            not self._is_stop_requested()
+                            and len(pending) < max_in_flight
+                            and submit_next()
+                        ):
+                            pass
 
                         if self._is_stop_requested():
                             for pending_future in pending:
@@ -1359,17 +1378,20 @@ class BatchProcessor:
 
         # Size filtering
         if self.settings.filter.skip_small_images:
-            info = processor.get_image_info(input_path)
-            if info:
-                w, h, _ = info
-                min_size = self.settings.filter.min_image_size
-                if w < min_size or h < min_size:
-                    self._log(f"  건너뜀: 크기 {w}x{h} < {min_size}px", "skip")
-                    return FileResult(
-                        filename=display_name,
-                        status=ProcessStatus.SKIPPED,
-                        message=f"크기 미달 ({w}x{h})",
-                    )
+            min_size = int(self.settings.filter.min_image_size or 0)
+            # Core processing already rejects tiny images (<100x100),
+            # so avoid additional header I/O for the default threshold.
+            if min_size > 100:
+                info = processor.get_image_info(input_path)
+                if info:
+                    w, h, _ = info
+                    if w < min_size or h < min_size:
+                        self._log(f"  건너뜀: 크기 {w}x{h} < {min_size}px", "skip")
+                        return FileResult(
+                            filename=display_name,
+                            status=ProcessStatus.SKIPPED,
+                            message=f"크기 미달 ({w}x{h})",
+                        )
 
         # File-size filtering (performance guard)
         max_size_mb = int(getattr(self.settings.performance, "max_image_size_mb", 0) or 0)

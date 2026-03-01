@@ -1,60 +1,60 @@
-# CLAUDE.md - Photo Cropper v9.0 Project Guide
+﻿# CLAUDE.md - Photo Cropper v9.0 Project Guide
 
-## 프로젝트 개요
+## ?꾨줈?앺듃 媛쒖슂
 
-스캔된 사진 또는 배경 위 사진을 자동 감지하여 크롭하는 Python 애플리케이션입니다.
+?ㅼ틪???ъ쭊 ?먮뒗 諛곌꼍 ???ъ쭊???먮룞 媛먯??섏뿬 ?щ∼?섎뒗 Python ?좏뵆由ъ??댁뀡?낅땲??
 
-- **진입점**: `run.py` → `photo_cropper/main.py`
+- **吏꾩엯??*: `run.py` ??`photo_cropper/main.py`
 - **Python**: 3.8+
-- **프레임워크**: PyQt6 (GUI), OpenCV (이미지 처리)
+- **?꾨젅?꾩썙??*: PyQt6 (GUI), OpenCV (?대?吏 泥섎━)
 
-## 핵심 의존성
+## ?듭떖 ?섏〈??
 
 ```
-opencv-python>=4.8.0  # 이미지 처리
-numpy>=1.24.0         # 배열 연산
-Pillow>=10.0.0        # 이미지 I/O
+opencv-python>=4.8.0  # ?대?吏 泥섎━
+numpy>=1.24.0         # 諛곗뿴 ?곗궛
+Pillow>=10.0.0        # ?대?吏 I/O
 PyQt6>=6.5.0          # GUI
-winotify>=1.1.0       # Windows 알림 (선택)
+winotify>=1.1.0       # Windows ?뚮┝ (?좏깮)
 ```
 
-## 프로젝트 구조
+## ?꾨줈?앺듃 援ъ“
 
 ```
 photo_cropper/
-├── main.py              # 진입점
-├── cli.py               # CLI 인터페이스
-├── core/                # 핵심 이미지 처리
-│   ├── image_processor.py      # 메인 크롭 알고리즘
-│   ├── batch_processor.py      # 배치 처리
-│   ├── settings.py             # 설정 dataclass
-│   ├── multi_photo_detector.py # 다중 사진 감지
-│   ├── watermark_processor.py  # 워터마크
-│   ├── resize_processor.py     # 리사이즈
-│   ├── folder_watcher.py       # 폴더 감시
-│   ├── scheduler.py            # 스케줄러
-│   └── history_manager.py      # Undo/Redo
-├── ui/                  # PyQt6 UI
-│   ├── main_window.py          # 메인 윈도우
-│   ├── styles/                 # 테마 스타일시트
-│   └── widgets/                # UI 위젯
-│       ├── settings_panel.py
-│       ├── preview_widget.py
-│       ├── toast_notification.py
-│       └── ...
-├── utils/               # 유틸리티
-│   ├── file_helpers.py
-│   ├── naming_rules.py
-│   └── processing_log.py
-└── i18n/                # 다국어 지원
-    └── translations.py
+?쒋?? main.py              # 吏꾩엯??
+?쒋?? cli.py               # CLI ?명꽣?섏씠??
+?쒋?? core/                # ?듭떖 ?대?吏 泥섎━
+??  ?쒋?? image/processor.py      # 硫붿씤 ?щ∼ ?뚭퀬由ъ쬁
+??  ?쒋?? batch/processor.py      # 諛곗튂 泥섎━
+??  ?쒋?? settings_model/app_settings.py             # ?ㅼ젙 dataclass
+??  ?쒋?? multi_photo_detector.py # ?ㅼ쨷 ?ъ쭊 媛먯?
+??  ?쒋?? watermark_processor.py  # ?뚰꽣留덊겕
+??  ?쒋?? resize_processor.py     # 由ъ궗?댁쫰
+??  ?쒋?? folder_watcher.py       # ?대뜑 媛먯떆
+??  ?쒋?? scheduler.py            # ?ㅼ?以꾨윭
+??  ?붴?? history_manager.py      # Undo/Redo
+?쒋?? ui/                  # PyQt6 UI
+??  ?쒋?? main/window.py          # 硫붿씤 ?덈룄??
+??  ?쒋?? styles/                 # ?뚮쭏 ?ㅽ??쇱떆??
+??  ?붴?? widgets/                # UI ?꾩젽
+??      ?쒋?? settings/panel.py
+??      ?쒋?? preview_widget.py
+??      ?쒋?? toast_notification.py
+??      ?붴?? ...
+?쒋?? utils/               # ?좏떥由ы떚
+??  ?쒋?? file_helpers.py
+??  ?쒋?? naming_rules.py
+??  ?붴?? processing_log.py
+?붴?? i18n/                # ?ㅺ뎅??吏??
+    ?붴?? catalog/manager.py
 ```
 
-## 핵심 클래스 및 API
+## ?듭떖 ?대옒??諛?API
 
-### 1. ImageProcessor (core/image_processor.py)
+### 1. ImageProcessor (core/image/processor.py)
 
-사진 감지 및 크롭의 핵심 로직 담당.
+?ъ쭊 媛먯? 諛??щ∼???듭떖 濡쒖쭅 ?대떦.
 
 ```python
 class ImageProcessor:
@@ -67,122 +67,122 @@ class ImageProcessor:
     def find_best_contour(self, edge_image, image_area, ...) -> tuple
 ```
 
-**감지 알고리즘 단계**:
+**媛먯? ?뚭퀬由ъ쬁 ?④퀎**:
 1. Multi-Scale Canny Edge Detection
 2. Adaptive Threshold
 3. Gradient Analysis (Sobel)
-4. Harris Corner Detection (선택적)
+4. Harris Corner Detection (?좏깮??
 
-### 2. MainWindow (ui/main_window.py)
+### 2. MainWindow (ui/main/window.py)
 
-메인 애플리케이션 윈도우.
+硫붿씤 ?좏뵆由ъ??댁뀡 ?덈룄??
 
-- **드래그 앤 드롭**: 폴더/이미지 드롭 지원
-- **테마**: 다크/라이트 테마 토글
-- **키보드 단축키**: Ctrl+O, Ctrl+P, Ctrl+R, F5, F11 등
+- **?쒕옒洹????쒕∼**: ?대뜑/?대?吏 ?쒕∼ 吏??
+- **?뚮쭏**: ?ㅽ겕/?쇱씠???뚮쭏 ?좉?
+- **?ㅻ낫???⑥텞??*: Ctrl+O, Ctrl+P, Ctrl+R, F5, F11 ??
 
-### 3. Settings (core/settings.py)
+### 3. Settings (core/settings_model/app_settings.py)
 
-모든 설정을 dataclass로 관리:
+紐⑤뱺 ?ㅼ젙??dataclass濡?愿由?
 
-- `AlgorithmSettings`: Canny 임계값, CLAHE 등
-- `ProcessingSettings`: 자동 대비, 선명화 등
-- `OutputSettings`: 출력 포맷, 품질
-- `WatermarkSettings`: 워터마크 설정
-- `ResizeSettings`: 리사이즈 설정
-- `AppSettings`: 전체 설정 집합
+- `AlgorithmSettings`: Canny ?꾧퀎媛? CLAHE ??
+- `ProcessingSettings`: ?먮룞 ?鍮? ?좊챸????
+- `OutputSettings`: 異쒕젰 ?щ㎎, ?덉쭏
+- `WatermarkSettings`: ?뚰꽣留덊겕 ?ㅼ젙
+- `ResizeSettings`: 由ъ궗?댁쫰 ?ㅼ젙
+- `AppSettings`: ?꾩껜 ?ㅼ젙 吏묓빀
 
-### 4. BatchProcessor (core/batch_processor.py)
+### 4. BatchProcessor (core/batch/processor.py)
 
-다중 이미지 배치 처리. 내부적으로 `threading.Thread` + `ThreadPoolExecutor` 기반으로 동작하며,
-`PerformanceSettings`로 병렬 처리 스레드 수를 제어합니다.
+?ㅼ쨷 ?대?吏 諛곗튂 泥섎━. ?대??곸쑝濡?`threading.Thread` + `ThreadPoolExecutor` 湲곕컲?쇰줈 ?숈옉?섎ŉ,
+`PerformanceSettings`濡?蹂묐젹 泥섎━ ?ㅻ젅???섎? ?쒖뼱?⑸땲??
 
-- `process_single(input_path, output_dir)`를 제공하여 Watch Mode에서도 배치와 동일한 파이프라인을 사용합니다.
-- 단일/멀티포토 모두 얼굴 보정 → 스마트 보정 → 리사이즈 → 분류 폴더 라우팅(워터마크 전 기준) → 워터마크 순서를 공통 적용합니다.
-- 얼굴 감지 `use_dnn=True` 시 모델 자동 다운로드/체크섬 검증을 시도하며, 실패 시 Haar 감지로 즉시 폴백합니다.
-- 취소 시 pending future를 빠르게 정리해 중단 응답성을 높였습니다.
+- `process_single(input_path, output_dir)`瑜??쒓났?섏뿬 Watch Mode?먯꽌??諛곗튂? ?숈씪???뚯씠?꾨씪?몄쓣 ?ъ슜?⑸땲??
+- ?⑥씪/硫?고룷??紐⑤몢 ?쇨뎬 蹂댁젙 ???ㅻ쭏??蹂댁젙 ??由ъ궗?댁쫰 ??遺꾨쪟 ?대뜑 ?쇱슦???뚰꽣留덊겕 ??湲곗?) ???뚰꽣留덊겕 ?쒖꽌瑜?怨듯넻 ?곸슜?⑸땲??
+- ?쇨뎬 媛먯? `use_dnn=True` ??紐⑤뜽 ?먮룞 ?ㅼ슫濡쒕뱶/泥댄겕??寃利앹쓣 ?쒕룄?섎ŉ, ?ㅽ뙣 ??Haar 媛먯?濡?利됱떆 ?대갚?⑸땲??
+- 痍⑥냼 ??pending future瑜?鍮좊Ⅴ寃??뺣━??以묐떒 ?묐떟?깆쓣 ?믪??듬땲??
 
-## 주요 기능 흐름
+## 二쇱슂 湲곕뒫 ?먮쫫
 
-1. **단일 이미지 처리**:
+1. **?⑥씪 ?대?吏 泥섎━**:
    ```
-   MainWindow._do_preview() → ImageProcessor.process_image() → CropResult
-   ```
-
-2. **배치 처리**:
-   ```
-   MainWindow._start_processing() → BatchProcessor.start_async() →
-   (ThreadPoolExecutor) ImageProcessor.process_image() → 콜백/로그 업데이트
+   MainWindow._do_preview() ??ImageProcessor.process_image() ??CropResult
    ```
 
-3. **Watch Mode 처리**:
+2. **諛곗튂 泥섎━**:
    ```
-   MainWindow._start_watch_mode() → AutoProcessor →
-   BatchProcessor.process_single() → 배치와 동일 후처리/저장
+   MainWindow._start_processing() ??BatchProcessor.start_async() ??
+   (ThreadPoolExecutor) ImageProcessor.process_image() ??肄쒕갚/濡쒓렇 ?낅뜲?댄듃
    ```
 
-4. **설정 저장/로드**:
+3. **Watch Mode 泥섎━**:
    ```
-   SettingsManager.load() → AppSettings
+   MainWindow._start_watch_mode() ??AutoProcessor ??
+   BatchProcessor.process_single() ??諛곗튂? ?숈씪 ?꾩쿂由????
+   ```
+
+4. **?ㅼ젙 ???濡쒕뱶**:
+   ```
+   SettingsManager.load() ??AppSettings
    SettingsManager.save(AppSettings)
-   → 저장 위치 (Windows): %APPDATA%/PhotoCropper/settings.json
-   → 저장 위치 (macOS/Linux): ~/.photo_cropper/photo_cropper_settings.json
+   ??????꾩튂 (Windows): %APPDATA%/PhotoCropper/settings.json
+   ??????꾩튂 (macOS/Linux): ~/.photo_cropper/photo_cropper_settings.json
    ```
 
-## 코딩 가이드라인
+## 肄붾뵫 媛?대뱶?쇱씤
 
-### 1. 이미지 처리
+### 1. ?대?吏 泥섎━
 
-- OpenCV BGR 포맷 사용
-- 유니코드 경로: `cv2.imdecode(np.fromfile(path, np.uint8), cv2.IMREAD_COLOR)`
-- CLAHE 및 커널 객체는 캐싱하여 재사용
-- 워터마크 이미지 로드도 동일한 유니코드 안전 패턴 사용 (`cv2.imread` 직접 사용 지양)
+- OpenCV BGR ?щ㎎ ?ъ슜
+- ?좊땲肄붾뱶 寃쎈줈: `cv2.imdecode(np.fromfile(path, np.uint8), cv2.IMREAD_COLOR)`
+- CLAHE 諛?而ㅻ꼸 媛앹껜??罹먯떛?섏뿬 ?ъ궗??
+- ?뚰꽣留덊겕 ?대?吏 濡쒕뱶???숈씪???좊땲肄붾뱶 ?덉쟾 ?⑦꽩 ?ъ슜 (`cv2.imread` 吏곸젒 ?ъ슜 吏??
 
 ### 2. GUI
 
-- PyQt6 스타일시트로 테마 적용
-- 시그널/슬롯 패턴 사용
-- `BatchProcessor`의 `threading.Thread`/`ThreadPoolExecutor`로 무거운 처리 분리
+- PyQt6 ?ㅽ??쇱떆?몃줈 ?뚮쭏 ?곸슜
+- ?쒓렇???щ’ ?⑦꽩 ?ъ슜
+- `BatchProcessor`??`threading.Thread`/`ThreadPoolExecutor`濡?臾닿굅??泥섎━ 遺꾨━
 
-### 3. 설정 관리
+### 3. ?ㅼ젙 愿由?
 
-- dataclass 기반 설정
-- JSON 직렬화
-- 자동 저장 (debounce 적용)
+- dataclass 湲곕컲 ?ㅼ젙
+- JSON 吏곷젹??
+- ?먮룞 ???(debounce ?곸슜)
 
-## 빌드
+## 鍮뚮뱶
 
 ```bash
 pip install pyinstaller
 pyinstaller photo_cropper.spec --clean
 ```
 
-출력: `dist/PhotoCropper_v9.exe`
+異쒕젰: `dist/PhotoCropper_v9.exe`
 
-## 문제 해결
+## 臾몄젣 ?닿껐
 
-### 한글 경로 오류
-- `cv2.imread` 대신 `np.fromfile` + `cv2.imdecode` 사용
+### ?쒓? 寃쎈줈 ?ㅻ쪟
+- `cv2.imread` ???`np.fromfile` + `cv2.imdecode` ?ъ슜
 
-### GPU 가속
-- `PerformanceSettings.use_gpu` 활성화
-- OpenCV CUDA 빌드 필요
+### GPU 媛??
+- `PerformanceSettings.use_gpu` ?쒖꽦??
+- OpenCV CUDA 鍮뚮뱶 ?꾩슂
 
-### 메모리 부족
-- `PerformanceSettings.max_image_size_mb` 조정
-- `downscale_large_images` 활성화
+### 硫붾え由?遺議?
+- `PerformanceSettings.max_image_size_mb` 議곗젙
+- `downscale_large_images` ?쒖꽦??
 
-### Watch Mode/Batch 결과 불일치
-- Watch Mode는 `BatchProcessor.process_single()` 경로를 사용해야 함
-- 직접 `ImageProcessor.process_image()`만 호출하면 후처리(얼굴/스마트 보정, 리사이즈, 분류 라우팅, 워터마크)가 누락될 수 있음
+### Watch Mode/Batch 寃곌낵 遺덉씪移?
+- Watch Mode??`BatchProcessor.process_single()` 寃쎈줈瑜??ъ슜?댁빞 ??
+- 吏곸젒 `ImageProcessor.process_image()`留??몄텧?섎㈃ ?꾩쿂由??쇨뎬/?ㅻ쭏??蹂댁젙, 由ъ궗?댁쫰, 遺꾨쪟 ?쇱슦?? ?뚰꽣留덊겕)媛 ?꾨씫?????덉쓬
 
-### DNN 얼굴 감지 모델 다운로드 실패
-- 네트워크/모델 파일 문제 시 경고 로그 후 Haar 캐스케이드로 자동 폴백됨
-- 처리 실패가 아니라 정확도 저하 모드로 계속 진행됨
+### DNN ?쇨뎬 媛먯? 紐⑤뜽 ?ㅼ슫濡쒕뱶 ?ㅽ뙣
+- ?ㅽ듃?뚰겕/紐⑤뜽 ?뚯씪 臾몄젣 ??寃쎄퀬 濡쒓렇 ??Haar 罹먯뒪耳?대뱶濡??먮룞 ?대갚??
+- 泥섎━ ?ㅽ뙣媛 ?꾨땲???뺥솗?????紐⑤뱶濡?怨꾩냽 吏꾪뻾??
 
-### 중단 응답 지연
-- 멀티스레드 배치 취소는 in-flight 작업 완료를 일부 기다릴 수 있음
-- pending 작업은 즉시 취소되므로 대기열 길이가 긴 경우 개선 효과가 큼
+### 以묐떒 ?묐떟 吏??
+- 硫?곗뒪?덈뱶 諛곗튂 痍⑥냼??in-flight ?묒뾽 ?꾨즺瑜??쇰? 湲곕떎由????덉쓬
+- pending ?묒뾽? 利됱떆 痍⑥냼?섎?濡??湲곗뿴 湲몄씠媛 湲?寃쎌슦 媛쒖꽑 ?④낵媛 ??
 
 ## 2026-03-01 Agent Update
 
@@ -198,3 +198,13 @@ pyinstaller photo_cropper.spec --clean
 - Backward compatibility is preserved:
   - Legacy processing_completed(filepath, success) signal is kept.
   - Callback result parser accepts ool, tuple, dict, and object-like returns.
+
+
+## 2026-03-02 Split Refactor Notes
+
+- Split long modules into package paths:
+  - `core/settings_model`, `core/advanced`, `core/face`, `core/image`, `core/batch`
+  - `ui/main`, `ui/widgets/settings`, `i18n/catalog`
+- Updated internal imports and packaging metadata (`photo_cropper.spec`) for the new package layout.
+- Runtime behavior target remains unchanged: CLI options, settings schema, output rules, watch/batch contracts.
+

@@ -12,12 +12,12 @@ from PyQt6.QtWidgets import QApplication
 from PyQt6.QtCore import Qt
 
 try:
-    from .ui.main_window import MainWindow
+    from .ui.main import MainWindow
 except ImportError:
     # If run directly not as a module
     import os
     sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-    from photo_cropper.ui.main_window import MainWindow
+    from photo_cropper.ui.main import MainWindow
 
 
 def setup_logging():

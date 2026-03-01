@@ -6,7 +6,7 @@ Reusable PyQt6 widgets.
 from .toast_notification import ToastNotification, ToastManager
 
 try:
-    from .settings_panel import SettingsPanel
+    from .settings import SettingsPanel
 except Exception:  # pragma: no cover - optional runtime dependency chain
     SettingsPanel = None  # type: ignore[assignment]
 
