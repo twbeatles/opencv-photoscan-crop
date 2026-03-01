@@ -4,10 +4,26 @@ Reusable PyQt6 widgets.
 """
 
 from .toast_notification import ToastNotification, ToastManager
-from .settings_panel import SettingsPanel
-from .preview_widget import ImagePreviewWidget
-from .progress_dialog import ProgressDialog
-from .histogram_widget import HistogramWidget
+
+try:
+    from .settings_panel import SettingsPanel
+except Exception:  # pragma: no cover - optional runtime dependency chain
+    SettingsPanel = None  # type: ignore[assignment]
+
+try:
+    from .preview_widget import ImagePreviewWidget
+except Exception:  # pragma: no cover - optional runtime dependency chain
+    ImagePreviewWidget = None  # type: ignore[assignment]
+
+try:
+    from .progress_dialog import ProgressDialog
+except Exception:  # pragma: no cover - optional runtime dependency chain
+    ProgressDialog = None  # type: ignore[assignment]
+
+try:
+    from .histogram_widget import HistogramWidget
+except Exception:  # pragma: no cover - optional runtime dependency chain
+    HistogramWidget = None  # type: ignore[assignment]
 
 __all__ = [
     'ToastNotification',

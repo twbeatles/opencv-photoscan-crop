@@ -304,6 +304,7 @@ class WatchModeSettings:
     recursive: bool = False
     auto_process: bool = True
     debounce_ms: int = 500
+    max_wait_seconds: float = 30.0
     
     # Scheduler
     scheduler_enabled: bool = False

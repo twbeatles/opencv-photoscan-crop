@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
 Main Window for Photo Cropper v9.0 PyQt6 Application.
@@ -1713,6 +1713,7 @@ class MainWindow(QMainWindow):
         """Start watching folder for new files."""
         input_path = self.input_path_edit.text()
         output_path = self.output_path_edit.text()
+        watch_settings = getattr(self._settings, "watch_mode", None)
 
         # Validate paths
         if not input_path or not os.path.isdir(input_path):
@@ -1735,12 +1736,13 @@ class MainWindow(QMainWindow):
         self.auto_processor = AutoProcessor(
             watch_path=input_path,
             output_path=output_path,
-            recursive=getattr(self._settings, "watch_mode", None)
-            and self._settings.watch_mode.recursive
-            or False,
-            debounce_ms=getattr(self._settings, "watch_mode", None)
-            and self._settings.watch_mode.debounce_ms
-            or 500,
+            recursive=bool(watch_settings and watch_settings.recursive),
+            debounce_ms=int(watch_settings.debounce_ms if watch_settings else 500),
+            max_wait_seconds=float(
+                getattr(watch_settings, "max_wait_seconds", 30.0)
+                if watch_settings is not None
+                else 30.0
+            ),
             process_callback=self._process_watched_file,
             parent=self,
         )
@@ -1752,8 +1754,11 @@ class MainWindow(QMainWindow):
             )
         )
         self.auto_processor.processing_completed.connect(self._on_watched_file_complete)
-        self.auto_processor.queue_updated.connect(
-            lambda count: self.status_label.setText(f"👁️ 감시 중... 대기열: {count}개")
+        self.auto_processor.processing_completed_detailed.connect(
+            self._on_watched_file_complete_detailed
+        )
+        self.auto_processor.queue_metrics_updated.connect(
+            self._on_watch_queue_metrics
         )
 
         # Start watching
@@ -1777,7 +1782,7 @@ class MainWindow(QMainWindow):
         ToastManager.info("폴더 감시 모드 중지됨")
         self.status_label.setText("폴더 감시 중지됨")
 
-    def _process_watched_file(self, input_path: str, output_path: str) -> bool:
+    def _process_watched_file(self, input_path: str, output_path: str):
         """Process a single file from watch mode."""
         if self.watch_batch_processor is None:
             self.watch_batch_processor = BatchProcessor(self._settings)
@@ -1786,10 +1791,26 @@ class MainWindow(QMainWindow):
         try:
             self.watch_batch_processor.update_settings(self._settings)
             result = self.watch_batch_processor.process_single(input_path, output_path)
-            return result.status.name in {"SUCCESS", "SKIPPED"}
+            raw_status = ""
+            if hasattr(result, "status") and result.status is not None:
+                raw_status = (
+                    str(getattr(result.status, "value", "") or "").strip()
+                    or str(getattr(result.status, "name", "") or "").strip().lower()
+                )
+            status = (raw_status or "failed").lower()
+            success = status in {"success", "skipped"}
+            return {
+                "success": success,
+                "status": status,
+                "message": str(getattr(result, "message", "") or ""),
+            }
         except Exception as e:
             logger.error(f"Watch mode processing error: {e}")
-            return False
+            return {
+                "success": False,
+                "status": "process_exception",
+                "message": str(e),
+            }
 
     def _on_watched_file_complete(self, filepath: str, success: bool):
         """Handle completion of watched file processing."""
@@ -1800,6 +1821,44 @@ class MainWindow(QMainWindow):
         else:
             self.status_label.setText(f"👁️ 처리 실패: {filename}")
             ToastManager.warning(f"⚠️ 자동 처리 실패: {filename}")
+
+    def _on_watched_file_complete_detailed(
+        self,
+        filepath: str,
+        success: bool,
+        status: str,
+        message: str,
+        wait_ms: int,
+    ):
+        """Handle detailed completion status for watch mode."""
+        filename = os.path.basename(filepath)
+        status_key = (status or "").lower()
+        wait_text = f"{int(wait_ms)}ms"
+
+        if success:
+            if status_key == "skipped":
+                detail = message or "skip"
+                self.status_label.setText(
+                    f"👁️ 스킵: {filename} ({detail}, 대기 {wait_text})"
+                )
+                ToastManager.info(f"ℹ️ 자동 처리 스킵: {filename} ({detail})")
+            else:
+                self.status_label.setText(f"👁️ 처리 완료: {filename} (대기 {wait_text})")
+                ToastManager.success(f"✅ 자동 처리 완료: {filename}")
+            return
+
+        reason = status_key or "failed"
+        detail = message or reason
+        self.status_label.setText(f"👁️ 처리 실패: {filename} ({reason}, 대기 {wait_text})")
+        ToastManager.warning(f"⚠️ 자동 처리 실패: {filename} - {detail}")
+
+    def _on_watch_queue_metrics(self, queue_size: int, avg_wait_ms: int):
+        """Show queue metrics while watch mode is active."""
+        if self.auto_processor is None:
+            return
+        self.status_label.setText(
+            f"👁️ 감시 중... 대기열: {int(queue_size)}개, 평균 대기: {int(avg_wait_ms)}ms"
+        )
 
     def closeEvent(self, event):
         """Handle window close event."""

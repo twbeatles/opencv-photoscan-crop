@@ -96,6 +96,9 @@ a = Analysis(
         'cv2',
         'numpy',
         'PIL',
+        'photo_cropper.core.settings',
+        'photo_cropper.core.batch_profile_manager',
+        'photo_cropper.core.folder_watcher',
         'PyQt6.QtCore',
         'PyQt6.QtGui', 
         'PyQt6.QtWidgets',
@@ -198,4 +201,10 @@ Tips for further size reduction:
     2. Use Python 3.11+ (smaller stdlib)
     3. Use opencv-python-headless instead of opencv-python
     4. Consider using Nuitka instead of PyInstaller
+
+2026-03-01 note:
+    - No additional binary dependencies were introduced by the CLI/watch/profile
+      alignment changes.
+    - Hidden imports above explicitly pin core modules touched by the update to
+      keep frozen-build module discovery stable.
 """

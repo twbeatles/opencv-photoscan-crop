@@ -22,6 +22,10 @@ from .settings import AppSettings, get_settings_manager
 
 logger = logging.getLogger(__name__)
 
+_LEGACY_SETTINGS_KEY_ALIASES = {
+    "advanced_processing": "advanced",
+}
+
 
 @dataclass
 class BatchProfile:
@@ -110,7 +114,7 @@ DEFAULT_PROFILES: Dict[str, BatchProfile] = {
                 "denoise": True,
                 "denoise_strength": 12
             },
-            "advanced_processing": {
+            "advanced": {
                 "auto_color_correct": True,
                 "restore_old_photo": True
             },
@@ -254,7 +258,9 @@ class BatchProfileManager:
                     data = json.load(f)
                 
                 for name, profile_data in data.get('profiles', {}).items():
-                    self._profiles[name] = BatchProfile.from_dict(profile_data)
+                    profile = BatchProfile.from_dict(profile_data)
+                    self._normalize_profile(profile)
+                    self._profiles[name] = profile
                 
                 self._current_profile = data.get('current_profile')
                 logger.info(f"Loaded {len(data.get('profiles', {}))} user profiles")
@@ -265,6 +271,9 @@ class BatchProfileManager:
     def _save_profiles(self):
         """Save profiles to file."""
         try:
+            for profile in self._profiles.values():
+                self._normalize_profile(profile)
+
             # Only save non-default profiles
             user_profiles = {
                 name: profile.to_dict()
@@ -285,6 +294,35 @@ class BatchProfileManager:
             
         except Exception as e:
             logger.error(f"Error saving profiles: {e}")
+
+    @classmethod
+    def _normalize_settings_dict(cls, data: Any) -> Any:
+        """Normalize legacy setting keys recursively."""
+        if isinstance(data, dict):
+            normalized: Dict[str, Any] = {}
+            for key, value in data.items():
+                mapped_key = _LEGACY_SETTINGS_KEY_ALIASES.get(key, key)
+                normalized_value = cls._normalize_settings_dict(value)
+                if (
+                    mapped_key in normalized
+                    and isinstance(normalized[mapped_key], dict)
+                    and isinstance(normalized_value, dict)
+                ):
+                    normalized[mapped_key].update(normalized_value)
+                else:
+                    normalized[mapped_key] = normalized_value
+            return normalized
+        if isinstance(data, list):
+            return [cls._normalize_settings_dict(item) for item in data]
+        return data
+
+    def _normalize_profile(self, profile: BatchProfile):
+        """Normalize a profile in-place for backward compatibility."""
+        profile.settings = self._normalize_settings_dict(profile.settings or {})
+        normalized_rules: Dict[str, Dict[str, Any]] = {}
+        for category, rule_data in (profile.category_rules or {}).items():
+            normalized_rules[category] = self._normalize_settings_dict(rule_data or {})
+        profile.category_rules = normalized_rules
     
     def list_profiles(self) -> List[str]:
         """Get list of profile names."""
@@ -334,9 +372,10 @@ class BatchProfileManager:
         profile = BatchProfile(
             name=name,
             description=description,
-            settings=settings.to_dict(),
+            settings=self._normalize_settings_dict(settings.to_dict()),
             category_rules=category_rules or {}
         )
+        self._normalize_profile(profile)
         
         self._profiles[name] = profile
         self._save_profiles()
@@ -370,11 +409,12 @@ class BatchProfileManager:
         profile = self._profiles[name]
         
         if settings is not None:
-            profile.settings = settings.to_dict()
+            profile.settings = self._normalize_settings_dict(settings.to_dict())
         if description is not None:
             profile.description = description
         if category_rules is not None:
             profile.category_rules = category_rules
+        self._normalize_profile(profile)
         
         profile.modified_at = datetime.now().isoformat()
         
@@ -494,15 +534,16 @@ class BatchProfileManager:
             settings: Settings object to modify
         """
         for key, value in data.items():
-            if hasattr(settings, key):
-                attr = getattr(settings, key)
+            resolved_key = _LEGACY_SETTINGS_KEY_ALIASES.get(key, key)
+            if hasattr(settings, resolved_key):
+                attr = getattr(settings, resolved_key)
                 if isinstance(value, dict) and hasattr(attr, '__dataclass_fields__'):
                     # Nested dataclass
                     for sub_key, sub_value in value.items():
                         if hasattr(attr, sub_key):
                             setattr(attr, sub_key, sub_value)
                 else:
-                    setattr(settings, key, value)
+                    setattr(settings, resolved_key, value)
     
     def export_profile(self, name: str, export_path: str) -> bool:
         """
@@ -523,6 +564,8 @@ class BatchProfileManager:
             # Ensure correct extension
             if not export_path.endswith(self.EXPORT_EXTENSION):
                 export_path += self.EXPORT_EXTENSION
+
+            self._normalize_profile(profile)
             
             data = {
                 'type': 'photo_cropper_profile',
@@ -562,6 +605,7 @@ class BatchProfileManager:
                 return None
             
             profile = BatchProfile.from_dict(data['profile'])
+            self._normalize_profile(profile)
             
             if new_name:
                 profile.name = new_name
@@ -611,9 +655,10 @@ class BatchProfileManager:
         new_profile = BatchProfile(
             name=new_name,
             description=f"{profile.description} (복사본)",
-            settings=profile.settings.copy() if profile.settings else {},
+            settings=self._normalize_settings_dict(profile.settings.copy() if profile.settings else {}),
             category_rules=profile.category_rules.copy()
         )
+        self._normalize_profile(new_profile)
         
         self._profiles[new_name] = new_profile
         self._save_profiles()

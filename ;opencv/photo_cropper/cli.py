@@ -1,507 +1,567 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Command Line Interface for Photo Cropper v9.0.
+Command-line interface for Photo Cropper.
 
-Provides CLI access to batch processing functionality.
-Usage: python -m photo_cropper.cli --help
+Configuration merge priority:
+    CLI > config file > preset profile > defaults
 """
 
+from __future__ import annotations
+
 import argparse
-import os
-import sys
+import copy
 import json
 import logging
-from pathlib import Path
+import os
+import re
+import sys
+import time
+from typing import Any, Dict, Optional, Tuple
 
-# Setup logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s'
-)
+try:
+    from .core.batch_profile_manager import get_batch_profile_manager
+    from .core.settings import AppSettings
+except ImportError:
+    # Support direct execution: python photo_cropper/cli.py
+    sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    from photo_cropper.core.batch_profile_manager import get_batch_profile_manager
+    from photo_cropper.core.settings import AppSettings
+
+
 logger = logging.getLogger(__name__)
 
+_LEGACY_KEY_ALIASES = {
+    "advanced_processing": "advanced",
+}
 
-def setup_path():
-    """Add package to path."""
-    package_dir = Path(__file__).parent.parent
-    if str(package_dir) not in sys.path:
-        sys.path.insert(0, str(package_dir))
+_RESIZE_PRESETS: Dict[str, Tuple[str, int, int]] = {
+    "instagram_square": ("fit", 1080, 1080),
+    "instagram_story": ("fit", 1080, 1920),
+    "facebook_cover": ("fit", 820, 312),
+    "a4": ("fit", 2480, 3508),
+}
+
+
+def _int_in_range(min_value: int, max_value: int):
+    def _parse(value: str) -> int:
+        try:
+            parsed = int(value)
+        except ValueError as exc:
+            raise argparse.ArgumentTypeError(f"Expected integer, got: {value}") from exc
+        if parsed < min_value or parsed > max_value:
+            raise argparse.ArgumentTypeError(
+                f"Expected value in range [{min_value}, {max_value}], got: {parsed}"
+            )
+        return parsed
+
+    return _parse
+
+
+def _float_in_range(min_value: float, max_value: float):
+    def _parse(value: str) -> float:
+        try:
+            parsed = float(value)
+        except ValueError as exc:
+            raise argparse.ArgumentTypeError(f"Expected float, got: {value}") from exc
+        if parsed < min_value or parsed > max_value:
+            raise argparse.ArgumentTypeError(
+                f"Expected value in range [{min_value}, {max_value}], got: {parsed}"
+            )
+        return parsed
+
+    return _parse
+
+
+def _normalize_legacy_keys(data: Any) -> Any:
+    if isinstance(data, dict):
+        normalized: Dict[str, Any] = {}
+        for key, value in data.items():
+            mapped_key = _LEGACY_KEY_ALIASES.get(key, key)
+            normalized_value = _normalize_legacy_keys(value)
+            if (
+                mapped_key in normalized
+                and isinstance(normalized[mapped_key], dict)
+                and isinstance(normalized_value, dict)
+            ):
+                normalized[mapped_key].update(normalized_value)
+            else:
+                normalized[mapped_key] = normalized_value
+        return normalized
+    if isinstance(data, list):
+        return [_normalize_legacy_keys(item) for item in data]
+    return data
+
+
+def _deep_merge(base: Dict[str, Any], override: Dict[str, Any]) -> Dict[str, Any]:
+    for key, value in override.items():
+        if (
+            key in base
+            and isinstance(base[key], dict)
+            and isinstance(value, dict)
+        ):
+            _deep_merge(base[key], value)
+        else:
+            base[key] = copy.deepcopy(value)
+    return base
+
+
+def _set_nested(data: Dict[str, Any], path: str, value: Any) -> None:
+    parts = path.split(".")
+    cursor = data
+    for key in parts[:-1]:
+        child = cursor.get(key)
+        if not isinstance(child, dict):
+            child = {}
+            cursor[key] = child
+        cursor = child
+    cursor[parts[-1]] = value
+
+
+def _read_json_file(path: str) -> Dict[str, Any]:
+    last_error: Optional[Exception] = None
+    for encoding in ("utf-8", "utf-8-sig", "cp949"):
+        try:
+            with open(path, "r", encoding=encoding) as handle:
+                loaded = json.load(handle)
+            if not isinstance(loaded, dict):
+                raise ValueError("Config root must be a JSON object")
+            return loaded
+        except Exception as exc:
+            last_error = exc
+    raise ValueError(f"Failed to read JSON file '{path}': {last_error}")
+
+
+def _parse_resize_spec(value: str) -> Dict[str, Any]:
+    raw = str(value or "").strip()
+    if not raw:
+        raise ValueError("Resize spec is empty")
+
+    key = raw.lower()
+    if key in _RESIZE_PRESETS:
+        mode, width, height = _RESIZE_PRESETS[key]
+        return {
+            "enabled": True,
+            "mode": mode,
+            "width": int(width),
+            "height": int(height),
+        }
+
+    if key.endswith("%"):
+        number = key[:-1].strip()
+        try:
+            percentage = float(number)
+        except ValueError as exc:
+            raise ValueError(f"Invalid percentage resize spec: {raw}") from exc
+        if percentage <= 0:
+            raise ValueError("Resize percentage must be > 0")
+        return {
+            "enabled": True,
+            "mode": "percentage",
+            "percentage": percentage,
+        }
+
+    match = re.fullmatch(r"(\d+)x(\d+)", key)
+    if match:
+        width = int(match.group(1))
+        height = int(match.group(2))
+        if width <= 0 or height <= 0:
+            raise ValueError("Resize dimensions must be > 0")
+        return {
+            "enabled": True,
+            "mode": "fit",
+            "width": width,
+            "height": height,
+        }
+
+    if key.isdigit():
+        max_dimension = int(key)
+        if max_dimension <= 0:
+            raise ValueError("Max dimension must be > 0")
+        return {
+            "enabled": True,
+            "mode": "max_dimension",
+            "max_dimension": max_dimension,
+        }
+
+    raise ValueError(
+        "Invalid resize spec. Use one of: '50%%', '1200x900', integer max size, or preset name."
+    )
+
+
+def _load_preset_settings(preset_name: str) -> Dict[str, Any]:
+    manager = get_batch_profile_manager()
+    profile = manager.get_profile(preset_name)
+    if profile is None:
+        available = ", ".join(sorted(manager.list_profiles()))
+        raise ValueError(
+            f"Preset not found: '{preset_name}'. Available presets: {available}"
+        )
+    return _normalize_legacy_keys(profile.settings or {})
+
+
+def _load_config_settings(config_path: str) -> Dict[str, Any]:
+    loaded = _read_json_file(config_path)
+
+    # Accept either AppSettings-style root or exported profile-like envelope.
+    if "settings" in loaded and isinstance(loaded.get("settings"), dict):
+        loaded = loaded["settings"]
+
+    return _normalize_legacy_keys(loaded)
+
+
+def _apply_cli_overrides(settings_data: Dict[str, Any], args: argparse.Namespace) -> None:
+    if args.recursive:
+        _set_nested(settings_data, "file_management.recursive_search", True)
+
+    if args.skip_processed:
+        _set_nested(settings_data, "filter.skip_processed", True)
+
+    if args.jobs is not None:
+        thread_count = max(1, int(args.jobs))
+        _set_nested(settings_data, "performance.thread_count", thread_count)
+        _set_nested(settings_data, "performance.enable_multithreading", thread_count > 1)
+
+    if args.detect_mode is not None:
+        _set_nested(settings_data, "algorithm.detection_mode", args.detect_mode)
+
+    if args.canny_min is not None:
+        _set_nested(settings_data, "algorithm.canny_min", int(args.canny_min))
+
+    if args.canny_max is not None:
+        _set_nested(settings_data, "algorithm.canny_max", int(args.canny_max))
+
+    if args.debug_detect:
+        _set_nested(settings_data, "debug.enabled", True)
+
+    if args.format is not None:
+        _set_nested(settings_data, "output.output_format", args.format.upper())
+
+    if args.quality is not None:
+        _set_nested(settings_data, "output.jpg_quality", int(args.quality))
+        _set_nested(settings_data, "output.webp_quality", int(args.quality))
+
+    if args.png_compression is not None:
+        _set_nested(settings_data, "output.png_compression", int(args.png_compression))
+
+    if args.watermark is not None:
+        _set_nested(settings_data, "watermark.enabled", True)
+        _set_nested(settings_data, "watermark.text", args.watermark)
+
+    if args.watermark_image is not None:
+        _set_nested(settings_data, "watermark.enabled", True)
+        _set_nested(settings_data, "watermark.image_path", args.watermark_image)
+
+    if args.multi_photo:
+        _set_nested(settings_data, "multi_photo.enabled", True)
+
+    if args.max_size is not None:
+        _set_nested(settings_data, "resize.enabled", True)
+        _set_nested(settings_data, "resize.mode", "max_dimension")
+        _set_nested(settings_data, "resize.max_dimension", int(args.max_size))
+
+    if args.resize is not None:
+        resize_patch = _parse_resize_spec(args.resize)
+        resize_root = settings_data.get("resize")
+        if not isinstance(resize_root, dict):
+            resize_root = {}
+            settings_data["resize"] = resize_root
+        _deep_merge(resize_root, resize_patch)
+
+    if args.backup:
+        _set_nested(settings_data, "create_backup", True)
+
+    # AI options (core toggle set)
+    if args.classify:
+        _set_nested(settings_data, "classification.enabled", True)
+
+    if args.classify_model is not None:
+        _set_nested(settings_data, "classification.model", args.classify_model)
+
+    if args.classify_min_confidence is not None:
+        _set_nested(
+            settings_data,
+            "classification.min_confidence",
+            float(args.classify_min_confidence),
+        )
+
+    if args.classify_auto_folder is not None:
+        _set_nested(
+            settings_data,
+            "classification.auto_folder",
+            bool(args.classify_auto_folder),
+        )
+
+    if args.face_detect:
+        _set_nested(settings_data, "face_detection.enabled", True)
+
+    if args.face_dnn:
+        _set_nested(settings_data, "face_detection.enabled", True)
+        _set_nested(settings_data, "face_detection.use_dnn", True)
+
+    if args.face_min_size is not None:
+        _set_nested(settings_data, "face_detection.min_face_size", int(args.face_min_size))
+
+    if args.face_auto_center_crop:
+        _set_nested(settings_data, "face_detection.auto_center_crop", True)
+
+    if args.face_auto_rotate:
+        _set_nested(settings_data, "face_detection.auto_rotate", True)
+
+    if args.smart_enhance:
+        _set_nested(settings_data, "smart_enhancement.enabled", True)
+
+    if args.smart_strength is not None:
+        _set_nested(settings_data, "smart_enhancement.strength", int(args.smart_strength))
+
+    if args.smart_no_exposure:
+        _set_nested(settings_data, "smart_enhancement.adjust_exposure", False)
+
+    if args.smart_no_color_balance:
+        _set_nested(settings_data, "smart_enhancement.adjust_color_balance", False)
+
+
+def build_settings_from_args(args: argparse.Namespace) -> AppSettings:
+    # 1) defaults
+    merged = AppSettings().to_dict()
+
+    # 2) preset
+    if args.preset:
+        preset_data = _load_preset_settings(args.preset)
+        _deep_merge(merged, preset_data)
+
+    # 3) config
+    if args.config:
+        config_data = _load_config_settings(args.config)
+        _deep_merge(merged, config_data)
+
+    # 4) cli overrides
+    _apply_cli_overrides(merged, args)
+
+    return AppSettings.from_dict(merged)
+
+
+def _configure_logging(level: str) -> None:
+    logging.basicConfig(
+        level=getattr(logging, level.upper(), logging.INFO),
+        format="%(asctime)s - %(levelname)s - %(name)s - %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S",
+    )
+
+
+def _validate_io_paths(input_dir: str, output_dir: str) -> None:
+    if not input_dir:
+        raise ValueError("Input directory is required")
+    if not output_dir:
+        raise ValueError("Output directory is required")
+    if not os.path.isdir(input_dir):
+        raise ValueError(f"Input directory does not exist: {input_dir}")
+
+
+def _list_presets() -> int:
+    manager = get_batch_profile_manager()
+    names = sorted(manager.list_profiles())
+    if not names:
+        print("No presets available")
+        return 0
+    print("Available presets:")
+    for name in names:
+        print(f"- {name}")
+    return 0
+
+
+def process_batch(args: argparse.Namespace) -> int:
+    try:
+        from .core.batch_processor import BatchProcessor
+    except ImportError:
+        from photo_cropper.core.batch_processor import BatchProcessor
+
+    try:
+        _validate_io_paths(args.input, args.output)
+        os.makedirs(args.output, exist_ok=True)
+
+        settings = build_settings_from_args(args)
+    except Exception as exc:
+        logger.error("Configuration error: %s", exc)
+        print(f"ERROR: {exc}", file=sys.stderr)
+        return 2
+
+    processor = BatchProcessor(settings)
+
+    def on_log(message: str, level: str) -> None:
+        level = str(level or "info").lower()
+        if level in {"error", "warning"}:
+            print(message, file=sys.stderr)
+        else:
+            print(message)
+
+    processor.set_callbacks(on_log=on_log)
+
+    if not processor.start_async(args.input, args.output):
+        print("ERROR: Failed to start batch processing", file=sys.stderr)
+        return 2
+
+    try:
+        while processor.is_running:
+            time.sleep(0.1)
+    except KeyboardInterrupt:
+        print("Cancellation requested...")
+        processor.request_stop()
+        processor.wait_for_completion(timeout=10.0)
+
+    progress = processor.progress
+    print(
+        "Summary: "
+        f"processed={progress.processed}, "
+        f"success={progress.success}, "
+        f"failed={progress.failed}, "
+        f"skipped={progress.skipped}"
+    )
+
+    if progress.failed > 0:
+        return 1
+    return 0
 
 
 def create_parser() -> argparse.ArgumentParser:
-    """Create argument parser."""
+    epilog = (
+        "Examples:\n"
+        "  python -m photo_cropper.cli -i ./scans -o ./out --preset '문서 스캔'\n"
+        "  python -m photo_cropper.cli -i ./scans -o ./out --config ./settings.json --skip-processed\n"
+        "  python -m photo_cropper.cli -i ./scans -o ./out --classify --face-detect --smart-enhance"
+    )
+
     parser = argparse.ArgumentParser(
-        prog='photo_cropper',
-        description='Photo Cropper - Automatic photo detection and cropping',
+        prog="photo_cropper.cli",
+        description="Batch photo cropper CLI",
         formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog="""
-Examples:
-  %(prog)s --input ./scans --output ./cropped
-  %(prog)s --input ./scans --output ./cropped --format png --quality 95
-  %(prog)s --input ./scans --preset high_quality
-  %(prog)s --input ./scans --config settings.json
-        """
-    )
-    
-    # Required arguments
-    parser.add_argument(
-        '-i', '--input',
-        required=True,
-        help='Input folder containing images to process'
-    )
-    
-    parser.add_argument(
-        '-o', '--output',
-        default=None,
-        help='Output folder for processed images (default: input folder)'
-    )
-    
-    # Processing options
-    parser.add_argument(
-        '-f', '--format',
-        choices=['jpg', 'png', 'webp'],
-        default='jpg',
-        help='Output image format (default: jpg)'
-    )
-    
-    parser.add_argument(
-        '-q', '--quality',
-        type=int,
-        default=95,
-        help='Output quality for JPG/WebP (1-100, default: 95)'
-    )
-    
-    parser.add_argument(
-        '--compression',
-        type=int,
-        default=6,
-        help='PNG compression level (0-9, default: 6)'
-    )
-    
-    # Algorithm options
-    parser.add_argument(
-        '--canny-min',
-        type=int,
-        default=50,
-        help='Canny edge detection minimum threshold (default: 50)'
-    )
-    
-    parser.add_argument(
-        '--canny-max',
-        type=int,
-        default=150,
-        help='Canny edge detection maximum threshold (default: 150)'
-    )
-    
-    parser.add_argument(
-        '--no-clahe',
-        action='store_true',
-        help='Disable CLAHE contrast enhancement'
-    )
-    
-    parser.add_argument(
-        '--no-multi-scale',
-        action='store_true',
-        help='Disable multi-scale edge detection'
-    )
-    
-    parser.add_argument(
-        '--corner-detection',
-        action='store_true',
-        help='Enable Harris corner detection'
+        epilog=epilog,
     )
 
-    # Detection mode + debug (v9.x accuracy)
+    # Core I/O
+    parser.add_argument("-i", "--input", help="Input directory")
+    parser.add_argument("-o", "--output", help="Output directory")
+    parser.add_argument("--list-presets", action="store_true", help="List available preset names")
+
+    # Merge sources
+    parser.add_argument("--preset", help="Preset profile name (applied before --config)")
+    parser.add_argument("--config", help="JSON settings file path")
+
+    # General processing
+    parser.add_argument("--recursive", action="store_true", help="Enable recursive input search")
+    parser.add_argument("--skip-processed", action="store_true", help="Skip already processed files")
+    parser.add_argument("--jobs", type=_int_in_range(1, 64), help="Worker thread count")
     parser.add_argument(
-        '--detect-mode',
-        choices=['fast', 'balanced', 'accurate'],
-        default='balanced',
-        help='Detection mode preset (default: balanced)'
+        "--detect-mode",
+        choices=["fast", "balanced", "accurate"],
+        help="Detection mode",
+    )
+    parser.add_argument("--canny-min", type=_int_in_range(0, 255), help="Canny minimum threshold")
+    parser.add_argument("--canny-max", type=_int_in_range(1, 255), help="Canny maximum threshold")
+    parser.add_argument("--debug-detect", action="store_true", help="Enable detection debug outputs")
+
+    # Output / post
+    parser.add_argument("--format", choices=["JPG", "PNG", "WEBP"], help="Output format")
+    parser.add_argument("--quality", type=_int_in_range(1, 100), help="JPG/WEBP quality")
+    parser.add_argument(
+        "--png-compression",
+        type=_int_in_range(0, 9),
+        help="PNG compression level",
+    )
+    parser.add_argument("--watermark", help="Text watermark")
+    parser.add_argument("--watermark-image", help="Image watermark path")
+    parser.add_argument("--resize", help="Resize spec (50%%, 1200x900, 1920, instagram_square)")
+    parser.add_argument("--max-size", type=_int_in_range(1, 20000), help="Resize max dimension")
+    parser.add_argument("--multi-photo", action="store_true", help="Enable multi-photo split mode")
+    parser.add_argument("--backup", action="store_true", help="Create backups")
+
+    # AI core toggles
+    parser.add_argument("--classify", action="store_true", help="Enable image classification")
+    parser.add_argument(
+        "--classify-model",
+        choices=["basic", "advanced", "custom"],
+        help="Classification model",
+    )
+    parser.add_argument(
+        "--classify-min-confidence",
+        type=_float_in_range(0.0, 1.0),
+        help="Minimum classification confidence",
+    )
+    classify_folder_group = parser.add_mutually_exclusive_group()
+    classify_folder_group.add_argument(
+        "--classify-auto-folder",
+        dest="classify_auto_folder",
+        action="store_true",
+        default=None,
+        help="Enable auto-folder routing for classification",
+    )
+    classify_folder_group.add_argument(
+        "--no-classify-auto-folder",
+        dest="classify_auto_folder",
+        action="store_false",
+        default=None,
+        help="Disable auto-folder routing for classification",
+    )
+
+    parser.add_argument("--face-detect", action="store_true", help="Enable face detection")
+    parser.add_argument("--face-dnn", action="store_true", help="Use DNN face detector")
+    parser.add_argument(
+        "--face-min-size",
+        type=_int_in_range(20, 500),
+        help="Minimum face size in pixels",
+    )
+    parser.add_argument(
+        "--face-auto-center-crop",
+        action="store_true",
+        help="Center crop around faces",
+    )
+    parser.add_argument(
+        "--face-auto-rotate",
+        action="store_true",
+        help="Auto-rotate using eye alignment",
+    )
+
+    parser.add_argument("--smart-enhance", action="store_true", help="Enable smart enhancement")
+    parser.add_argument(
+        "--smart-strength",
+        type=_int_in_range(0, 100),
+        help="Smart enhancement strength",
+    )
+    parser.add_argument(
+        "--smart-no-exposure",
+        action="store_true",
+        help="Disable smart exposure adjustment",
+    )
+    parser.add_argument(
+        "--smart-no-color-balance",
+        action="store_true",
+        help="Disable smart color-balance adjustment",
     )
 
     parser.add_argument(
-        '--debug-detect',
-        action='store_true',
-        help='Save detection debug artifacts (stage images, overlays, meta.json)'
+        "--log-level",
+        choices=["DEBUG", "INFO", "WARNING", "ERROR"],
+        default="INFO",
+        help="Log level",
     )
 
-    parser.add_argument(
-        '--debug-dir',
-        default='',
-        help='Directory to store debug artifacts (default: output/_debug or TEMP)'
-    )
-    
-    # Post-processing options
-    parser.add_argument(
-        '--grayscale',
-        action='store_true',
-        help='Convert output to grayscale'
-    )
-    
-    parser.add_argument(
-        '--sharpen',
-        action='store_true',
-        help='Apply sharpening to output'
-    )
-    
-    parser.add_argument(
-        '--denoise',
-        action='store_true',
-        help='Apply noise reduction'
-    )
-    
-    # Watermark options
-    parser.add_argument(
-        '--watermark',
-        default=None,
-        help='Text watermark to add'
-    )
-    
-    parser.add_argument(
-        '--watermark-position',
-        choices=['top_left', 'top_center', 'top_right',
-                 'middle_left', 'center', 'middle_right',
-                 'bottom_left', 'bottom_center', 'bottom_right'],
-        default='bottom_right',
-        help='Watermark position (default: bottom_right)'
-    )
-    
-    parser.add_argument(
-        '--watermark-opacity',
-        type=float,
-        default=0.5,
-        help='Watermark opacity (0.0-1.0, default: 0.5)'
-    )
-    
-    # Resize options
-    parser.add_argument(
-        '--resize',
-        default=None,
-        help='Resize output (e.g., "800x600", "50%%", or preset name)'
-    )
-    
-    parser.add_argument(
-        '--max-size',
-        type=int,
-        default=0,
-        help='Maximum dimension in pixels (0 = no limit)'
-    )
-    
-    # Multi-photo detection
-    parser.add_argument(
-        '--multi-photo',
-        action='store_true',
-        help='Detect and separate multiple photos per scan'
-    )
-    
-    # Filter options
-    parser.add_argument(
-        '--skip-processed',
-        action='store_true',
-        help='Skip already processed files'
-    )
-    
-    parser.add_argument(
-        '--min-size',
-        type=int,
-        default=100,
-        help='Minimum image size in pixels (default: 100)'
-    )
-    
-    # Config file
-    parser.add_argument(
-        '-c', '--config',
-        default=None,
-        help='Path to JSON configuration file'
-    )
-    
-    parser.add_argument(
-        '--preset',
-        default=None,
-        help='Use a saved preset by name'
-    )
-    
-    # Behavior options
-    parser.add_argument(
-        '--recursive',
-        action='store_true',
-        help='Process subdirectories recursively'
-    )
-    
-    parser.add_argument(
-        '-j', '--jobs',
-        type=int,
-        default=4,
-        help='Number of parallel processing jobs (default: 4)'
-    )
-    
-    parser.add_argument(
-        '-v', '--verbose',
-        action='store_true',
-        help='Enable verbose output'
-    )
-    
-    parser.add_argument(
-        '--dry-run',
-        action='store_true',
-        help='Show what would be processed without actually processing'
-    )
-    
-    parser.add_argument(
-        '--version',
-        action='version',
-        version='Photo Cropper v9.0'
-    )
-    
     return parser
 
 
-def load_config(config_path: str) -> dict:
-    """Load configuration from JSON file."""
-    try:
-        with open(config_path, 'r', encoding='utf-8') as f:
-            return json.load(f)
-    except Exception as e:
-        logger.error(f"Failed to load config: {e}")
-        return {}
-
-
-def parse_resize_arg(resize_arg: str):
-    """Parse resize argument into core resize settings dict."""
-    if not resize_arg:
-        return None
-
-    value = resize_arg.strip().lower()
-
-    # Percentage (e.g., 50%)
-    if value.endswith('%'):
-        try:
-            percentage = float(value.rstrip('%'))
-        except ValueError:
-            return None
-        if percentage <= 0:
-            return None
-        return {"mode": "percentage", "percentage": percentage}
-
-    # WxH (e.g., 800x600)
-    if 'x' in value:
-        parts = value.split('x')
-        if len(parts) == 2:
-            try:
-                width = int(parts[0])
-                height = int(parts[1])
-            except ValueError:
-                return None
-            if width > 0 and height > 0:
-                return {"mode": "fit", "width": width, "height": height}
-
-    # Preset name
-    try:
-        from photo_cropper.core.resize_processor import ResizeProcessor
-        if value in ResizeProcessor.PRESETS:
-            width, height = ResizeProcessor.PRESETS[value]
-            return {"mode": "fit", "width": width, "height": height}
-    except Exception:
-        return None
-
-    return None
-
-
-def process_batch(args) -> int:
-    """
-    Process batch of images.
-    
-    Args:
-        args: Parsed arguments
-        
-    Returns:
-        Exit code (0 = success, 1 = error)
-    """
-    setup_path()
-    
-    # Import after path setup
-    from photo_cropper.core.settings import (
-        AppSettings,
-        AlgorithmSettings,
-        DebugSettings,
-        ProcessingSettings,
-        OutputSettings,
-        WatermarkSettings,
-        ResizeSettings,
-        FilterSettings,
-        FileManagementSettings,
-        MultiPhotoSettings,
-        PerformanceSettings,
-    )
-    from photo_cropper.core.batch_processor import BatchProcessor
-    from photo_cropper.utils.file_helpers import get_image_files
-    
-    # Validate input
-    if not os.path.isdir(args.input):
-        logger.error(f"Input directory not found: {args.input}")
-        return 1
-    
-    output_dir = args.output or args.input
-    if not os.path.exists(output_dir):
-        os.makedirs(output_dir)
-    
-    # Load config if specified
-    config = {}
-    if args.config:
-        config = load_config(args.config)
-    
-    # Build settings
-    algorithm_settings = AlgorithmSettings(
-        detection_mode=args.detect_mode,
-        canny_min=config.get('canny_min', args.canny_min),
-        canny_max=config.get('canny_max', args.canny_max),
-        use_clahe=not args.no_clahe,
-        multi_scale_edge=not args.no_multi_scale,
-        use_corner_detection=args.corner_detection
-    )
-    
-    processing_settings = ProcessingSettings(
-        to_grayscale=args.grayscale,
-        apply_sharpening=args.sharpen,
-        denoise=args.denoise
-    )
-    
-    output_settings = OutputSettings(
-        output_format=args.format.upper(),
-        jpg_quality=args.quality,
-        png_compression=args.compression,
-        webp_quality=args.quality
-    )
-    
-    watermark_settings = WatermarkSettings(
-        enabled=bool(args.watermark),
-        text=args.watermark or "",
-        position=args.watermark_position,
-        opacity=args.watermark_opacity
-    )
-
-    resize_settings = ResizeSettings()
-    if args.max_size > 0:
-        resize_settings.enabled = True
-        resize_settings.mode = "max_dimension"
-        resize_settings.max_dimension = args.max_size
-    elif args.resize:
-        parsed_resize = parse_resize_arg(args.resize)
-        if parsed_resize:
-            resize_settings.enabled = True
-            resize_settings.mode = parsed_resize.get("mode", "none")
-            resize_settings.width = parsed_resize.get("width", 0)
-            resize_settings.height = parsed_resize.get("height", 0)
-            resize_settings.percentage = parsed_resize.get("percentage", 100.0)
-        else:
-            logger.warning(f"Invalid resize option: {args.resize}")
-
-    filter_settings = FilterSettings(
-        skip_small_images=True,
-        min_image_size=args.min_size,
-        skip_processed=args.skip_processed
-    )
-
-    file_management_settings = FileManagementSettings(
-        recursive_search=args.recursive
-    )
-
-    multi_photo_settings = MultiPhotoSettings(
-        enabled=args.multi_photo
-    )
-
-    jobs = max(1, args.jobs)
-    performance_settings = PerformanceSettings(
-        enable_multithreading=jobs > 1,
-        thread_count=jobs
-    )
-
-    debug_settings = DebugSettings(
-        enabled=bool(args.debug_detect),
-        output_dir=(args.debug_dir or "").strip(),
-    )
-
-    settings = AppSettings(
-        algorithm=algorithm_settings,
-        processing=processing_settings,
-        output=output_settings,
-        debug=debug_settings,
-        watermark=watermark_settings,
-        resize=resize_settings,
-        filter=filter_settings,
-        file_management=file_management_settings,
-        multi_photo=multi_photo_settings,
-        performance=performance_settings
-    )
-    
-    # Get file list
-    files = get_image_files(args.input, recursive=args.recursive)
-    
-    if not files:
-        logger.warning("No image files found in input directory")
-        return 0
-    
-    logger.info(f"Found {len(files)} images to process")
-    
-    if args.dry_run:
-        logger.info("Dry run - files that would be processed:")
-        for f in files:
-            logger.info(f"  {f}")
-        return 0
-    
-    def cli_log(message: str, level: str = "info"):
-        if level == "error":
-            logger.error(message)
-        elif level == "warning":
-            logger.warning(message)
-        else:
-            logger.info(message)
-
-    processor = BatchProcessor(settings)
-    processor.set_callbacks(
-        on_log=cli_log
-    )
-
-    processor.start_async(args.input, output_dir, file_list=files)
-    processor.wait_for_completion()
-
-    results = processor.results
-    success_count = len([r for r in results if r.status.name == "SUCCESS"])
-    fail_count = len([r for r in results if r.status.name == "FAILED"])
-    
-    # Summary
-    logger.info("")
-    logger.info("=" * 50)
-    logger.info(f"Processing complete!")
-    logger.info(f"  Success: {success_count}")
-    logger.info(f"  Failed:  {fail_count}")
-    logger.info(f"  Total:   {len(files)}")
-    
-    return 0 if fail_count == 0 else 1
-
-
-def main():
-    """Main entry point."""
+def main(argv: Optional[list[str]] = None) -> int:
     parser = create_parser()
-    args = parser.parse_args()
-    
-    if args.verbose:
-        logging.getLogger().setLevel(logging.DEBUG)
-    
-    try:
-        exit_code = process_batch(args)
-        sys.exit(exit_code)
-    except KeyboardInterrupt:
-        logger.info("\nInterrupted by user")
-        sys.exit(130)
-    except Exception as e:
-        logger.error(f"Fatal error: {e}")
-        if args.verbose:
-            import traceback
-            traceback.print_exc()
-        sys.exit(1)
+    args = parser.parse_args(argv)
+
+    _configure_logging(args.log_level)
+
+    if args.list_presets:
+        return _list_presets()
+
+    if not args.input or not args.output:
+        parser.error("--input and --output are required unless --list-presets is used")
+
+    return process_batch(args)
 
 
-if __name__ == '__main__':
-    main()
+if __name__ == "__main__":
+    raise SystemExit(main())

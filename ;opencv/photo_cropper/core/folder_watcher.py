@@ -1,25 +1,21 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Folder Watcher for Photo Cropper v9.0.
-
-Monitors folders for new images and triggers automatic processing.
-Uses QFileSystemWatcher for cross-platform compatibility.
+Folder watcher and auto-processor for Photo Cropper.
 """
 
 from __future__ import annotations
 
-import os
 import logging
+import os
 import time
-from typing import Optional, Callable, Set, List
-from pathlib import Path
+from dataclasses import dataclass
+from typing import Any, Callable, Dict, List, Optional, Set, Tuple
 
-from PyQt6.QtCore import QObject, pyqtSignal, QTimer, QFileSystemWatcher
+from PyQt6.QtCore import QObject, QFileSystemWatcher, QTimer, pyqtSignal
 
 logger = logging.getLogger(__name__)
 
-# Supported image extensions
 SUPPORTED_EXTENSIONS = {
     ".jpg",
     ".jpeg",
@@ -32,23 +28,23 @@ SUPPORTED_EXTENSIONS = {
 }
 
 
+@dataclass
+class WatchProcessResult:
+    """Detailed process callback result used by AutoProcessor."""
+
+    success: bool
+    status: str = "success"
+    message: str = ""
+
+
 class FolderWatcher(QObject):
-    """
-    Watches a folder for new image files and emits signals when found.
+    """Watch a directory tree and emit new image events with debounce."""
 
-    Features:
-        - Real-time file monitoring
-        - Debounced events to prevent duplicates
-        - Filter by file extension
-        - Recursive subdirectory watching (optional)
-    """
-
-    # Signals
-    new_file_detected = pyqtSignal(str)  # Emitted when a new image file is detected
-    file_removed = pyqtSignal(str)  # Emitted when a file is removed
-    watch_started = pyqtSignal(str)  # Emitted when watching starts
-    watch_stopped = pyqtSignal()  # Emitted when watching stops
-    error_occurred = pyqtSignal(str)  # Emitted on error
+    new_file_detected = pyqtSignal(str)
+    file_removed = pyqtSignal(str)
+    watch_started = pyqtSignal(str)
+    watch_stopped = pyqtSignal()
+    error_occurred = pyqtSignal(str)
 
     def __init__(
         self,
@@ -57,20 +53,10 @@ class FolderWatcher(QObject):
         debounce_ms: int = 500,
         parent: Optional[QObject] = None,
     ):
-        """
-        Initialize folder watcher.
-
-        Args:
-            watch_path: Path to watch (can be set later)
-            recursive: Watch subdirectories
-            debounce_ms: Debounce time in milliseconds
-            parent: Parent QObject
-        """
         super().__init__(parent)
-
         self._watch_path: Optional[str] = watch_path
-        self._recursive = recursive
-        self._debounce_ms = debounce_ms
+        self._recursive = bool(recursive)
+        self._debounce_ms = int(debounce_ms)
 
         self._watcher = QFileSystemWatcher(self)
         self._watcher.directoryChanged.connect(self._on_directory_changed)
@@ -80,38 +66,24 @@ class FolderWatcher(QObject):
         self._known_files: Set[str] = set()
         self._pending_files: Set[str] = set()
 
-        # Debounce timer
         self._debounce_timer = QTimer(self)
         self._debounce_timer.setSingleShot(True)
         self._debounce_timer.timeout.connect(self._process_pending_files)
 
-        # Callback for custom processing
         self._on_new_file_callback: Optional[Callable[[str], None]] = None
 
     @property
     def is_watching(self) -> bool:
-        """Check if currently watching."""
         return self._is_watching
 
     @property
     def watch_path(self) -> Optional[str]:
-        """Get current watch path."""
         return self._watch_path
 
-    def set_callback(self, callback: Callable[[str], None]):
-        """Set callback function for new files."""
+    def set_callback(self, callback: Callable[[str], None]) -> None:
         self._on_new_file_callback = callback
 
     def start(self, path: Optional[str] = None) -> bool:
-        """
-        Start watching a folder.
-
-        Args:
-            path: Folder path to watch (uses current if None)
-
-        Returns:
-            True if started successfully
-        """
         if path:
             self._watch_path = path
 
@@ -124,41 +96,32 @@ class FolderWatcher(QObject):
             return False
 
         try:
-            # Stop existing watch
             self.stop()
 
-            # Add directory to watcher
             if not self._watcher.addPath(self._watch_path):
                 self.error_occurred.emit(f"Failed to watch: {self._watch_path}")
                 return False
 
-            # Watch subdirectories if recursive
             if self._recursive:
                 for root, dirs, _ in os.walk(self._watch_path):
-                    for dir_name in dirs:
-                        dir_path = os.path.join(root, dir_name)
+                    for dirname in dirs:
+                        dir_path = os.path.join(root, dirname)
                         self._watcher.addPath(dir_path)
 
-            # Initial scan for existing files
             self._scan_existing_files()
-
             self._is_watching = True
             self.watch_started.emit(self._watch_path)
-            logger.info(f"Started watching: {self._watch_path}")
-
+            logger.info("Started watching: %s", self._watch_path)
             return True
-
-        except Exception as e:
-            logger.error(f"Failed to start watcher: {e}")
-            self.error_occurred.emit(str(e))
+        except Exception as exc:
+            logger.error("Failed to start watcher: %s", exc)
+            self.error_occurred.emit(str(exc))
             return False
 
-    def stop(self):
-        """Stop watching."""
+    def stop(self) -> None:
         if not self._is_watching:
             return
 
-        # Remove all paths from watcher
         paths = self._watcher.directories() + self._watcher.files()
         if paths:
             self._watcher.removePaths(paths)
@@ -171,8 +134,7 @@ class FolderWatcher(QObject):
         self.watch_stopped.emit()
         logger.info("Stopped watching")
 
-    def _scan_existing_files(self):
-        """Scan for existing files in watch directory."""
+    def _scan_existing_files(self) -> None:
         if not self._watch_path:
             return
 
@@ -190,146 +152,151 @@ class FolderWatcher(QObject):
                 if os.path.isfile(filepath) and self._is_image_file(filepath):
                     self._known_files.add(filepath)
 
-        logger.debug(f"Found {len(self._known_files)} existing images")
+        logger.debug("Initial known files: %d", len(self._known_files))
 
-    def _is_image_file(self, filepath: str) -> bool:
-        """Check if file is a supported image."""
+    @staticmethod
+    def _is_image_file(filepath: str) -> bool:
         ext = os.path.splitext(filepath)[1].lower()
         return ext in SUPPORTED_EXTENSIONS
 
-    def _on_directory_changed(self, path: str):
-        """Handle directory change event."""
-        logger.debug(f"Directory changed: {path}")
+    def _scan_directory_images(self, directory: str) -> Set[str]:
+        images: Set[str] = set()
+        try:
+            for filename in os.listdir(directory):
+                filepath = os.path.join(directory, filename)
+                if os.path.isfile(filepath) and self._is_image_file(filepath):
+                    images.add(filepath)
+        except Exception as exc:
+            logger.debug("Directory scan failed (%s): %s", directory, exc)
+        return images
+
+    def _queue_new_files(self, filepaths: Set[str]) -> None:
+        queued = False
+        for filepath in filepaths:
+            if filepath in self._known_files:
+                continue
+            self._known_files.add(filepath)
+            self._pending_files.add(filepath)
+            queued = True
+
+        if queued:
+            self._debounce_timer.start(self._debounce_ms)
+
+    def _on_directory_changed(self, path: str) -> None:
+        logger.debug("Directory changed: %s", path)
         if self._recursive:
             self._refresh_recursive_directories(path)
         self._check_for_new_files(path)
 
-    def _on_file_changed(self, path: str):
-        """Handle file change event."""
-        logger.debug(f"File changed: {path}")
+    def _on_file_changed(self, path: str) -> None:
+        logger.debug("File changed: %s", path)
 
-    def _check_for_new_files(self, directory: str):
-        """Check directory for new image files."""
+    def _check_for_new_files(self, directory: str) -> None:
         try:
-            current_files = set()
+            current_files = self._scan_directory_images(directory)
+            existing_in_dir = {
+                f for f in self._known_files if os.path.dirname(f) == directory
+            }
 
-            for filename in os.listdir(directory):
-                filepath = os.path.join(directory, filename)
-                if os.path.isfile(filepath) and self._is_image_file(filepath):
-                    current_files.add(filepath)
-
-            # Find new files
             new_files = current_files - self._known_files
+            removed_files = existing_in_dir - current_files
 
-            # Find removed files
-            removed_files = (
-                self._known_files.intersection(
-                    {f for f in self._known_files if os.path.dirname(f) == directory}
-                )
-                - current_files
-            )
-
-            # Update known files
             self._known_files.update(new_files)
             self._known_files -= removed_files
 
-            # Add new files to pending (debounced)
             for filepath in new_files:
                 self._pending_files.add(filepath)
 
-            # Emit removed files immediately
             for filepath in removed_files:
                 self.file_removed.emit(filepath)
 
-            # Start/restart debounce timer
             if self._pending_files:
                 self._debounce_timer.start(self._debounce_ms)
 
-        except Exception as e:
-            logger.error(f"Error checking for new files: {e}")
+        except Exception as exc:
+            logger.error("Error checking for new files in %s: %s", directory, exc)
 
-    def _refresh_recursive_directories(self, changed_dir: str):
+    def _refresh_recursive_directories(self, changed_dir: str) -> None:
         """
-        When recursive watching is enabled, ensure newly created subdirectories
-        are also watched (QFileSystemWatcher does not auto-include them).
+        Add newly created subdirectories to watcher and immediately scan any
+        existing image files inside them.
         """
         try:
-            if not self._watch_path:
+            if not self._watch_path or not os.path.isdir(changed_dir):
                 return
 
-            # Only scan within the changed subtree to limit work.
-            existing = set(self._watcher.directories())
+            known_dirs = set(self._watcher.directories())
+            discovered_files: Set[str] = set()
+
             for root, dirs, _ in os.walk(changed_dir):
-                for d in dirs:
-                    dir_path = os.path.join(root, d)
-                    if dir_path not in existing:
-                        self._watcher.addPath(dir_path)
-                        existing.add(dir_path)
-        except Exception as e:
-            logger.debug(f"Failed to refresh recursive directories: {e}")
+                for dirname in dirs:
+                    dir_path = os.path.join(root, dirname)
+                    if dir_path in known_dirs:
+                        continue
 
-    def _process_pending_files(self):
-        """Process pending new files after debounce."""
+                    self._watcher.addPath(dir_path)
+                    known_dirs.add(dir_path)
+
+                    # Initial scan right after watcher registration.
+                    discovered_files.update(self._scan_directory_images(dir_path))
+
+            if discovered_files:
+                self._queue_new_files(discovered_files)
+        except Exception as exc:
+            logger.debug("Failed to refresh recursive directories: %s", exc)
+
+    def _process_pending_files(self) -> None:
         for filepath in list(self._pending_files):
-            # Verify file still exists and is complete
-            if os.path.exists(filepath):
-                try:
-                    # Try to open file to verify it's complete
-                    with open(filepath, "rb") as f:
-                        f.seek(0, 2)  # Seek to end
+            if not os.path.exists(filepath):
+                continue
 
-                    self.new_file_detected.emit(filepath)
+            try:
+                with open(filepath, "rb") as handle:
+                    handle.seek(0, os.SEEK_END)
 
-                    if self._on_new_file_callback:
-                        self._on_new_file_callback(filepath)
-
-                except (IOError, OSError):
-                    # File might still be being written
-                    logger.debug(f"File not ready yet: {filepath}")
-                    # Re-queue with longer delay
-                    QTimer.singleShot(1000, lambda f=filepath: self._retry_file(f))
+                self.new_file_detected.emit(filepath)
+                if self._on_new_file_callback is not None:
+                    self._on_new_file_callback(filepath)
+            except (IOError, OSError):
+                logger.debug("File not ready yet: %s", filepath)
+                QTimer.singleShot(1000, lambda f=filepath: self._retry_file(f))
 
         self._pending_files.clear()
 
-    def _retry_file(self, filepath: str):
-        """Retry processing a file that wasn't ready."""
-        if os.path.exists(filepath):
-            try:
-                with open(filepath, "rb") as f:
-                    f.seek(0, 2)
+    def _retry_file(self, filepath: str) -> None:
+        if not os.path.exists(filepath):
+            return
 
-                self.new_file_detected.emit(filepath)
+        try:
+            with open(filepath, "rb") as handle:
+                handle.seek(0, os.SEEK_END)
 
-                if self._on_new_file_callback:
-                    self._on_new_file_callback(filepath)
-
-            except (IOError, OSError):
-                logger.warning(f"File still not ready after retry: {filepath}")
+            self.new_file_detected.emit(filepath)
+            if self._on_new_file_callback is not None:
+                self._on_new_file_callback(filepath)
+        except (IOError, OSError):
+            logger.warning("File still not ready after retry: %s", filepath)
 
     def get_watched_directories(self) -> List[str]:
-        """Get list of watched directories."""
         return self._watcher.directories()
 
     def add_directory(self, path: str) -> bool:
-        """Add additional directory to watch."""
         if not os.path.isdir(path):
             return False
         return self._watcher.addPath(path)
 
     def remove_directory(self, path: str) -> bool:
-        """Remove directory from watch."""
         return self._watcher.removePath(path)
 
 
 class AutoProcessor(QObject):
-    """
-    Automatic processor that combines folder watching with batch processing.
-    """
+    """Auto-process files detected by FolderWatcher."""
 
-    # Signals
     processing_started = pyqtSignal(str)
-    processing_completed = pyqtSignal(str, bool)  # filepath, success
-    queue_updated = pyqtSignal(int)  # queue size
+    processing_completed = pyqtSignal(str, bool)
+    processing_completed_detailed = pyqtSignal(str, bool, str, str, int)
+    queue_updated = pyqtSignal(int)
+    queue_metrics_updated = pyqtSignal(int, int)
 
     def __init__(
         self,
@@ -337,18 +304,10 @@ class AutoProcessor(QObject):
         output_path: Optional[str] = None,
         recursive: bool = False,
         debounce_ms: int = 500,
-        process_callback: Optional[Callable[[str, str], bool]] = None,
+        max_wait_seconds: float = 30.0,
+        process_callback: Optional[Callable[[str, str], Any]] = None,
         parent: Optional[QObject] = None,
     ):
-        """
-        Initialize auto processor.
-
-        Args:
-            watch_path: Input folder to watch
-            output_path: Output folder for processed images
-            process_callback: Function to process each file (input, output) -> success
-            parent: Parent QObject
-        """
         super().__init__(parent)
 
         self._watch_path = watch_path
@@ -365,16 +324,18 @@ class AutoProcessor(QObject):
 
         self._queue: List[str] = []
         self._queued_files: Set[str] = set()
+        self._enqueue_times: Dict[str, float] = {}
+        self._wait_samples_ms: List[int] = []
+
         self._is_processing = False
         self._halted = False
 
-        # File readiness tracking to avoid processing partially-copied files.
-        self._file_states: dict[str, dict] = {}
+        # Readiness tracking for partially-copied files.
+        self._file_states: Dict[str, Dict[str, Any]] = {}
         self._stable_window_s = max(0.5, debounce_ms / 1000.0)
         self._retry_interval_ms = max(200, int(debounce_ms * 0.8))
-        self._max_wait_s = 30.0
+        self._max_wait_s = max(1.0, float(max_wait_seconds))
 
-        # Process timer for queue
         self._process_timer = QTimer(self)
         self._process_timer.setSingleShot(True)
         self._process_timer.timeout.connect(self._process_next)
@@ -385,8 +346,8 @@ class AutoProcessor(QObject):
         output_path: Optional[str] = None,
         recursive: Optional[bool] = None,
         debounce_ms: Optional[int] = None,
+        max_wait_seconds: Optional[float] = None,
     ) -> bool:
-        """Start auto processing."""
         if watch_path:
             self._watch_path = watch_path
         if output_path:
@@ -397,6 +358,8 @@ class AutoProcessor(QObject):
             self._watcher._debounce_ms = int(debounce_ms)
             self._stable_window_s = max(0.5, int(debounce_ms) / 1000.0)
             self._retry_interval_ms = max(200, int(int(debounce_ms) * 0.8))
+        if max_wait_seconds is not None:
+            self._max_wait_s = max(1.0, float(max_wait_seconds))
 
         self._halted = False
 
@@ -410,105 +373,229 @@ class AutoProcessor(QObject):
 
         try:
             os.makedirs(self._output_path, exist_ok=True)
-        except Exception as e:
-            logger.error(f"Failed to create output directory: {e}")
+        except Exception as exc:
+            logger.error("Failed to create output directory: %s", exc)
             return False
 
         self._queue.clear()
         self._queued_files.clear()
+        self._enqueue_times.clear()
+        self._wait_samples_ms.clear()
         self._is_processing = False
+        self._emit_queue_metrics()
 
         return self._watcher.start(self._watch_path)
 
-    def stop(self):
-        """Stop auto processing."""
+    def stop(self) -> None:
         self._halted = True
         self._watcher.stop()
         self._process_timer.stop()
         self._queue.clear()
         self._queued_files.clear()
+        self._enqueue_times.clear()
         self._file_states.clear()
+        self._wait_samples_ms.clear()
         self._is_processing = False
+        self._emit_queue_metrics()
 
-    def set_process_callback(self, callback: Callable[[str, str], bool]):
-        """Set the processing callback function."""
+    def set_process_callback(self, callback: Callable[[str, str], Any]) -> None:
         self._process_callback = callback
 
-    def _on_new_file(self, filepath: str):
-        """Handle new file detected."""
-        if self._halted:
-            return
+    def _avg_wait_ms(self) -> int:
+        if not self._wait_samples_ms:
+            return 0
+        return int(sum(self._wait_samples_ms) / len(self._wait_samples_ms))
 
-        if filepath in self._queued_files:
+    def _emit_queue_metrics(self) -> None:
+        queue_size = len(self._queue)
+        avg_wait = self._avg_wait_ms()
+        self.queue_updated.emit(queue_size)
+        self.queue_metrics_updated.emit(queue_size, avg_wait)
+
+    def _on_new_file(self, filepath: str) -> None:
+        if self._halted or filepath in self._queued_files:
             return
 
         self._queue.append(filepath)
         self._queued_files.add(filepath)
+        self._enqueue_times.setdefault(filepath, time.monotonic())
         self._file_states.pop(filepath, None)
-        self.queue_updated.emit(len(self._queue))
+        self._emit_queue_metrics()
 
         if not self._is_processing:
-            self._process_timer.start(100)  # Small delay to batch multiple files
+            self._process_timer.start(100)
 
-    def _process_next(self):
-        """Process next file in queue."""
+    @staticmethod
+    def _status_from_reason(reason: str) -> str:
+        reason_key = (reason or "").lower()
+        if reason_key == "timeout":
+            return "not_ready_timeout"
+        if reason_key == "missing":
+            return "missing"
+        if reason_key.startswith("read failed"):
+            return "read_failed"
+        if reason_key.startswith("stat failed"):
+            return "read_failed"
+        return "not_ready"
+
+    @staticmethod
+    def _parse_callback_result(result: Any) -> WatchProcessResult:
+        if isinstance(result, WatchProcessResult):
+            return result
+
+        if isinstance(result, bool):
+            return WatchProcessResult(
+                success=result,
+                status="success" if result else "failed",
+                message="",
+            )
+
+        if isinstance(result, tuple):
+            if len(result) == 2:
+                success, status = result
+                return WatchProcessResult(
+                    success=bool(success),
+                    status=str(status or ("success" if success else "failed")),
+                    message="",
+                )
+            if len(result) >= 3:
+                success, status, message = result[0], result[1], result[2]
+                return WatchProcessResult(
+                    success=bool(success),
+                    status=str(status or ("success" if success else "failed")),
+                    message=str(message or ""),
+                )
+
+        if isinstance(result, dict):
+            success = bool(result.get("success", False))
+            status = str(result.get("status") or ("success" if success else "failed"))
+            message = str(result.get("message") or "")
+            return WatchProcessResult(success=success, status=status, message=message)
+
+        status_obj = getattr(result, "status", None)
+        message = str(getattr(result, "message", "") or "")
+
+        if status_obj is not None:
+            status_name = str(getattr(status_obj, "name", "") or "")
+            status_value = str(getattr(status_obj, "value", "") or "")
+            raw_status = status_value or status_name
+            normalized = raw_status.lower()
+            if normalized:
+                success = normalized in {"success", "skipped", "ok"}
+                return WatchProcessResult(success=success, status=normalized, message=message)
+
+        if hasattr(result, "success"):
+            success = bool(getattr(result, "success"))
+            status = str(getattr(result, "status", "") or ("success" if success else "failed"))
+            return WatchProcessResult(success=success, status=status, message=message)
+
+        raise TypeError(f"Unsupported callback return type: {type(result)}")
+
+    def _process_next(self) -> None:
         if self._halted:
             self._queue.clear()
             self._queued_files.clear()
+            self._emit_queue_metrics()
             self._is_processing = False
             return
 
         if not self._queue:
             self._is_processing = False
+            self._emit_queue_metrics()
             return
 
         self._is_processing = True
         filepath = self._queue.pop(0)
         self._queued_files.discard(filepath)
-        self.queue_updated.emit(len(self._queue))
+
+        now = time.monotonic()
+        enqueued_at = self._enqueue_times.get(filepath, now)
+        wait_ms = max(0, int((now - enqueued_at) * 1000))
+
+        self._emit_queue_metrics()
 
         ready, expired, reason = self._check_file_ready(filepath)
         if not ready:
             if expired:
-                logger.error(f"File not ready after timeout: {filepath} ({reason})")
+                status = self._status_from_reason(reason)
+                message = f"File not ready: {reason}"
+                logger.error("%s (%s)", message, filepath)
+
                 self.processing_completed.emit(filepath, False)
+                self.processing_completed_detailed.emit(
+                    filepath,
+                    False,
+                    status,
+                    message,
+                    wait_ms,
+                )
+                self._wait_samples_ms.append(wait_ms)
+                if len(self._wait_samples_ms) > 200:
+                    self._wait_samples_ms = self._wait_samples_ms[-200:]
+
+                self._file_states.pop(filepath, None)
+                self._enqueue_times.pop(filepath, None)
+
                 if self._queue:
                     self._process_timer.start(100)
                 else:
                     self._is_processing = False
+                self._emit_queue_metrics()
                 return
 
-            # Requeue at the front and retry later.
+            # Requeue at front and retry later.
             self._queue.insert(0, filepath)
             self._queued_files.add(filepath)
-            self.queue_updated.emit(len(self._queue))
+            self._emit_queue_metrics()
             self._process_timer.start(self._retry_interval_ms)
             return
 
         self.processing_started.emit(filepath)
 
-        success = False
-        if self._process_callback and self._output_path:
-            try:
-                success = self._process_callback(filepath, self._output_path)
-            except Exception as e:
-                logger.error(f"Processing failed for {filepath}: {e}")
+        result = WatchProcessResult(success=False, status="failed", message="")
+        try:
+            if self._process_callback is None or not self._output_path:
+                result = WatchProcessResult(
+                    success=False,
+                    status="process_exception",
+                    message="Process callback/output path is not set",
+                )
+            else:
+                callback_result = self._process_callback(filepath, self._output_path)
+                result = self._parse_callback_result(callback_result)
+                if not result.status:
+                    result.status = "success" if result.success else "failed"
+        except Exception as exc:
+            logger.error("Processing failed for %s: %s", filepath, exc)
+            result = WatchProcessResult(
+                success=False,
+                status="process_exception",
+                message=str(exc),
+            )
 
-        self.processing_completed.emit(filepath, success)
+        self.processing_completed.emit(filepath, bool(result.success))
+        self.processing_completed_detailed.emit(
+            filepath,
+            bool(result.success),
+            str(result.status),
+            str(result.message or ""),
+            wait_ms,
+        )
+        self._wait_samples_ms.append(wait_ms)
+        if len(self._wait_samples_ms) > 200:
+            self._wait_samples_ms = self._wait_samples_ms[-200:]
 
-        # Process next file
+        self._file_states.pop(filepath, None)
+        self._enqueue_times.pop(filepath, None)
+
         if self._queue:
             self._process_timer.start(100)
         else:
             self._is_processing = False
 
-    def _check_file_ready(self, filepath: str) -> tuple[bool, bool, str]:
-        """
-        Check whether a file is stable (size/mtime not changing) and readable.
+        self._emit_queue_metrics()
 
-        Returns:
-            (ready, expired, reason)
-        """
+    def _check_file_ready(self, filepath: str) -> Tuple[bool, bool, str]:
         now = time.monotonic()
 
         if not filepath or not os.path.exists(filepath):
@@ -518,18 +605,17 @@ class AutoProcessor(QObject):
             st = os.stat(filepath)
             size = int(st.st_size)
             mtime_ns = int(getattr(st, "st_mtime_ns", int(st.st_mtime * 1e9)))
-        except Exception as e:
-            return False, False, f"stat failed: {e}"
+        except Exception as exc:
+            return False, False, f"stat failed: {exc}"
 
         state = self._file_states.get(filepath)
         if state is None:
-            state = {
+            self._file_states[filepath] = {
                 "first_seen": now,
                 "last_size": size,
                 "last_mtime_ns": mtime_ns,
                 "last_change": now,
             }
-            self._file_states[filepath] = state
             return False, False, "initial"
 
         if size != state["last_size"] or mtime_ns != state["last_mtime_ns"]:
@@ -544,11 +630,14 @@ class AutoProcessor(QObject):
         if now - state["last_change"] < self._stable_window_s:
             return False, False, "not yet stable"
 
-        # Try to read a byte to reduce chance of processing a still-locked file.
         try:
-            with open(filepath, "rb") as f:
-                f.read(1)
-        except Exception as e:
-            return False, False, f"read failed: {e}"
+            with open(filepath, "rb") as handle:
+                handle.read(1)
+        except Exception as exc:
+            # Keep retrying until max_wait_s is exceeded.
+            elapsed = now - state["first_seen"]
+            if elapsed > self._max_wait_s:
+                return False, True, f"read failed: {exc}"
+            return False, False, f"read failed: {exc}"
 
         return True, False, "ready"

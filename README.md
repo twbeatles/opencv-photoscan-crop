@@ -298,3 +298,21 @@ MIT License
 
 버그 리포트나 기능 제안은 Issues에 등록해 주세요.
 
+
+## 2026-03-01 구현 정합성 업데이트
+
+- CLI 설정 병합이 defaults -> preset -> config -> cli override로 재구성되었습니다.
+- 우선순위는 CLI > config > preset으로 고정되었습니다.
+- --preset이 실제 프로파일(BatchProfileManager)과 연결되었습니다.
+- --config가 전체 AppSettings를 병합하며, 레거시 키 dvanced_processing -> advanced 호환이 추가되었습니다.
+- AI 핵심 CLI 옵션(분류/얼굴/스마트보정)이 추가되고 값 검증이 적용되었습니다.
+- Watch 모드 관측성이 강화되었습니다.
+  - 기존 processing_completed(filepath, success) 유지
+  - 신규 processing_completed_detailed(filepath, success, status, message, wait_ms)
+  - 신규 queue_metrics_updated(queue_size, avg_wait_ms)
+- 재귀 감시에서 신규 하위 폴더 유입 시 초기 이미지 스캔을 즉시 수행합니다.
+- Watch 최대 대기시간은 watch_mode.max_wait_seconds(기본 30.0)로 설정 가능합니다.
+- 프로파일은 읽기 시 레거시 키를 허용하고, 저장/내보내기 시 표준 키 dvanced로 정규화됩니다.
+- 회귀 테스트가 보강되었습니다(수동 크롭 import, CLI 병합 우선순위, 재귀 감시 유입, max wait roundtrip).
+
+> 참고: 전체 처리 selftest는 OpenCV(cv2) 설치가 필요합니다.

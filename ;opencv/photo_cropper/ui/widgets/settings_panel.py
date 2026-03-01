@@ -642,6 +642,17 @@ class SettingsPanel(QWidget):
         delay_row.addWidget(self.watch_delay_spin)
         watch_layout.addLayout(delay_row)
 
+        max_wait_row = QHBoxLayout()
+        max_wait_row.addWidget(QLabel("최대 대기 시간(s):"))
+        self.watch_max_wait_spin = NoScrollDoubleSpinBox()
+        self.watch_max_wait_spin.setRange(1.0, 600.0)
+        self.watch_max_wait_spin.setSingleStep(0.5)
+        self.watch_max_wait_spin.setValue(30.0)
+        self.watch_max_wait_spin.setToolTip("파일 준비 대기 최대 시간")
+        self.watch_max_wait_spin.valueChanged.connect(self._on_setting_changed)
+        max_wait_row.addWidget(self.watch_max_wait_spin)
+        watch_layout.addLayout(max_wait_row)
+
         watch_section.add_widget(watch_group)
         layout.addWidget(watch_section)
 
@@ -948,6 +959,11 @@ class SettingsPanel(QWidget):
             enabled=self.watch_mode_check.isChecked(),
             recursive=self.watch_recursive_check.isChecked(),
             debounce_ms=self.watch_delay_spin.value(),
+            max_wait_seconds=float(
+                self.watch_max_wait_spin.value()
+                if hasattr(self, "watch_max_wait_spin")
+                else 30.0
+            ),
             scheduler_enabled=getattr(self, "scheduler_enable_check", None)
             and self.scheduler_enable_check.isChecked(),
             schedule_type=getattr(self, "schedule_type_combo", None)
@@ -1201,6 +1217,10 @@ class SettingsPanel(QWidget):
             self.watch_mode_check.setChecked(wm.enabled)
             self.watch_recursive_check.setChecked(wm.recursive)
             self.watch_delay_spin.setValue(wm.debounce_ms)
+            if hasattr(self, "watch_max_wait_spin"):
+                self.watch_max_wait_spin.setValue(
+                    float(getattr(wm, "max_wait_seconds", 30.0))
+                )
 
         # v9.0 AI settings
         if hasattr(settings, "classification"):

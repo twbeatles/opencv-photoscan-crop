@@ -183,3 +183,18 @@ pyinstaller photo_cropper.spec --clean
 ### 중단 응답 지연
 - 멀티스레드 배치 취소는 in-flight 작업 완료를 일부 기다릴 수 있음
 - pending 작업은 즉시 취소되므로 대기열 길이가 긴 경우 개선 효과가 큼
+
+## 2026-03-01 Agent Update
+
+- CLI merge contract is explicit: defaults -> preset -> config -> cli override.
+- Effective priority is CLI > config > preset.
+- --preset and --config are composable and active.
+- Legacy key compatibility is maintained (dvanced_processing read-compatible), while persisted profile keys normalize to dvanced.
+- Watch mode now exposes detailed completion and queue telemetry:
+  - processing_completed_detailed(filepath, success, status, message, wait_ms)
+  - queue_metrics_updated(queue_size, avg_wait_ms)
+- Recursive watch onboarding now includes immediate initial image scan for newly detected subdirectories.
+- Watch timeout is configurable via watch_mode.max_wait_seconds (default 30.0).
+- Backward compatibility is preserved:
+  - Legacy processing_completed(filepath, success) signal is kept.
+  - Callback result parser accepts ool, tuple, dict, and object-like returns.

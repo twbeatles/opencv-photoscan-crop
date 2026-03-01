@@ -274,3 +274,18 @@ MIT License
 ## 👨‍💻 Contributing
 
 Please report bugs or feature suggestions in Issues.
+
+## 2026-03-01 Update (Implementation Alignment)
+
+- CLI settings merge is now explicit: defaults -> preset -> config -> cli override.
+- Effective precedence: CLI > config > preset.
+- --preset now loads real profiles via BatchProfileManager.
+- --config now merges full AppSettings, including legacy key mapping dvanced_processing -> advanced.
+- New CLI AI options are available for classification, face detection, and smart enhancement.
+- Watch mode observability was expanded with detailed completion status and queue metrics.
+- Recursive watch mode now scans newly added subdirectories immediately for pre-existing images.
+- Watch timeout is configurable with watch_mode.max_wait_seconds (default 30.0).
+- Profile key compatibility is maintained on read, while save/export normalizes to dvanced.
+- Self-tests were added for import smoke, CLI merge precedence, recursive watch ingestion, and watch max-wait roundtrip.
+
+> Note: full processing self-tests require OpenCV (cv2).

@@ -246,3 +246,17 @@ pyinstaller photo_cropper.spec --clean
 | GPU 미사용 | OpenCV CUDA 빌드 필요 |
 | 감지 실패 | canny_min/max 조정, CLAHE 활성화 |
 | Watch/Batch 결과 차이 | Watch Mode가 `BatchProcessor.process_single()` 경로를 사용하는지 확인 |
+
+## 2026-03-01 Update Notes
+
+- CLI merge order is now fixed and documented:
+  - Merge: defaults -> preset -> config -> cli override
+  - Priority: CLI > config > preset
+- New CLI AI controls are available for classification, face detection, and smart enhancement.
+- Profile compatibility model:
+  - Legacy key dvanced_processing remains readable
+  - Save/export path normalizes key to dvanced
+- Watch diagnostics and observability were expanded with detailed completion status and queue metrics.
+- Recursive watch mode now scans newly watched subdirectories immediately for pre-existing images.
+- Watch timeout is configurable through watch_mode.max_wait_seconds (default 30.0).
+- Selftest coverage was extended for CLI merge precedence, recursive watch ingestion, and max-wait roundtrip.

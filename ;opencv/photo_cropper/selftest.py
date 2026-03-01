@@ -12,6 +12,169 @@ from __future__ import annotations
 import sys
 
 
+def _test_crop_editor_import_smoke() -> None:
+    try:
+        from .ui.widgets.crop_editor_widget import CropEditorWidget
+    except Exception as e:
+        raise AssertionError(f"Crop editor import failed: {e}")
+
+    assert CropEditorWidget is not None
+
+
+def _test_cli_settings_merge_priority() -> None:
+    import json
+    import os
+    import tempfile
+
+    from . import cli as cli_mod
+    from .core.batch_profile_manager import BatchProfileManager
+    from .core.settings import AppSettings
+
+    with tempfile.TemporaryDirectory(prefix="photocropper_cli_merge_") as td:
+        profiles_dir = os.path.join(td, "profiles")
+        manager = BatchProfileManager(profiles_dir=profiles_dir)
+
+        preset_settings = AppSettings()
+        preset_settings.algorithm.canny_min = 11
+        preset_settings.algorithm.canny_max = 111
+        preset_settings.output.jpg_quality = 88
+        preset_settings.classification.model = "basic"
+        created = manager.create_profile("selftest-merge", preset_settings)
+        assert created
+
+        config_path = os.path.join(td, "config.json")
+        config_data = {
+            "algorithm": {"canny_min": 22, "canny_max": 44},
+            "advanced_processing": {"auto_deskew": True},
+            "classification": {"model": "advanced", "min_confidence": 0.65},
+        }
+        with open(config_path, "w", encoding="utf-8") as f:
+            json.dump(config_data, f, ensure_ascii=False, indent=2)
+
+        parser = cli_mod.create_parser()
+        args = parser.parse_args(
+            [
+                "--preset",
+                "selftest-merge",
+                "--config",
+                config_path,
+                "--canny-min",
+                "33",
+                "--classify-model",
+                "custom",
+            ]
+        )
+
+        original_get_manager = cli_mod.get_batch_profile_manager
+        cli_mod.get_batch_profile_manager = lambda: manager
+        try:
+            merged = cli_mod.build_settings_from_args(args)
+        finally:
+            cli_mod.get_batch_profile_manager = original_get_manager
+
+        assert merged.algorithm.canny_min == 33  # CLI overrides config/preset
+        assert merged.algorithm.canny_max == 44  # config overrides preset
+        assert merged.output.jpg_quality == 88  # preset applied
+        assert merged.classification.model == "custom"  # CLI overrides config
+        assert abs(merged.classification.min_confidence - 0.65) < 1e-6
+        assert merged.advanced.auto_deskew is True  # legacy alias mapped
+
+
+def _test_recursive_watch_new_subdir_initial_scan() -> None:
+    import os
+    import shutil
+    import tempfile
+    import time
+
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    try:
+        from PyQt6.QtWidgets import QApplication
+    except Exception as e:
+        print(f"WARN: PyQt6 unavailable for recursive watch test: {e}")
+        return
+
+    from .core.folder_watcher import FolderWatcher
+
+    app = QApplication.instance()
+    owned_app = False
+    if app is None:
+        app = QApplication([])
+        owned_app = True
+
+    with tempfile.TemporaryDirectory(prefix="photocropper_watch_") as td:
+        watch_root = os.path.join(td, "watch")
+        incoming_root = os.path.join(td, "incoming")
+        os.makedirs(watch_root, exist_ok=True)
+        os.makedirs(incoming_root, exist_ok=True)
+
+        bundle = os.path.join(incoming_root, "bundle")
+        os.makedirs(bundle, exist_ok=True)
+        src_file = os.path.join(bundle, "sample.jpg")
+        with open(src_file, "wb") as f:
+            f.write(b"fakejpg")
+
+        detected = []
+        watcher = FolderWatcher(recursive=True, debounce_ms=80)
+        watcher.new_file_detected.connect(lambda path: detected.append(path))
+        assert watcher.start(watch_root)
+
+        moved_dir = os.path.join(watch_root, "bundle")
+        shutil.move(bundle, moved_dir)
+
+        deadline = time.time() + 3.0
+        while time.time() < deadline and not detected:
+            app.processEvents()
+            time.sleep(0.02)
+
+        watcher.stop()
+        expected = os.path.join(moved_dir, "sample.jpg")
+        assert any(os.path.abspath(p) == os.path.abspath(expected) for p in detected), (
+            f"Expected initial scan detection for {expected}, got: {detected}"
+        )
+
+    if owned_app:
+        app.quit()
+
+
+def _test_watch_max_wait_roundtrip() -> None:
+    import os
+
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    try:
+        from PyQt6.QtWidgets import QApplication
+    except Exception as e:
+        print(f"WARN: PyQt6 unavailable for watch max wait test: {e}")
+        return
+
+    from .core.folder_watcher import AutoProcessor
+    from .core.settings import AppSettings
+    from .ui.widgets.settings_panel import SettingsPanel
+
+    app = QApplication.instance()
+    owned_app = False
+    if app is None:
+        app = QApplication([])
+        owned_app = True
+
+    panel = SettingsPanel(AppSettings())
+    panel.watch_max_wait_spin.setValue(47.5)
+    built = panel._build_settings()
+    assert abs(float(built.watch_mode.max_wait_seconds) - 47.5) < 1e-6
+
+    panel.settings = built
+    rebuilt = panel._build_settings()
+    assert abs(float(rebuilt.watch_mode.max_wait_seconds) - 47.5) < 1e-6
+
+    auto = AutoProcessor(max_wait_seconds=rebuilt.watch_mode.max_wait_seconds)
+    assert abs(float(auto._max_wait_s) - 47.5) < 1e-6
+
+    panel.deleteLater()
+    auto.stop()
+    auto.deleteLater()
+    if owned_app:
+        app.quit()
+
+
 def _test_settings_forward_compat() -> None:
     from .core.settings import AppSettings
 
@@ -681,11 +844,15 @@ def _test_skip_processed_with_classification_subfolder() -> None:
 
 def main() -> int:
     try:
+        _test_crop_editor_import_smoke()
+        _test_cli_settings_merge_priority()
         _test_settings_forward_compat()
         _test_unicode_text_watermark()
         _test_preview_single_pass()
         _test_batch_thread_local_reuse()
         _test_settings_panel_performance_roundtrip()
+        _test_recursive_watch_new_subdir_initial_scan()
+        _test_watch_max_wait_roundtrip()
         _test_batch_post_pipeline_order()
         _test_skip_processed_with_classification_subfolder()
         _test_crop_accuracy_synthetic()
