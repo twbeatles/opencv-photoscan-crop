@@ -47,6 +47,7 @@ A Python application that automatically detects and accurately crops scanned pho
 ### Core Features
 - **3+ Stage Intelligent Detection Algorithm**: High detection success rate on various backgrounds
 - **Batch Processing**: Process large quantities of images at once (with ETA display)
+- **Main-screen Batch Editing**: Load folder images, navigate previous/next, edit contours, then save all in one pass
 - **Watch Mode Pipeline Integration**: Watch and batch processing now produce consistent outputs
 - **Skip Already Processed Files**: Prevent duplicate processing
 - **Multiple Output Formats**: JPG, PNG, WEBP support
@@ -55,6 +56,8 @@ A Python application that automatically detects and accurately crops scanned pho
 - **Modern PyQt6-based UI**: Dark/Light themes, gradient effects
 - **Toast Notifications**: Slide-in animation notifications on completion
 - **Real-time Preview**: Mouse wheel zoom, zoom slider (10%~500%)
+- **Manual Boundary Editing**: Drag contour points in the Original tab, or click 4 points when auto-detection fails
+- **Failed-files Correction Mode**: Load only boundary-detection failures for focused manual correction
 - **Drag and Drop**: Drop folders or images directly
 
 ## 🛠️ Detection Algorithm
@@ -235,6 +238,12 @@ Install [UPX](https://github.com/upx/upx/releases) to reduce executable size by 
 
 ## 📋 Changelog
 
+### v9.0 Manual Boundary Workflow Update (2026-03)
+- ✨ Added main-screen flow for folder batch editing (`Load Batch`, `Prev/Next`, `Save Edited Extract`)
+- ✨ Detects boundary-failed files after batch completion and prompts user to enter failed-files-only correction mode
+- ✨ Improved original-tab contour editing, including direct 4-point boundary input
+- 🛡️ Improved cancellation/close responsiveness during manual extraction
+
 ### v9.0 Stability Patch (2026-02)
 - 🛡️ Unified Watch Mode to use `BatchProcessor.process_single()` pipeline
 - 🛡️ Aligned face adjustment/smart enhancement/resize/classification-folder routing/watermark across batch and watch modes
@@ -280,12 +289,12 @@ Please report bugs or feature suggestions in Issues.
 - CLI settings merge is now explicit: defaults -> preset -> config -> cli override.
 - Effective precedence: CLI > config > preset.
 - --preset now loads real profiles via BatchProfileManager.
-- --config now merges full AppSettings, including legacy key mapping dvanced_processing -> advanced.
+- --config now merges full AppSettings, including legacy key mapping `advanced_processing` -> `advanced`.
 - New CLI AI options are available for classification, face detection, and smart enhancement.
 - Watch mode observability was expanded with detailed completion status and queue metrics.
 - Recursive watch mode now scans newly added subdirectories immediately for pre-existing images.
 - Watch timeout is configurable with watch_mode.max_wait_seconds (default 30.0).
-- Profile key compatibility is maintained on read, while save/export normalizes to dvanced.
+- Profile key compatibility is maintained on read, while save/export normalizes to `advanced`.
 - Self-tests were added for import smoke, CLI merge precedence, recursive watch ingestion, and watch max-wait roundtrip.
 - Preview pipeline now has a fast-path mode (default on) that caps detection to 8MP for lower latency, while batch/save quality behavior is unchanged.
 - Preview worker now reuses a persistent ImageProcessor and updates it only when settings revision changes, reducing repeated initialization overhead.

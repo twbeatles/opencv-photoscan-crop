@@ -4,6 +4,8 @@
 
 스캔된 사진이나 배경 위에 놓인 사진을 자동으로 감지하여 정확하게 자르는 Python 애플리케이션입니다.
 
+> 저장소 루트에서 실행/빌드할 때는 실제 앱 디렉터리인 `;opencv/` 기준 경로를 사용하세요.
+
 ## ✨ v9.0 새 기능
 
 ### 🎨 UI/UX 리팩토링
@@ -43,6 +45,7 @@
 ### 핵심 기능
 - **3단계+ 지능형 탐색 알고리즘**: 다양한 배경에서 높은 검출 성공률
 - **배치 처리**: 대량의 이미지를 한 번에 처리 (예상 남은 시간 표시)
+- **메인 화면 일괄 편집**: 폴더 이미지를 불러와 이전/다음 탐색으로 외곽선을 순차 편집 후 한 번에 저장
 - **Watch Mode 파이프라인 통합**: 감시 모드와 배치 모드의 처리 결과 일관성 확보
 - **이미 처리된 파일 건너뛰기**: 중복 처리 방지
 - **다양한 출력 포맷**: JPG, PNG, WEBP 지원
@@ -51,6 +54,8 @@
 - **PyQt6 기반 현대적 UI**: 다크/라이트 테마, 그라디언트 효과
 - **토스트 알림**: 작업 완료 시 슬라이드-인 애니메이션 알림
 - **실시간 미리보기**: 마우스 휠 확대/축소, 줌 슬라이더 (10%~500%)
+- **수동 경계 편집**: 원본 탭에서 외곽선 점 드래그, 자동 탐지 실패 시 4점 클릭으로 직접 경계 지정
+- **실패 파일 전용 보정 모드**: 경계 탐지 실패 파일만 별도 로드해 재편집
 - **드래그 앤 드롭**: 폴더나 이미지를 직접 끌어다 놓기
 
 ## 🛠️ 감지 알고리즘
@@ -79,6 +84,11 @@ pip install -r requirements.txt
 ### GUI 애플리케이션 실행
 
 ```bash
+# 저장소 루트에서 실행
+python ".\\;opencv\\run.py"
+
+# 또는 앱 폴더로 이동 후 실행
+cd ";opencv"
 python run.py
 ```
 
@@ -220,8 +230,8 @@ photo_cropper/
 # 의존성 설치
 pip install pyinstaller
 
-# 빌드 실행 (경량화 적용)
-pyinstaller photo_cropper.spec --clean
+# 저장소 루트에서 빌드
+pyinstaller ".\\;opencv\\photo_cropper.spec" --clean
 ```
 
 빌드된 실행 파일: `dist/PhotoCropper_v9.exe`
@@ -232,7 +242,7 @@ pyinstaller photo_cropper.spec --clean
 
 1. UPX 다운로드 및 압축 해제
 2. `upx.exe`를 시스템 PATH에 추가
-3. 다시 빌드: `pyinstaller photo_cropper.spec --clean`
+3. 다시 빌드: `pyinstaller ".\\;opencv\\photo_cropper.spec" --clean`
 
 ### 빌드 최적화 내용
 
@@ -245,6 +255,12 @@ pyinstaller photo_cropper.spec --clean
 | UPX 압축 | 실행 파일 압축 (~40% 크기 감소) |
 
 ## 📋 변경 이력
+
+### v9.0 수동 경계 보정 업데이트 (2026-03)
+- ✨ 메인 화면에 폴더 일괄 편집/이전/다음/편집 저장 추출 흐름 추가
+- ✨ 자동 경계 탐지 실패 파일을 감지해 사용자에게 안내하고, 실패 파일만 수동 보정 모드로 로드
+- ✨ 원본 탭에서 외곽선 점 드래그 편집 강화 및 4점 클릭 수동 경계 지정 지원
+- 🛡️ 일괄 처리 취소/종료 응답성 개선(수동 추출 스레드 중단 요청 처리 포함)
 
 ### v9.0 안정성 패치 (2026-02)
 - 🛡️ Watch Mode가 `BatchProcessor.process_single()` 경로를 사용하도록 통합
@@ -304,7 +320,7 @@ MIT License
 - CLI 설정 병합이 defaults -> preset -> config -> cli override로 재구성되었습니다.
 - 우선순위는 CLI > config > preset으로 고정되었습니다.
 - --preset이 실제 프로파일(BatchProfileManager)과 연결되었습니다.
-- --config가 전체 AppSettings를 병합하며, 레거시 키 dvanced_processing -> advanced 호환이 추가되었습니다.
+- --config가 전체 AppSettings를 병합하며, 레거시 키 `advanced_processing` -> `advanced` 호환이 추가되었습니다.
 - AI 핵심 CLI 옵션(분류/얼굴/스마트보정)이 추가되고 값 검증이 적용되었습니다.
 - Watch 모드 관측성이 강화되었습니다.
   - 기존 processing_completed(filepath, success) 유지
@@ -312,7 +328,7 @@ MIT License
   - 신규 queue_metrics_updated(queue_size, avg_wait_ms)
 - 재귀 감시에서 신규 하위 폴더 유입 시 초기 이미지 스캔을 즉시 수행합니다.
 - Watch 최대 대기시간은 watch_mode.max_wait_seconds(기본 30.0)로 설정 가능합니다.
-- 프로파일은 읽기 시 레거시 키를 허용하고, 저장/내보내기 시 표준 키 dvanced로 정규화됩니다.
+- 프로파일은 읽기 시 레거시 키를 허용하고, 저장/내보내기 시 표준 키 `advanced`로 정규화됩니다.
 - 회귀 테스트가 보강되었습니다(수동 크롭 import, CLI 병합 우선순위, 재귀 감시 유입, max wait roundtrip).
 
 > 참고: 전체 처리 selftest는 OpenCV(cv2) 설치가 필요합니다.

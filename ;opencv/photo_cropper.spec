@@ -222,4 +222,9 @@ Tips for further size reduction:
       ui/main, ui/widgets/settings, i18n/catalog.
     - Hidden imports were expanded to include package-level entry points used
       after the split refactor.
+
+2026-03-03 note:
+    - Main-window batch edit flow and manual boundary fallback UI were added.
+    - No additional third-party dependencies were introduced.
+    - Existing hidden imports remain sufficient for frozen builds.
 """

@@ -20,6 +20,9 @@ v9.0 Features:
 import os
 import logging
 from typing import Optional, List
+import numpy as np
+import threading
+import time
 
 from PyQt6.QtWidgets import (
     QMainWindow,
@@ -49,7 +52,14 @@ from PyQt6.QtWidgets import (
     QStackedWidget,
 )
 from PyQt6.QtCore import Qt, QTimer, pyqtSlot, pyqtSignal, QSettings, QSize, QObject, QThread
-from PyQt6.QtGui import QAction, QKeySequence, QDragEnterEvent, QDropEvent, QKeyEvent
+from PyQt6.QtGui import (
+    QAction,
+    QKeySequence,
+    QDragEnterEvent,
+    QDropEvent,
+    QKeyEvent,
+    QShortcut,
+)
 
 from ..widgets.settings import SettingsPanel
 from ..widgets.preview_widget import ImagePreviewWidget
@@ -66,7 +76,7 @@ from ..styles.themes import get_theme, get_available_themes
 
 from ...core.settings_model import AppSettings, SettingsManager
 from ...core.image import ImageProcessor
-from ...core.batch import BatchProcessor, BatchProgress, FileResult
+from ...core.batch import BatchProcessor, BatchProgress, FileResult, ProcessStatus
 from ...core.history_manager import HistoryManager, ImageHolder
 from ...core.folder_watcher import FolderWatcher, AutoProcessor
 from ...core.smart_enhancer import SmartEnhancer, EnhancementPreset, get_smart_enhancer
@@ -74,6 +84,7 @@ from ...core.face import FaceDetector, get_face_detector
 from ...core.image_classifier import ImageClassifier, ImageCategory, get_classifier
 from ...utils.file_helpers import (
     get_image_files,
+    get_unique_filename,
     open_file_explorer,
     validate_directory,
     SUPPORTED_IMAGE_FORMATS,
@@ -201,6 +212,7 @@ class MainWindow(QMainWindow):
         self._preview_request_id = 0
         self._latest_preview_request_id = 0
         self._applied_preview_request_id = -1
+        self._preview_request_paths = {}
         self._preview_settings_revision = 0
         self._preview_settings_snapshot = self._settings.to_dict()
         self._preview_worker_thread: Optional[QThread] = None
@@ -215,6 +227,14 @@ class MainWindow(QMainWindow):
         # Last processed result for comparison
         self._last_original: Optional[any] = None
         self._last_processed: Optional[any] = None
+        self._last_detected_contour = None
+        self._active_input_root: str = ""
+        self._batch_contours_norm = {}
+        self._batch_contours_edited = set()
+        self._failed_boundary_files: List[str] = []
+        self._manual_extract_thread: Optional[threading.Thread] = None
+        self._manual_extract_stop_event = threading.Event()
+        self._manual_extract_running = False
 
         # Thread-safe callback bridges
         self.batch_progress_received.connect(self._on_batch_progress)
@@ -237,6 +257,7 @@ class MainWindow(QMainWindow):
 
         # Apply saved settings
         self._apply_settings(self._settings)
+        self._update_batch_edit_controls()
 
         # Restore window geometry
         self._restore_window_state()
@@ -537,6 +558,7 @@ class MainWindow(QMainWindow):
         path_grid = QGridLayout()
         path_grid.setSpacing(6)
         path_grid.setContentsMargins(0, 0, 0, 0)
+        path_grid.setColumnStretch(1, 1)
 
         # Input Path
         input_label = QLabel("입력 폴더:")
@@ -575,6 +597,12 @@ class MainWindow(QMainWindow):
         output_browse_btn.clicked.connect(self._select_output_folder)
         path_grid.addWidget(output_browse_btn, 1, 2)
 
+        output_open_btn = QPushButton("변환 폴더 열기")
+        output_open_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        output_open_btn.setMinimumHeight(32)
+        output_open_btn.clicked.connect(self._open_output_folder)
+        path_grid.addWidget(output_open_btn, 1, 3)
+
         folder_card_layout.addLayout(path_grid)
 
         # Drag & Drop Hint (compact)
@@ -587,6 +615,46 @@ class MainWindow(QMainWindow):
         hint_layout.addWidget(hint_text)
         hint_layout.addStretch()
         folder_card_layout.addLayout(hint_layout)
+
+        edit_nav_layout = QHBoxLayout()
+        edit_nav_layout.setContentsMargins(0, 2, 0, 0)
+
+        self.batch_load_btn = QPushButton("폴더 일괄 불러오기")
+        self.batch_load_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.batch_load_btn.setMinimumHeight(30)
+        self.batch_load_btn.clicked.connect(self._load_batch_images_for_edit)
+        edit_nav_layout.addWidget(self.batch_load_btn)
+
+        self.batch_failed_btn = QPushButton("실패 파일 수동 보정")
+        self.batch_failed_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.batch_failed_btn.setMinimumHeight(30)
+        self.batch_failed_btn.clicked.connect(self._load_failed_boundary_images_for_edit)
+        edit_nav_layout.addWidget(self.batch_failed_btn)
+
+        self.batch_prev_btn = QPushButton("← 이전")
+        self.batch_prev_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.batch_prev_btn.setMinimumHeight(30)
+        self.batch_prev_btn.clicked.connect(self._navigate_prev)
+        edit_nav_layout.addWidget(self.batch_prev_btn)
+
+        self.batch_next_btn = QPushButton("다음 →")
+        self.batch_next_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.batch_next_btn.setMinimumHeight(30)
+        self.batch_next_btn.clicked.connect(self._navigate_next)
+        edit_nav_layout.addWidget(self.batch_next_btn)
+
+        self.batch_save_edits_btn = QPushButton("편집 저장 추출")
+        self.batch_save_edits_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.batch_save_edits_btn.setMinimumHeight(30)
+        self.batch_save_edits_btn.clicked.connect(self._save_batch_edited_crops)
+        edit_nav_layout.addWidget(self.batch_save_edits_btn)
+
+        self.batch_edit_status_label = QLabel("편집 0/0 | 수정 0")
+        self.batch_edit_status_label.setObjectName("subtitleLabel")
+        edit_nav_layout.addWidget(self.batch_edit_status_label)
+        edit_nav_layout.addStretch()
+
+        folder_card_layout.addLayout(edit_nav_layout)
 
         # Add folder card to outer splitter
         outer_splitter.addWidget(folder_card)
@@ -628,6 +696,7 @@ class MainWindow(QMainWindow):
         """)
 
         self.preview_widget = ImagePreviewWidget()
+        self.preview_widget.contour_edited.connect(self._on_preview_contour_edited)
         left_splitter.addWidget(self.preview_widget)
 
         # Histogram
@@ -909,6 +978,13 @@ class MainWindow(QMainWindow):
         """Apply debounced input-path side effects."""
         path = self._pending_input_path
         if os.path.isdir(path):
+            normalized = os.path.abspath(path)
+            if normalized != self._active_input_root:
+                self._active_input_root = normalized
+                self._batch_contours_norm.clear()
+                self._batch_contours_edited.clear()
+                self._failed_boundary_files = []
+                self._last_detected_contour = None
             files = get_image_files(path)
             self.file_count_badge.setText(f" 파일: {len(files)}개 ")
             self.file_count_badge.setStyleSheet("""
@@ -919,6 +995,7 @@ class MainWindow(QMainWindow):
                 margin: 0 4px;
                 font-weight: bold;
             """)
+            self._update_image_list()
         else:
             self.file_count_badge.setText(" 파일: 0개 ")
             self.file_count_badge.setStyleSheet("""
@@ -928,6 +1005,12 @@ class MainWindow(QMainWindow):
                 padding: 2px 8px;
                 margin: 0 4px;
             """)
+            self._active_input_root = ""
+            self._image_list = []
+            self._current_image_index = -1
+            self._current_image_path = None
+            self._failed_boundary_files = []
+        self._update_batch_edit_controls()
 
     def _open_output_folder(self):
         """Open output folder in file explorer."""
@@ -1012,6 +1095,513 @@ class MainWindow(QMainWindow):
             pass
         self.image_info_badge.setText("이미지: -")
 
+    def _scale_contour_to_preview(self, preview_image, crop_result):
+        """Scale contour points from source coordinates to current preview image."""
+        if preview_image is None or crop_result is None:
+            return None
+        contour = getattr(crop_result, "contour_points", None)
+        if contour is None:
+            return None
+        original_size = getattr(crop_result, "original_size", None)
+        if not original_size or len(original_size) < 2:
+            return None
+        orig_w = float(original_size[0] or 0)
+        orig_h = float(original_size[1] or 0)
+        if orig_w <= 0 or orig_h <= 0:
+            return None
+        preview_h, preview_w = preview_image.shape[:2]
+        sx = float(preview_w) / orig_w
+        sy = float(preview_h) / orig_h
+        points = np.array(contour, dtype=np.float32).reshape((-1, 2)).copy()
+        points[:, 0] *= sx
+        points[:, 1] *= sy
+        return points
+
+    @pyqtSlot(object)
+    def _on_preview_contour_edited(self, contour_points):
+        """Apply manually edited contour from original preview pane."""
+        if self._last_original is None:
+            return
+        try:
+            points = np.array(contour_points, dtype=np.float32).reshape((-1, 2))
+        except Exception:
+            return
+        if len(points) != 4:
+            return
+
+        self._last_detected_contour = points.copy()
+        current_path = self._current_image_path
+        if current_path:
+            normalized = self._normalize_contour_points(
+                points,
+                self._last_original.shape if self._last_original is not None else None,
+            )
+            if normalized is not None:
+                self._batch_contours_norm[current_path] = normalized
+                self._batch_contours_edited.add(current_path)
+                self._update_batch_edit_controls()
+
+        try:
+            from ...core.advanced import AdvancedImageProcessor
+
+            processor = AdvancedImageProcessor()
+            result = processor.correct_perspective(self._last_original, points)
+            if result.success and result.image is not None:
+                self.preview_widget.set_processed_image(result.image)
+                self._last_processed = result.image.copy()
+                self.status_label.setText("외곽선 수동 편집 반영됨")
+            else:
+                self.status_label.setText("외곽선 편집 반영 실패")
+        except Exception as e:
+            self.status_label.setText(f"외곽선 편집 오류: {e}")
+
+    def _normalize_contour_points(self, points, image_shape):
+        """Normalize contour points to 0..1 coordinates."""
+        if points is None or image_shape is None:
+            return None
+        try:
+            pts = np.array(points, dtype=np.float32).reshape((-1, 2)).copy()
+            if len(pts) != 4:
+                return None
+            h, w = image_shape[:2]
+            if w <= 0 or h <= 0:
+                return None
+            pts[:, 0] = np.clip(pts[:, 0] / float(w), 0.0, 1.0)
+            pts[:, 1] = np.clip(pts[:, 1] / float(h), 0.0, 1.0)
+            return pts
+        except Exception:
+            return None
+
+    def _denormalize_contour_points(self, normalized_points, image_shape):
+        """Convert normalized contour points back to pixel coordinates."""
+        if normalized_points is None or image_shape is None:
+            return None
+        try:
+            pts = np.array(normalized_points, dtype=np.float32).reshape((-1, 2)).copy()
+            if len(pts) != 4:
+                return None
+            h, w = image_shape[:2]
+            if w <= 0 or h <= 0:
+                return None
+            pts[:, 0] = np.clip(pts[:, 0] * float(w), 0.0, float(max(0, w - 1)))
+            pts[:, 1] = np.clip(pts[:, 1] * float(h), 0.0, float(max(0, h - 1)))
+            return pts
+        except Exception:
+            return None
+
+    def _update_batch_edit_controls(self):
+        """Update batch edit navigation/save controls."""
+        total = len(self._image_list) if self._image_list else 0
+        current = self._current_image_index + 1 if total > 0 and self._current_image_index >= 0 else 0
+        edited = sum(
+            1 for path in self._batch_contours_edited if path in set(self._image_list or [])
+        )
+        failed = len(self._failed_boundary_files)
+        if hasattr(self, "batch_edit_status_label"):
+            self.batch_edit_status_label.setText(
+                f"편집 {current}/{total} | 수정 {edited} | 실패 {failed}"
+            )
+
+        busy = bool(
+            self._manual_extract_running
+            or (self.batch_processor and self.batch_processor.is_running)
+        )
+        has_files = total > 0
+        has_failed_targets = failed > 0
+        if hasattr(self, "batch_prev_btn"):
+            self.batch_prev_btn.setEnabled(has_files and total > 1 and not busy)
+        if hasattr(self, "batch_next_btn"):
+            self.batch_next_btn.setEnabled(has_files and total > 1 and not busy)
+        if hasattr(self, "batch_save_edits_btn"):
+            self.batch_save_edits_btn.setEnabled(has_files and not busy)
+        if hasattr(self, "batch_failed_btn"):
+            self.batch_failed_btn.setEnabled(has_failed_targets and not busy)
+        if hasattr(self, "batch_load_btn"):
+            self.batch_load_btn.setEnabled(not busy)
+
+    def _load_batch_images_for_edit(self):
+        """Load all images from input folder for navigation/editing."""
+        input_path = self.input_path_edit.text()
+        valid, error = validate_directory(input_path)
+        if not valid:
+            QMessageBox.warning(self, "경고", f"입력 폴더 오류: {error}")
+            return
+
+        if not self.output_path_edit.text():
+            self.output_path_edit.setText(os.path.join(input_path, "output_cropped"))
+
+        self._update_image_list()
+        if not self._image_list:
+            QMessageBox.information(self, "알림", "불러올 이미지가 없습니다.")
+            self._update_batch_edit_controls()
+            return
+
+        self._current_image_index = 0
+        self._current_image_path = self._image_list[0]
+        self._request_preview()
+        self._update_navigation_status()
+        self._update_batch_edit_controls()
+
+    @staticmethod
+    def _is_boundary_detection_failure(message: str) -> bool:
+        """Return True when message indicates boundary detection failure."""
+        if not message:
+            return False
+        msg = str(message).strip()
+        msg_lower = msg.lower()
+        if "failed to detect photo boundary" in msg_lower:
+            return True
+        if "boundary" in msg_lower and ("detect" in msg_lower or "failed" in msg_lower):
+            return True
+        if "외곽선" in msg and ("탐지" in msg or "실패" in msg):
+            return True
+        if "경계" in msg and ("탐지" in msg or "실패" in msg):
+            return True
+        return False
+
+    def _collect_boundary_failed_files(self, results: list) -> List[str]:
+        """Collect absolute paths for files failed due to boundary detection."""
+        failed_names = []
+        for result in results or []:
+            if getattr(result, "status", None) != ProcessStatus.FAILED:
+                continue
+            message = str(getattr(result, "message", "") or "")
+            if not self._is_boundary_detection_failure(message):
+                continue
+            filename = str(getattr(result, "filename", "") or "").strip()
+            if filename:
+                failed_names.append(filename)
+
+        if not failed_names:
+            return []
+
+        input_root = self.input_path_edit.text().strip()
+        candidate_paths = []
+
+        if self.batch_processor:
+            for entry in self.batch_processor.failed_files:
+                if not entry:
+                    continue
+                if os.path.isabs(entry):
+                    candidate_paths.append(os.path.normpath(entry))
+                elif input_root:
+                    candidate_paths.append(os.path.normpath(os.path.join(input_root, entry)))
+
+        for path in self._image_list or []:
+            if path:
+                candidate_paths.append(os.path.normpath(path))
+
+        if input_root and os.path.isdir(input_root):
+            recursive = bool(
+                getattr(self._settings.file_management, "recursive_search", False)
+            )
+            for path in get_image_files(input_root, recursive=recursive):
+                candidate_paths.append(os.path.normpath(path))
+
+        candidates_by_name = {}
+        for path in candidate_paths:
+            key = os.path.basename(path).lower()
+            if not key:
+                continue
+            bucket = candidates_by_name.setdefault(key, [])
+            if path not in bucket:
+                bucket.append(path)
+
+        resolved = []
+        unresolved = []
+        for name in failed_names:
+            chosen = None
+            if os.path.isabs(name) and os.path.exists(name):
+                chosen = os.path.normpath(name)
+            else:
+                key = os.path.basename(name).lower()
+                bucket = candidates_by_name.get(key, [])
+                if bucket:
+                    chosen = bucket.pop(0)
+            if chosen and chosen not in resolved:
+                resolved.append(chosen)
+            else:
+                unresolved.append(name)
+
+        if unresolved:
+            logger.warning(
+                "Failed to resolve boundary-failed files: %s",
+                ", ".join(unresolved[:10]),
+            )
+
+        return resolved
+
+    def _load_failed_boundary_images_for_edit(self):
+        """Load only boundary-failed files for manual contour adjustment."""
+        if self._manual_extract_running or (self.batch_processor and self.batch_processor.is_running):
+            QMessageBox.warning(self, "경고", "처리 작업이 진행 중입니다. 완료/취소 후 실행하세요.")
+            return
+
+        if not self._failed_boundary_files:
+            QMessageBox.information(self, "알림", "수동 보정할 경계 실패 파일이 없습니다.")
+            return
+
+        files = [path for path in self._failed_boundary_files if os.path.exists(path)]
+        if not files:
+            self._failed_boundary_files = []
+            QMessageBox.information(
+                self,
+                "알림",
+                "경계 실패 파일을 찾지 못했습니다. 폴더 경로를 다시 확인해주세요.",
+            )
+            self._update_batch_edit_controls()
+            return
+
+        self._image_list = files
+        self._current_image_index = 0
+        self._current_image_path = files[0]
+        self.status_label.setText(
+            f"경계 실패 파일 수동 보정 모드: {len(files)}개 (4점 클릭 또는 점 드래그)"
+        )
+        ToastManager.info(f"경계 실패 {len(files)}개 파일만 불러왔습니다")
+        self._request_preview()
+        self._update_navigation_status()
+        self._update_batch_edit_controls()
+
+    def _save_batch_edited_crops(self):
+        """Save cropped results for all images using edited (or auto) contours."""
+        if self._manual_extract_running:
+            QMessageBox.information(self, "알림", "편집 저장 추출이 이미 진행 중입니다.")
+            return
+        if self.batch_processor and self.batch_processor.is_running:
+            QMessageBox.warning(self, "경고", "기존 배치 작업이 진행 중입니다.")
+            return
+
+        input_path = self.input_path_edit.text()
+        valid, error = validate_directory(input_path)
+        if not valid:
+            QMessageBox.warning(self, "경고", f"입력 폴더 오류: {error}")
+            return
+
+        if not self._image_list:
+            self._update_image_list()
+        if not self._image_list:
+            QMessageBox.information(self, "알림", "추출할 이미지가 없습니다.")
+            return
+
+        output_path = self.output_path_edit.text().strip()
+        if not output_path:
+            output_path = os.path.join(input_path, "output_cropped")
+            self.output_path_edit.setText(output_path)
+        os.makedirs(output_path, exist_ok=True)
+
+        edited_count = sum(
+            1 for path in self._image_list if path in self._batch_contours_edited
+        )
+        reply = QMessageBox.question(
+            self,
+            "편집 저장 추출",
+            (
+                f"총 {len(self._image_list)}장 추출을 시작합니다.\n"
+                f"수정된 외곽선 {edited_count}장, 나머지는 자동 탐색 결과를 사용합니다.\n\n"
+                "진행하시겠습니까?"
+            ),
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.Yes,
+        )
+        if reply != QMessageBox.StandardButton.Yes:
+            return
+
+        contours_snapshot = {}
+        for path, points in self._batch_contours_norm.items():
+            if points is None:
+                continue
+            try:
+                contours_snapshot[path] = np.array(points, dtype=np.float32).reshape((-1, 2)).copy()
+            except Exception:
+                continue
+
+        settings_snapshot = self._settings.to_dict()
+        files_snapshot = list(self._image_list)
+
+        self._manual_extract_stop_event.clear()
+        self._manual_extract_running = True
+        self._update_batch_edit_controls()
+
+        self.progress_dialog = ProgressDialog(self)
+        self.progress_dialog.cancel_requested.connect(
+            self._cancel_processing,
+            Qt.ConnectionType.QueuedConnection,
+        )
+        self.progress_dialog.open_output_requested.connect(self._open_output_folder)
+        self.progress_dialog.set_output_path(output_path)
+        self.progress_dialog.finished.connect(self._on_progress_dialog_finished)
+        self.progress_dialog.show()
+
+        self._manual_extract_thread = threading.Thread(
+            target=self._run_manual_extract_worker,
+            args=(
+                input_path,
+                output_path,
+                files_snapshot,
+                contours_snapshot,
+                settings_snapshot,
+            ),
+            daemon=True,
+        )
+        self._manual_extract_thread.start()
+
+    def _run_manual_extract_worker(
+        self,
+        input_path: str,
+        output_path: str,
+        files: list,
+        contours_norm: dict,
+        settings_snapshot: dict,
+    ):
+        """Worker: extract all images with manual/auto contour fallback."""
+        start = time.time()
+        results = []
+        total = len(files)
+
+        try:
+            from ...core.settings_model import AppSettings
+            from ...core.advanced import AdvancedImageProcessor
+            from ...core.image import ImageProcessor
+
+            settings = AppSettings.from_dict(settings_snapshot or {})
+            processor = ImageProcessor(
+                settings.algorithm,
+                settings.processing,
+                settings.advanced,
+                settings.performance,
+                debug_settings=settings.debug,
+            )
+            perspective_processor = AdvancedImageProcessor(
+                use_gpu=settings.performance.use_gpu
+            )
+
+            progress = BatchProgress(total=total, is_running=True, is_cancelled=False)
+            self.batch_progress_received.emit(progress)
+
+            for index, path in enumerate(files, 1):
+                filename = os.path.basename(path)
+                progress.current_file = filename
+                self.batch_progress_received.emit(progress)
+
+                if self._manual_extract_stop_event.is_set():
+                    progress.is_cancelled = True
+                    break
+
+                file_start = time.time()
+                file_result = None
+                try:
+                    image = processor.load_image(path)
+                    if image is None:
+                        raise RuntimeError("이미지를 불러올 수 없습니다.")
+
+                    contour_norm = contours_norm.get(path)
+                    used_manual = False
+                    cropped = None
+
+                    contour_valid = False
+                    if contour_norm is not None:
+                        try:
+                            contour_valid = (
+                                len(
+                                    np.array(contour_norm, dtype=np.float32).reshape(
+                                        (-1, 2)
+                                    )
+                                )
+                                == 4
+                            )
+                        except Exception:
+                            contour_valid = False
+
+                    if contour_valid:
+                        contour_orig = self._denormalize_contour_points(
+                            contour_norm,
+                            image.shape,
+                        )
+                        if contour_orig is not None:
+                            corr = perspective_processor.correct_perspective(
+                                image,
+                                contour_orig.astype(np.float32),
+                                auto_detect=False,
+                            )
+                            if corr.success and corr.image is not None:
+                                cropped = processor._apply_post_processing(corr.image)
+                                used_manual = True
+
+                    if cropped is None:
+                        auto_result = processor.process_image(path)
+                        if not auto_result.success or auto_result.image is None:
+                            raise RuntimeError(auto_result.message or "외곽선 탐지 실패")
+                        cropped = auto_result.image
+
+                    base_name = os.path.splitext(filename)[0] + "_cropped"
+                    extension = "." + settings.output.output_format.lower()
+                    out_path = get_unique_filename(
+                        output_path,
+                        base_name,
+                        extension,
+                        add_timestamp=bool(settings.output.add_timestamp),
+                    )
+                    ok, save_msg, size_kb = processor.save_image(
+                        cropped,
+                        out_path,
+                        output_format=settings.output.output_format,
+                        jpg_quality=settings.output.jpg_quality,
+                        png_compression=settings.output.png_compression,
+                        webp_quality=settings.output.webp_quality,
+                    )
+                    if not ok:
+                        raise RuntimeError(save_msg or "저장 실패")
+
+                    mode_label = "수동" if used_manual else "자동"
+                    file_result = FileResult(
+                        filename=filename,
+                        status=ProcessStatus.SUCCESS,
+                        message=f"{mode_label} 외곽선 적용",
+                        output_path=out_path,
+                        file_size_kb=float(size_kb or 0.0),
+                        processing_time_ms=(time.time() - file_start) * 1000.0,
+                    )
+                    self.batch_log_received.emit(
+                        f"[{index}/{total}] 완료: {filename} ({mode_label})",
+                        "success",
+                    )
+                except Exception as e:
+                    file_result = FileResult(
+                        filename=filename,
+                        status=ProcessStatus.FAILED,
+                        message=str(e),
+                        processing_time_ms=(time.time() - file_start) * 1000.0,
+                    )
+                    self.batch_log_received.emit(
+                        f"[{index}/{total}] 실패: {filename} - {e}",
+                        "error",
+                    )
+
+                results.append(file_result)
+                progress.processed = len(results)
+                if file_result.status == ProcessStatus.SUCCESS:
+                    progress.success += 1
+                elif file_result.status == ProcessStatus.SKIPPED:
+                    progress.skipped += 1
+                else:
+                    progress.failed += 1
+                elapsed_ms = (time.time() - start) * 1000.0
+                progress.total_time_ms = elapsed_ms
+                progress.avg_time_per_file_ms = (
+                    elapsed_ms / progress.processed if progress.processed > 0 else 0.0
+                )
+                self.batch_progress_received.emit(progress)
+
+            progress.is_running = False
+            progress.current_file = ""
+            self.batch_progress_received.emit(progress)
+            self.batch_complete_received.emit(progress, results)
+        finally:
+            self._manual_extract_running = False
+            self._manual_extract_thread = None
+            self._manual_extract_stop_event.clear()
+
     def _do_preview(self):
         """Dispatch preview processing to background worker."""
         image_path = self._resolve_preview_path()
@@ -1021,6 +1611,11 @@ class MainWindow(QMainWindow):
         self._preview_request_id += 1
         request_id = self._preview_request_id
         self._latest_preview_request_id = request_id
+        self._preview_request_paths[request_id] = image_path
+        if len(self._preview_request_paths) > 50:
+            old_keys = sorted(self._preview_request_paths.keys())[:-50]
+            for key in old_keys:
+                self._preview_request_paths.pop(key, None)
 
         self.status_label.setText(f"미리보기 처리 중: {os.path.basename(image_path)}")
         self._update_image_info_badge(image_path)
@@ -1035,6 +1630,7 @@ class MainWindow(QMainWindow):
     @pyqtSlot(int, object)
     def _on_preview_ready(self, request_id: int, preview_result: object):
         """Apply preview result from background worker."""
+        preview_path = self._preview_request_paths.pop(request_id, None)
         if request_id != self._latest_preview_request_id:
             return
         if request_id == self._applied_preview_request_id:
@@ -1044,15 +1640,43 @@ class MainWindow(QMainWindow):
             self.status_label.setText("미리보기 실패: 결과 없음")
             return
 
+        preview_contour = None
         if preview_result.original_preview is not None:
+            auto_contour = self._scale_contour_to_preview(
+                preview_result.original_preview,
+                preview_result.crop_result,
+            )
+            saved_norm = (
+                self._batch_contours_norm.get(preview_path)
+                if preview_path
+                else None
+            )
+            if saved_norm is not None:
+                preview_contour = self._denormalize_contour_points(
+                    saved_norm, preview_result.original_preview.shape
+                )
+            else:
+                preview_contour = auto_contour
+                if preview_path and auto_contour is not None:
+                    norm = self._normalize_contour_points(
+                        auto_contour, preview_result.original_preview.shape
+                    )
+                    if norm is not None:
+                        self._batch_contours_norm[preview_path] = norm
             self.preview_widget.set_original_image(
                 preview_result.original_preview,
                 preview_result.overlay_preview,
+                preview_contour,
             )
             self.histogram_widget.set_image(preview_result.original_preview)
             self._last_original = preview_result.original_preview
+            if preview_path:
+                self._current_image_path = preview_path
 
         crop_result = preview_result.crop_result
+        self._last_detected_contour = (
+            preview_contour.copy() if preview_contour is not None else None
+        )
         if crop_result.success and crop_result.image is not None:
             self.preview_widget.set_processed_image(crop_result.image)
             self._last_processed = crop_result.image
@@ -1068,15 +1692,19 @@ class MainWindow(QMainWindow):
             self.status_label.setText(f"미리보기 실패: {crop_result.message}")
 
         self._applied_preview_request_id = request_id
+        self._update_batch_edit_controls()
 
     @pyqtSlot(int, str)
     def _on_preview_failed(self, request_id: int, message: str):
         """Handle preview worker failure."""
+        self._preview_request_paths.pop(request_id, None)
         if request_id != self._latest_preview_request_id:
             return
         self.preview_widget.set_processed_image(None)
         self._last_processed = None
+        self._last_detected_contour = None
         self.status_label.setText(f"미리보기 오류: {message}")
+        self._update_batch_edit_controls()
 
     # ========================================
     # Batch Processing
@@ -1084,6 +1712,14 @@ class MainWindow(QMainWindow):
 
     def _start_processing(self):
         """Start batch processing."""
+        if self._manual_extract_running:
+            QMessageBox.warning(
+                self,
+                "경고",
+                "편집 저장 추출이 진행 중입니다. 먼저 해당 작업을 취소하거나 완료하세요.",
+            )
+            return
+
         input_path = self.input_path_edit.text()
         output_path = self.output_path_edit.text()
 
@@ -1120,14 +1756,25 @@ class MainWindow(QMainWindow):
 
         # Show progress dialog
         self.progress_dialog = ProgressDialog(self)
-        self.progress_dialog.cancel_requested.connect(self._cancel_processing)
+        self.progress_dialog.cancel_requested.connect(
+            self._cancel_processing,
+            Qt.ConnectionType.QueuedConnection,
+        )
+        self.progress_dialog.open_output_requested.connect(self._open_output_folder)
+        self.progress_dialog.set_output_path(output_path)
+        self.progress_dialog.finished.connect(self._on_progress_dialog_finished)
         self.progress_dialog.show()
 
         # Start processing (keep absolute paths to avoid basename collisions)
         self.batch_processor.start_async(input_path, output_path, files)
+        self._update_batch_edit_controls()
 
     def _cancel_processing(self):
         """Cancel batch processing."""
+        if self._manual_extract_running:
+            self._manual_extract_stop_event.set()
+            self.status_label.setText("편집 저장 추출 중단 요청됨")
+            return
         if self.batch_processor:
             self.batch_processor.request_stop()
 
@@ -1145,18 +1792,31 @@ class MainWindow(QMainWindow):
 
     def _on_batch_progress(self, progress: BatchProgress):
         """Handle batch progress update."""
-        if self.progress_dialog is not None:
+        if self.progress_dialog is not None and self.progress_dialog.isVisible():
             self.progress_dialog.update_progress(progress)
 
     def _on_batch_log(self, message: str, level: str):
         """Handle batch log message."""
-        if self.progress_dialog is not None:
+        if self.progress_dialog is not None and self.progress_dialog.isVisible():
             self.progress_dialog.log_message(message, level)
+
+    @pyqtSlot(int)
+    def _on_progress_dialog_finished(self, _result: int):
+        """Release closed progress dialog to avoid stale UI updates."""
+        dialog = self.sender()
+        if dialog is None:
+            return
+        if self.progress_dialog is dialog:
+            self.progress_dialog = None
+        try:
+            dialog.deleteLater()
+        except Exception:
+            pass
 
     def _on_batch_complete(self, progress: BatchProgress, results: list):
         """Handle batch processing completion."""
         # Update progress dialog with completion
-        if self.progress_dialog is not None:
+        if self.progress_dialog is not None and self.progress_dialog.isVisible():
             self.progress_dialog.update_progress(progress)
             # Log final summary
             self.progress_dialog.log_message(
@@ -1164,17 +1824,39 @@ class MainWindow(QMainWindow):
                 "success" if progress.failed == 0 else "warning",
             )
 
-        self.status_label.setText(
-            f"완료: {progress.success}개 성공, {progress.failed}개 실패"
-        )
-
-        # Show toast notification
-        if progress.failed == 0:
-            ToastManager.success(f"✅ {progress.success}개 파일 처리 완료!")
-        else:
-            ToastManager.warning(
-                f"⚠️ {progress.success}개 성공, {progress.failed}개 실패"
+        if progress.is_cancelled:
+            self.status_label.setText(
+                f"작업 취소됨: {progress.success}개 성공, {progress.failed}개 실패"
             )
+            ToastManager.info("⏹️ 작업이 취소되었습니다")
+        else:
+            self.status_label.setText(
+                f"완료: {progress.success}개 성공, {progress.failed}개 실패"
+            )
+            if progress.failed == 0:
+                ToastManager.success(f"✅ {progress.success}개 파일 처리 완료!")
+            else:
+                ToastManager.warning(
+                    f"⚠️ {progress.success}개 성공, {progress.failed}개 실패"
+                )
+
+        boundary_failed_files = self._collect_boundary_failed_files(results)
+        self._failed_boundary_files = boundary_failed_files
+        if boundary_failed_files and not progress.is_cancelled:
+            failed_count = len(boundary_failed_files)
+            reply = QMessageBox.question(
+                self,
+                "경계 실패 파일 감지",
+                (
+                    f"경계 자동 탐지 실패 파일 {failed_count}개가 있습니다.\n"
+                    "해당 파일만 따로 불러와 수동으로 경계를 지정할 수 있습니다.\n\n"
+                    "지금 실패 파일 수동 보정 모드로 이동하시겠습니까?"
+                ),
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.Yes,
+            )
+            if reply == QMessageBox.StandardButton.Yes:
+                self._load_failed_boundary_images_for_edit()
 
         # v9.0: Show system notification if enabled
         if self._settings.notification.enabled and not progress.is_cancelled:
@@ -1203,6 +1885,8 @@ class MainWindow(QMainWindow):
             if output_path and os.path.isdir(output_path):
                 open_file_explorer(output_path)
 
+        self._update_batch_edit_controls()
+
     def _retry_failed_files(self):
         """Retry failed files from last batch."""
         if self.batch_processor and self.batch_processor.failed_files:
@@ -1226,10 +1910,21 @@ class MainWindow(QMainWindow):
                 )
 
                 self.progress_dialog = ProgressDialog(self)
-                self.progress_dialog.cancel_requested.connect(self._cancel_processing)
+                self.progress_dialog.cancel_requested.connect(
+                    self._cancel_processing,
+                    Qt.ConnectionType.QueuedConnection,
+                )
+                self.progress_dialog.open_output_requested.connect(
+                    self._open_output_folder
+                )
+                self.progress_dialog.set_output_path(output_path)
+                self.progress_dialog.finished.connect(
+                    self._on_progress_dialog_finished
+                )
                 self.progress_dialog.show()
 
                 self.batch_processor.start_async(input_path, output_path, failed)
+                self._update_batch_edit_controls()
         else:
             QMessageBox.information(self, "알림", "재처리할 실패 파일이 없습니다.")
 
@@ -1361,7 +2056,7 @@ class MainWindow(QMainWindow):
 
         # Space for start processing
         elif key == Qt.Key.Key_Space:
-            if not (self.batch_processor and self.batch_processor.is_running):
+            if not (self.batch_processor and self.batch_processor.is_running) and not self._manual_extract_running:
                 self._start_processing()
             event.accept()
             return
@@ -1424,8 +2119,13 @@ class MainWindow(QMainWindow):
             self._image_list = []
             self._current_image_index = -1
 
+        self._update_batch_edit_controls()
+
     def _navigate_prev(self):
         """Navigate to previous image in list."""
+        if self._manual_extract_running:
+            return
+
         if not self._image_list:
             self._update_image_list()
 
@@ -1442,9 +2142,13 @@ class MainWindow(QMainWindow):
         self._current_image_path = self._image_list[self._current_image_index]
         self._request_preview()
         self._update_navigation_status()
+        self._update_batch_edit_controls()
 
     def _navigate_next(self):
         """Navigate to next image in list."""
+        if self._manual_extract_running:
+            return
+
         if not self._image_list:
             self._update_image_list()
 
@@ -1461,6 +2165,7 @@ class MainWindow(QMainWindow):
         self._current_image_path = self._image_list[self._current_image_index]
         self._request_preview()
         self._update_navigation_status()
+        self._update_batch_edit_controls()
 
     def _update_navigation_status(self):
         """Update status bar with navigation info."""
@@ -1502,11 +2207,15 @@ class MainWindow(QMainWindow):
 
     def _show_crop_editor(self):
         """Show manual crop editor dialog."""
-        if self._last_original is None:
+        source_path = self._resolve_preview_path()
+        if source_path is None and self._last_original is None:
             self.status_label.setText(
                 "편집할 이미지가 없습니다. 먼저 이미지를 불러오세요."
             )
             return
+
+        if not self._image_list:
+            self._update_image_list()
 
         dialog = QDialog(self)
         dialog.setWindowTitle("수동 영역 편집")
@@ -1514,20 +2223,150 @@ class MainWindow(QMainWindow):
 
         layout = QVBoxLayout(dialog)
 
+        nav_layout = QHBoxLayout()
+        prev_btn = QPushButton("← 이전 사진")
+        next_btn = QPushButton("다음 사진 →")
+        nav_hint = QLabel("외곽선 점을 드래그해 조정하세요 (←/→ 이동)")
+        nav_hint.setObjectName("subtitleLabel")
+        nav_pos_label = QLabel("")
+        nav_layout.addWidget(prev_btn)
+        nav_layout.addWidget(next_btn)
+        nav_layout.addWidget(nav_hint)
+        nav_layout.addStretch()
+        nav_layout.addWidget(nav_pos_label)
+        layout.addLayout(nav_layout)
+
         crop_editor = CropEditorWidget()
-        crop_editor.set_image(self._last_original)
-        crop_editor.crop_applied.connect(lambda img: self._on_crop_applied(img, dialog))
+        crop_editor.crop_applied.connect(lambda img: self._on_crop_applied(img, None))
         crop_editor.crop_cancelled.connect(dialog.close)
         layout.addWidget(crop_editor)
 
+        state = {"index": self._current_image_index}
+
+        def _set_detected_contour(contour_points):
+            if contour_points is None:
+                crop_editor.set_rectangle_mode()
+                return
+            try:
+                points = []
+                for point in contour_points:
+                    if point is None or len(point) < 2:
+                        continue
+                    points.append((float(point[0]), float(point[1])))
+                if len(points) != 4:
+                    crop_editor.set_rectangle_mode()
+                    return
+                crop_editor.set_perspective_points(points)
+            except Exception:
+                crop_editor.set_rectangle_mode()
+
+        def _update_editor_title(path: Optional[str]):
+            filename = os.path.basename(path) if path else "현재 이미지"
+            if self._image_list and state["index"] >= 0:
+                nav_pos_label.setText(f"{state['index'] + 1}/{len(self._image_list)}")
+            else:
+                nav_pos_label.setText("단일")
+            dialog.setWindowTitle(f"수동 영역 편집 - {filename}")
+
+        def _load_editor_image(path: Optional[str]) -> bool:
+            if not path or not os.path.exists(path):
+                return False
+            try:
+                preview_result = self.image_processor.process_preview(
+                    path,
+                    max_size=1200,
+                    debug_tag="editor",
+                )
+            except Exception as e:
+                QMessageBox.warning(
+                    dialog, "경고", f"이미지를 불러올 수 없습니다.\n{os.path.basename(path)}\n\n{e}"
+                )
+                return False
+
+            if preview_result is None or preview_result.original_preview is None:
+                return False
+
+            crop_editor.set_image(preview_result.original_preview)
+
+            crop_result = preview_result.crop_result
+            contour = self._scale_contour_to_preview(
+                preview_result.original_preview,
+                crop_result,
+            )
+            self._last_detected_contour = contour.copy() if contour is not None else None
+            _set_detected_contour(contour)
+
+            self.preview_widget.set_original_image(
+                preview_result.original_preview,
+                preview_result.overlay_preview,
+                contour,
+            )
+            if crop_result and crop_result.success and crop_result.image is not None:
+                self.preview_widget.set_processed_image(crop_result.image)
+                self._last_processed = crop_result.image.copy()
+            else:
+                self.preview_widget.set_processed_image(None)
+                self._last_processed = None
+
+            self._last_original = preview_result.original_preview
+            self._current_image_path = path
+
+            if self._image_list:
+                try:
+                    state["index"] = self._image_list.index(path)
+                    self._current_image_index = state["index"]
+                except ValueError:
+                    pass
+
+            _update_editor_title(path)
+            return True
+
+        def _navigate_editor(delta: int):
+            if not self._image_list:
+                self._update_image_list()
+            if not self._image_list:
+                return
+
+            idx = state["index"]
+            if idx < 0:
+                if self._current_image_path in self._image_list:
+                    idx = self._image_list.index(self._current_image_path)
+                else:
+                    idx = 0
+            idx = (idx + delta) % len(self._image_list)
+            state["index"] = idx
+            target_path = self._image_list[idx]
+            _load_editor_image(target_path)
+
+        prev_btn.clicked.connect(lambda: _navigate_editor(-1))
+        next_btn.clicked.connect(lambda: _navigate_editor(1))
+        prev_btn.setEnabled(len(self._image_list) > 1)
+        next_btn.setEnabled(len(self._image_list) > 1)
+
+        shortcut_prev = QShortcut(QKeySequence("Left"), dialog)
+        shortcut_next = QShortcut(QKeySequence("Right"), dialog)
+        shortcut_prev.activated.connect(lambda: _navigate_editor(-1))
+        shortcut_next.activated.connect(lambda: _navigate_editor(1))
+        dialog._shortcut_prev = shortcut_prev
+        dialog._shortcut_next = shortcut_next
+
+        loaded = False
+        if source_path:
+            loaded = _load_editor_image(source_path)
+        if not loaded and self._last_original is not None:
+            crop_editor.set_image(self._last_original)
+            _set_detected_contour(self._last_detected_contour)
+            _update_editor_title(self._current_image_path)
+
         dialog.exec()
 
-    def _on_crop_applied(self, cropped_image, dialog):
+    def _on_crop_applied(self, cropped_image, dialog: Optional[QDialog] = None):
         """Handle crop applied from editor."""
         self.preview_widget.set_processed_image(cropped_image)
         self._last_processed = cropped_image.copy()
         self.status_label.setText("수동 크롭이 적용되었습니다")
-        dialog.close()
+        if dialog is not None:
+            dialog.close()
         ToastManager.success("✂️ 수동 크롭 적용됨")
 
     def _detect_duplicates(self):
@@ -1916,8 +2755,11 @@ class MainWindow(QMainWindow):
 
     def closeEvent(self, event):
         """Handle window close event."""
-        # Check if processing is running
-        if self.batch_processor and self.batch_processor.is_running:
+        batch_running = bool(self.batch_processor and self.batch_processor.is_running)
+        manual_running = bool(self._manual_extract_running)
+
+        # Check if any processing is running
+        if batch_running or manual_running:
             reply = QMessageBox.question(
                 self,
                 "종료 확인",
@@ -1930,8 +2772,17 @@ class MainWindow(QMainWindow):
                 event.ignore()
                 return
 
-            # Stop processing
-            self.batch_processor.cleanup()
+            if manual_running:
+                self._manual_extract_stop_event.set()
+            if batch_running and self.batch_processor:
+                self.batch_processor.request_stop()
+
+        if self.progress_dialog is not None:
+            try:
+                self.progress_dialog.close()
+            except Exception:
+                pass
+            self.progress_dialog = None
 
         # Save settings
         self._settings.last_input_path = self.input_path_edit.text()

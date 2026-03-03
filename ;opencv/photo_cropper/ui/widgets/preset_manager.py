@@ -71,6 +71,35 @@ DEFAULT_PRESETS = {
             "jpg_quality": 95
         }
     },
+    "앨범 사진 (배경 분리 강화)": {
+        "description": "배경(벽지/무늬)과 사진 경계 분리를 강화한 보수적 설정",
+        "algorithm": {
+            "detection_mode": "balanced",
+            "canny_min": 60,
+            "canny_max": 190,
+            "use_clahe": True,
+            "clahe_clip_limit": 1.8,
+            "multi_scale_edge": True,
+            "use_corner_detection": True,
+            "contour_scoring": "strict",
+            "min_area_ratio": 0.08,
+            "max_area_ratio": 0.88,
+            "bg_mask_delta": 38.0,
+            "adaptive_block_size": 29,
+            "adaptive_c": 9.0
+        },
+        "processing": {
+            "auto_contrast": True,
+            "to_grayscale": False,
+            "apply_sharpening": False,
+            "denoise": True,
+            "denoise_strength": 6
+        },
+        "output": {
+            "output_format": "JPG",
+            "jpg_quality": 95
+        }
+    },
     "오래된 사진 복원": {
         "description": "오래된 사진 복원에 최적화된 설정",
         "algorithm": {

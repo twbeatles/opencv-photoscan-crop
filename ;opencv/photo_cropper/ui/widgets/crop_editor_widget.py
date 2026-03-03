@@ -597,6 +597,19 @@ class CropEditorWidget(QWidget):
         self._h_spin.setMaximum(h)
         self._w_spin.setValue(w)
         self._h_spin.setValue(h)
+
+    def set_rectangle_mode(self):
+        """Activate rectangle edit mode."""
+        self._rect_mode_btn.setChecked(True)
+        self._on_mode_changed(0)
+
+    def set_perspective_points(self, points: List[Tuple[float, float]]):
+        """Activate perspective mode and set 4 corner points."""
+        if points is None or len(points) != 4:
+            return
+        self._persp_mode_btn.setChecked(True)
+        self._on_mode_changed(1)
+        self._editor.set_perspective_points(points)
     
     def _on_mode_changed(self, id: int):
         """Handle mode button change."""

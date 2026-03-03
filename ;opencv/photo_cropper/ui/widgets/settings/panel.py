@@ -869,6 +869,7 @@ class SettingsPanel(QWidget):
 
     def _build_settings(self) -> AppSettings:
         """Build AppSettings from current UI state."""
+        prev_algo = getattr(self._settings, "algorithm", AlgorithmSettings())
         algorithm = AlgorithmSettings(
             detection_mode=getattr(self, "detect_mode_combo", None)
             and self.detect_mode_combo.currentText()
@@ -881,6 +882,11 @@ class SettingsPanel(QWidget):
             multi_scale_edge=self.multi_scale_check.isChecked(),
             use_corner_detection=self.corner_detection_check.isChecked(),
             contour_scoring=self.scoring_combo.currentText(),
+            min_area_ratio=float(getattr(prev_algo, "min_area_ratio", 0.1)),
+            max_area_ratio=float(getattr(prev_algo, "max_area_ratio", 0.95)),
+            bg_mask_delta=float(getattr(prev_algo, "bg_mask_delta", 30.0)),
+            adaptive_block_size=int(getattr(prev_algo, "adaptive_block_size", 15)),
+            adaptive_c=float(getattr(prev_algo, "adaptive_c", 4.0)),
         )
 
         processing = ProcessingSettings(

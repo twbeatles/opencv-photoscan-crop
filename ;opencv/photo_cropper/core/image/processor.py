@@ -738,7 +738,7 @@ class ImageProcessor:
         corner_mean = float(np.mean([np.mean(c) for c in corners]))
         is_bright_bg = corner_mean >= 127.0
 
-        k = 30.0 if is_bright_bg else 30.0
+        k = max(0.0, float(getattr(self.algo, "bg_mask_delta", 30.0)))
         if is_bright_bg:
             thr = max(0.0, corner_mean - k)
             mask = (gray < thr).astype(np.uint8) * 255
@@ -1010,13 +1010,25 @@ class ImageProcessor:
             # ==========================================
             if best_quad is None:
                 blurred_bilateral = cv2.bilateralFilter(gray, 9, 75, 75)
+                adaptive_block_size = int(
+                    getattr(self.algo, "adaptive_block_size", 15)
+                )
+                if adaptive_block_size < 3:
+                    adaptive_block_size = 3
+                if adaptive_block_size % 2 == 0:
+                    adaptive_block_size += 1
+                max_block = max(3, min(gray.shape[:2]) - 1)
+                if max_block % 2 == 0:
+                    max_block -= 1
+                adaptive_block_size = min(adaptive_block_size, max_block)
+                adaptive_c = float(getattr(self.algo, "adaptive_c", 4.0))
                 thresh = cv2.adaptiveThreshold(
                     blurred_bilateral,
                     255,
                     cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
                     cv2.THRESH_BINARY_INV,
-                    15,
-                    4,
+                    adaptive_block_size,
+                    adaptive_c,
                 )
                 quad, score, candidates = self.find_best_contour(thresh, image_area)
                 if quad is not None and self._accept_stage_candidate(
@@ -1200,6 +1212,13 @@ class ImageProcessor:
                             "multi_scale_edge": bool(self.algo.multi_scale_edge),
                             "min_area_ratio": float(self.algo.min_area_ratio),
                             "max_area_ratio": float(self.algo.max_area_ratio),
+                            "bg_mask_delta": float(
+                                getattr(self.algo, "bg_mask_delta", 30.0)
+                            ),
+                            "adaptive_block_size": int(
+                                getattr(self.algo, "adaptive_block_size", 15)
+                            ),
+                            "adaptive_c": float(getattr(self.algo, "adaptive_c", 4.0)),
                         },
                     }
                     with open(
@@ -1370,13 +1389,21 @@ class ImageProcessor:
 
         # Denoise
         if self.proc.denoise:
+            denoise_strength = float(self.proc.denoise_strength)
             if len(result.shape) == 2:
-                result = cv2.fastNlMeansDenoising(result, h=self.proc.denoise_strength)
+                # Use positional args for broad OpenCV Python binding compatibility.
+                result = cv2.fastNlMeansDenoising(
+                    result, None, denoise_strength, 7, 21
+                )
             else:
+                # OpenCV 4.13+ rejects some keyword names in this API.
                 result = cv2.fastNlMeansDenoisingColored(
                     result,
-                    h=self.proc.denoise_strength,
-                    hForColorComponents=self.proc.denoise_strength,
+                    None,
+                    denoise_strength,
+                    denoise_strength,
+                    7,
+                    21,
                 )
 
         # Auto contrast (CLAHE or histogram equalization)

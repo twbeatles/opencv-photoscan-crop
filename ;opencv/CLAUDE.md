@@ -189,7 +189,7 @@ pyinstaller photo_cropper.spec --clean
 - CLI merge contract is explicit: defaults -> preset -> config -> cli override.
 - Effective priority is CLI > config > preset.
 - --preset and --config are composable and active.
-- Legacy key compatibility is maintained (dvanced_processing read-compatible), while persisted profile keys normalize to dvanced.
+- Legacy key compatibility is maintained (`advanced_processing` read-compatible), while persisted profile keys normalize to `advanced`.
 - Watch mode now exposes detailed completion and queue telemetry:
   - processing_completed_detailed(filepath, success, status, message, wait_ms)
   - queue_metrics_updated(queue_size, avg_wait_ms)
@@ -207,4 +207,15 @@ pyinstaller photo_cropper.spec --clean
   - `ui/main`, `ui/widgets/settings`, `i18n/catalog`
 - Updated internal imports and packaging metadata (`photo_cropper.spec`) for the new package layout.
 - Runtime behavior target remains unchanged: CLI options, settings schema, output rules, watch/batch contracts.
+
+## 2026-03-03 Manual Boundary Workflow Notes
+
+- Added main-window folder batch edit controls (`폴더 일괄 불러오기`, `← 이전`, `다음 →`, `편집 저장 추출`).
+- Added failed-boundary correction flow:
+  - collect boundary-detection failures after batch completion
+  - prompt and load only failed files for manual contour correction
+- Preview interaction now supports:
+  - contour handle drag editing
+  - direct 4-point manual boundary input when auto contour is unavailable
+- Manual extraction cancel/close path now requests stop without blocking the UI thread.
 

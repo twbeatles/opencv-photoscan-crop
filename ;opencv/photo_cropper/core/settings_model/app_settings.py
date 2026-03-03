@@ -57,6 +57,13 @@ class AlgorithmSettings:
     # Canny edge detection
     canny_min: int = 50
     canny_max: int = 150
+
+    # Background mask threshold offset from corner mean (higher = stricter fg selection)
+    bg_mask_delta: float = 30.0
+
+    # Adaptive threshold fallback tuning
+    adaptive_block_size: int = 15  # Must be odd
+    adaptive_c: float = 4.0
     
     # CLAHE (Contrast Limited Adaptive Histogram Equalization)
     use_clahe: bool = True
@@ -88,6 +95,15 @@ class AlgorithmSettings:
         self.canny_max = max(2, min(255, self.canny_max))
         if self.canny_min >= self.canny_max:
             self.canny_max = self.canny_min + 1
+
+        # Background/adaptive threshold tuning
+        self.bg_mask_delta = max(5.0, min(80.0, float(self.bg_mask_delta)))
+        self.adaptive_block_size = max(3, min(61, int(self.adaptive_block_size)))
+        if self.adaptive_block_size % 2 == 0:
+            self.adaptive_block_size += 1
+            if self.adaptive_block_size > 61:
+                self.adaptive_block_size = 61
+        self.adaptive_c = max(-20.0, min(20.0, float(self.adaptive_c)))
         
         # CLAHE: clip_limit > 0, grid_size >= 2
         self.clahe_clip_limit = max(0.1, min(10.0, self.clahe_clip_limit))

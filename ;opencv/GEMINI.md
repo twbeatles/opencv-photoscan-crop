@@ -254,10 +254,19 @@ pyinstaller photo_cropper.spec --clean
   - Priority: CLI > config > preset
 - New CLI AI controls are available for classification, face detection, and smart enhancement.
 - Profile compatibility model:
-  - Legacy key dvanced_processing remains readable
-  - Save/export path normalizes key to dvanced
+  - Legacy key `advanced_processing` remains readable
+  - Save/export path normalizes key to `advanced`
 - Watch diagnostics and observability were expanded with detailed completion status and queue metrics.
 - Recursive watch mode now scans newly watched subdirectories immediately for pre-existing images.
+
+## 2026-03-03 Update Notes
+
+- Main window now supports folder-level batch contour editing with previous/next navigation and one-shot save extraction.
+- Added failed-boundary correction mode:
+  - Collects files that failed auto boundary detection
+  - Prompts user to switch to failed-files-only manual correction
+- Original preview supports direct 4-point boundary input when auto contour is unavailable.
+- Manual extraction cancellation path is wired to avoid UI freeze on close/cancel.
 - Watch timeout is configurable through watch_mode.max_wait_seconds (default 30.0).
 - Selftest coverage was extended for CLI merge precedence, recursive watch ingestion, and max-wait roundtrip.
 

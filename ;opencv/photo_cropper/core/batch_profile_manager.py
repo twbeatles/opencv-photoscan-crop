@@ -132,6 +132,36 @@ DEFAULT_PROFILES: Dict[str, BatchProfile] = {
             }
         }
     ),
+    "앨범 배경 분리": BatchProfile(
+        name="앨범 배경 분리",
+        description="배경(벽지/무늬) 위 사진 크롭 정확도 강화",
+        settings={
+            "algorithm": {
+                "detection_mode": "balanced",
+                "canny_min": 60,
+                "canny_max": 190,
+                "use_clahe": True,
+                "clahe_clip_limit": 1.8,
+                "multi_scale_edge": True,
+                "use_corner_detection": True,
+                "contour_scoring": "strict",
+                "min_area_ratio": 0.08,
+                "max_area_ratio": 0.88,
+                "bg_mask_delta": 38.0,
+                "adaptive_block_size": 29,
+                "adaptive_c": 9.0
+            },
+            "processing": {
+                "auto_contrast": True,
+                "denoise": True,
+                "denoise_strength": 6
+            },
+            "output": {
+                "output_format": "JPG",
+                "jpg_quality": 95
+            }
+        }
+    ),
     "고해상도 보존": BatchProfile(
         name="고해상도 보존",
         description="최대 품질 유지, 변환 최소화",

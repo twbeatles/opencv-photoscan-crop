@@ -10,10 +10,11 @@ Enhanced UI/UX v7.2
 from PyQt6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, 
     QProgressBar, QPushButton, QTextEdit, QGroupBox,
-    QFrame, QGraphicsOpacityEffect, QSizePolicy
+    QFrame, QGraphicsOpacityEffect, QSizePolicy, QWidget
 )
 from PyQt6.QtCore import Qt, pyqtSignal, QTimer, QPropertyAnimation, QEasingCurve
 from PyQt6.QtGui import QFont, QTextCursor
+import os
 import time
 
 from ...core.batch import BatchProgress, FileResult, ProcessStatus
@@ -108,6 +109,7 @@ class ProgressDialog(QDialog):
     """
     
     cancel_requested = pyqtSignal()
+    open_output_requested = pyqtSignal()
     
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -115,9 +117,12 @@ class ProgressDialog(QDialog):
         self.setWindowTitle("🔄 처리 중...")
         self.setMinimumSize(700, 550)
         self.setModal(True)
+        self.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose, True)
         
         self._is_cancelled = False
         self._is_complete = False
+        self._is_running = True
+        self._output_path = ""
         self._start_time = None
         self._pending_progress = None
         self._log_line_count = 0
@@ -213,6 +218,12 @@ class ProgressDialog(QDialog):
         self.cancel_button.setMinimumHeight(40)
         self.cancel_button.clicked.connect(self._on_cancel)
         button_layout.addWidget(self.cancel_button)
+
+        self.open_output_button = QPushButton("결과 폴더 열기")
+        self.open_output_button.setMinimumHeight(40)
+        self.open_output_button.clicked.connect(self._on_open_output)
+        self.open_output_button.setVisible(False)
+        button_layout.addWidget(self.open_output_button)
         
         self.close_button = QPushButton("닫기")
         self.close_button.setMinimumHeight(40)
@@ -243,6 +254,7 @@ class ProgressDialog(QDialog):
         if progress is None:
             return
         self._pending_progress = None
+        self._is_running = bool(progress.is_running)
 
         # Initialize start time on first update
         if self._start_time is None and progress.is_running:
@@ -265,7 +277,7 @@ class ProgressDialog(QDialog):
         self.stats_widget.update_stats(progress)
         
         # Check if complete
-        if not progress.is_running and progress.processed > 0:
+        if not progress.is_running:
             self._on_complete(progress)
     
     def _update_eta(self, progress: BatchProgress):
@@ -344,20 +356,40 @@ class ProgressDialog(QDialog):
     
     def _on_cancel(self):
         """Handle cancel button click."""
+        if self._is_cancelled:
+            return
         self._is_cancelled = True
         self.cancel_button.setEnabled(False)
         self.cancel_button.setText("⏳ 취소 중...")
+        self.close_button.setVisible(True)
+        self.close_button.setEnabled(True)
+        self.open_output_button.setVisible(False)
         self.cancel_requested.emit()
-    
+
+    def _on_open_output(self):
+        """Open output folder via parent callback."""
+        self.open_output_requested.emit()
+
     def _on_complete(self, progress: BatchProgress):
         """Handle processing completion."""
+        if self._is_complete:
+            return
         self._is_complete = True
+        self._is_running = False
+        self._is_cancelled = bool(progress.is_cancelled)
         
         # Update UI: Switch buttons
         self.cancel_button.setVisible(False)
         self.close_button.setVisible(True)
         self.close_button.setEnabled(True)
         self.close_button.setFocus()
+        can_open_output = (
+            bool(self._output_path)
+            and not progress.is_cancelled
+            and os.path.isdir(self._output_path)
+        )
+        self.open_output_button.setVisible(can_open_output)
+        self.open_output_button.setEnabled(can_open_output)
         
         if progress.is_cancelled:
             self.setWindowTitle("⛔ 처리 중단됨")
@@ -385,11 +417,25 @@ class ProgressDialog(QDialog):
     
     def closeEvent(self, event):
         """Handle close event."""
-        if not self._is_complete and not self._is_cancelled:
-            # Prevent closing while processing
-            event.ignore()
-        else:
+        if self._is_complete or self._is_cancelled or not self._is_running:
             event.accept()
+            return
+
+        # If user closes while running, treat it as cancel request and allow closing.
+        self._on_cancel()
+        event.accept()
+
+    def set_output_path(self, path: str):
+        """Set output path used by 'open folder' action."""
+        self._output_path = (path or "").strip()
+        can_open_output = (
+            bool(self._output_path)
+            and self._is_complete
+            and not self._is_cancelled
+            and os.path.isdir(self._output_path)
+        )
+        self.open_output_button.setVisible(can_open_output)
+        self.open_output_button.setEnabled(can_open_output)
     
     def reset(self):
         """Reset dialog for new processing session."""
@@ -398,6 +444,7 @@ class ProgressDialog(QDialog):
         self._progress_flush_timer.stop()
         self._log_line_count = 0
         self._is_complete = False
+        self._is_running = True
         self._start_time = None
         
         self.setWindowTitle("🔄 처리 중...")
@@ -413,6 +460,8 @@ class ProgressDialog(QDialog):
         self.cancel_button.setVisible(True)
         self.cancel_button.setEnabled(True)
         self.cancel_button.setText("❌ 취소")
+        self.open_output_button.setVisible(False)
+        self.open_output_button.setEnabled(False)
         self.close_button.setVisible(False)
         self.close_button.setEnabled(False)
         
