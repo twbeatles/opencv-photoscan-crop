@@ -97,10 +97,12 @@ class FaceDetector:
     """
     
     # Cascade paths (bundled with OpenCV)
-    FACE_CASCADE = cv2.data.haarcascades + 'haarcascade_frontalface_default.xml'
-    FACE_CASCADE_ALT = cv2.data.haarcascades + 'haarcascade_frontalface_alt2.xml'
-    EYE_CASCADE = cv2.data.haarcascades + 'haarcascade_eye.xml'
-    PROFILE_CASCADE = cv2.data.haarcascades + 'haarcascade_profileface.xml'
+    _cv2_data = getattr(cv2, "data", None)
+    _haarcascades = getattr(_cv2_data, "haarcascades", "")
+    FACE_CASCADE = _haarcascades + 'haarcascade_frontalface_default.xml'
+    FACE_CASCADE_ALT = _haarcascades + 'haarcascade_frontalface_alt2.xml'
+    EYE_CASCADE = _haarcascades + 'haarcascade_eye.xml'
+    PROFILE_CASCADE = _haarcascades + 'haarcascade_profileface.xml'
 
     # DNN model metadata (OpenCV face detector, Caffe)
     DNN_PROTOTXT_URL = (
@@ -598,7 +600,7 @@ class FaceDetector:
         return angle
     
     def _calculate_crop_region(self, faces: List[FaceRect], 
-                               image_size: Tuple[int, int]) -> Tuple[int, int, int, int]:
+                               image_size: Tuple[int, int]) -> Optional[Tuple[int, int, int, int]]:
         """
         Calculate optimal crop region centered on faces.
         

@@ -212,7 +212,7 @@ class Scheduler(QObject):
         now = datetime.now()
         
         if task.schedule_type == ScheduleType.ONCE:
-            if task.time:
+            if task.time is not None and task.time.isValid():
                 next_run = datetime.combine(now.date(), dtime(
                     task.time.hour(), task.time.minute()
                 ))
@@ -223,7 +223,7 @@ class Scheduler(QObject):
                 task.next_run = next_run
             
         elif task.schedule_type == ScheduleType.DAILY:
-            if task.time:
+            if task.time is not None and task.time.isValid():
                 next_run = datetime.combine(now.date(), dtime(
                     task.time.hour(), task.time.minute()
                 ))

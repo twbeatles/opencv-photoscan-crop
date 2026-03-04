@@ -4,9 +4,21 @@
 Modern Toggle Switch Widget.
 """
 
+from typing import Any, Callable
+
 from PyQt6.QtWidgets import QCheckBox
-from PyQt6.QtCore import Qt, QPropertyAnimation, pyqtProperty, QPoint, QEasingCurve, QRectF
+from PyQt6.QtCore import Qt, QPropertyAnimation, QPoint, QEasingCurve, QRectF
+from PyQt6 import QtCore
 from PyQt6.QtGui import QPainter, QColor, QBrush, QFont, QPen
+
+_qt_pyqt_property = getattr(QtCore, "pyqtProperty", None)
+if _qt_pyqt_property is None:
+    def pyqtProperty(_type: Any) -> Callable[[Callable[..., Any]], property]:
+        def _decorator(func: Callable[..., Any]) -> property:
+            return property(func)
+        return _decorator
+else:
+    pyqtProperty = _qt_pyqt_property
 
 class ModernToggleSwitch(QCheckBox):
     """

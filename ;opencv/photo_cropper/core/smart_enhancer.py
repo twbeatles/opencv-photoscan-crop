@@ -580,16 +580,17 @@ class SmartEnhancer:
         
         hsv = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
         saturation = hsv[:, :, 1]
+        saturation_mean = float(np.mean(np.asarray(saturation, dtype=np.float32)))
         
         # Low saturation = B&W or faded
-        if np.mean(saturation) < 20:
+        if saturation_mean < 20:
             return EnhancementPreset.BW_RESTORE
-        elif np.mean(saturation) < 50:
+        elif saturation_mean < 50:
             return EnhancementPreset.OLD_PHOTO
         
         # Check contrast
         gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-        contrast = np.std(gray)
+        contrast = float(np.std(np.asarray(gray, dtype=np.float32)))
         
         if contrast < 40:
             return EnhancementPreset.OLD_PHOTO

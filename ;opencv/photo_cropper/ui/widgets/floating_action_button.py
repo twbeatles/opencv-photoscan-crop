@@ -243,10 +243,10 @@ class QuickActionFAB(QWidget):
     
     def _update_position(self):
         """Update FAB position in parent."""
-        if not self.parent():
+        parent = self.parentWidget()
+        if parent is None:
             return
-        
-        parent = self.parent()
+
         margin = 20
         
         # Position in bottom-right

@@ -14,7 +14,7 @@ import cv2
 import numpy as np
 import logging
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Optional, Tuple, List, Dict
 from enum import Enum
 
@@ -38,11 +38,7 @@ class ClassificationResult:
     face_count: int = 0
     is_grayscale: bool = False
     document_score: float = 0.0
-    details: Dict[str, float] = None
-    
-    def __post_init__(self):
-        if self.details is None:
-            self.details = {}
+    details: Dict[str, float] = field(default_factory=dict)
 
 
 class ImageClassifier:
@@ -57,8 +53,10 @@ class ImageClassifier:
     """
     
     # Cascade classifier paths (bundled with OpenCV)
-    FACE_CASCADE_PATH = cv2.data.haarcascades + 'haarcascade_frontalface_default.xml'
-    EYE_CASCADE_PATH = cv2.data.haarcascades + 'haarcascade_eye.xml'
+    _cv2_data = getattr(cv2, "data", None)
+    _haarcascades = getattr(_cv2_data, "haarcascades", "")
+    FACE_CASCADE_PATH = _haarcascades + 'haarcascade_frontalface_default.xml'
+    EYE_CASCADE_PATH = _haarcascades + 'haarcascade_eye.xml'
     
     # Classification thresholds
     FACE_AREA_THRESHOLD = 0.03  # Face area > 3% of image = likely portrait
@@ -142,7 +140,7 @@ class ImageClassifier:
         image = self._normalize_input_image(image)
         
         # Collect all metrics
-        metrics = {}
+        metrics: Dict[str, float] = {}
         
         # 1. Check if grayscale
         is_grayscale, saturation_mean = self._analyze_color(image)
@@ -205,12 +203,12 @@ class ImageClassifier:
         # Convert to HSV and analyze saturation
         hsv = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
         saturation = hsv[:, :, 1]
-        mean_saturation = np.mean(saturation)
+        mean_saturation = float(np.mean(np.asarray(saturation, dtype=np.float32)))
         
         # Low saturation indicates grayscale
         is_grayscale = mean_saturation < self.GRAYSCALE_SATURATION_THRESHOLD
         
-        return is_grayscale, float(mean_saturation)
+        return is_grayscale, mean_saturation
     
     def _detect_faces(
         self, image: np.ndarray, model: str = "basic"
@@ -246,24 +244,34 @@ class ImageClassifier:
         
         # Detect faces
         min_neighbors = 6 if model == "advanced" else 5
-        faces = self._face_cascade.detectMultiScale(
+        detected_faces = self._face_cascade.detectMultiScale(
             gray,
             scaleFactor=1.1,
             minNeighbors=min_neighbors,
             minSize=(30, 30),
             flags=cv2.CASCADE_SCALE_IMAGE
         )
-        
-        # Scale back coordinates
-        if scale != 1.0 and len(faces) > 0:
-            faces = [(int(x/scale), int(y/scale), int(w/scale), int(h/scale)) 
-                    for (x, y, w, h) in faces]
-        else:
-            faces = [tuple(f) for f in faces]
-        
+
+        faces: List[Tuple[int, int, int, int]] = []
+        for face in detected_faces:
+            coords = np.asarray(face).reshape(-1)
+            if coords.size < 4:
+                continue
+            x, y, w_face, h_face = [int(v) for v in coords[:4]]
+            if scale != 1.0:
+                x = int(x / scale)
+                y = int(y / scale)
+                w_face = int(w_face / scale)
+                h_face = int(h_face / scale)
+            faces.append((x, y, w_face, h_face))
+
         return faces
     
-    def _calculate_face_area_ratio(self, faces: List[Tuple], image_shape: Tuple) -> float:
+    def _calculate_face_area_ratio(
+        self,
+        faces: List[Tuple[int, int, int, int]],
+        image_shape: Tuple[int, ...],
+    ) -> float:
         """
         Calculate total face area as ratio of image area.
         
@@ -338,7 +346,10 @@ class ImageClassifier:
             h_lines = 0
             v_lines = 0
             for line in lines:
-                x1, y1, x2, y2 = line[0]
+                line_points = np.asarray(line).reshape(-1)
+                if line_points.size < 4:
+                    continue
+                x1, y1, x2, y2 = [float(v) for v in line_points[:4]]
                 angle = abs(np.arctan2(y2-y1, x2-x1) * 180 / np.pi)
                 if angle < 15 or angle > 165:
                     h_lines += 1
@@ -376,16 +387,24 @@ class ImageClassifier:
         lab = cv2.cvtColor(small, cv2.COLOR_BGR2LAB)
         
         # Calculate color variance
-        color_std = np.std(lab, axis=(0, 1))
-        color_variety = np.mean(color_std) / 50  # Normalize
+        color_std = np.std(np.asarray(lab, dtype=np.float32), axis=(0, 1))
+        color_variety = float(np.mean(np.asarray(color_std, dtype=np.float32)) / 50.0)
         
         # Check for sky-like regions (blue hue, high brightness)
         hsv = cv2.cvtColor(small, cv2.COLOR_BGR2HSV)
-        sky_mask = cv2.inRange(hsv, (90, 30, 100), (130, 255, 255))
+        sky_mask = cv2.inRange(
+            hsv,
+            np.array([90, 30, 100], dtype=np.uint8),
+            np.array([130, 255, 255], dtype=np.uint8),
+        )
         sky_ratio = np.count_nonzero(sky_mask) / sky_mask.size
         
         # Check for green regions (nature)
-        green_mask = cv2.inRange(hsv, (35, 40, 40), (85, 255, 255))
+        green_mask = cv2.inRange(
+            hsv,
+            np.array([35, 40, 40], dtype=np.uint8),
+            np.array([85, 255, 255], dtype=np.uint8),
+        )
         green_ratio = np.count_nonzero(green_mask) / green_mask.size
         
         # Combine scores
@@ -425,7 +444,7 @@ class ImageClassifier:
         Returns:
             Tuple of (category, confidence)
         """
-        scores = {}
+        scores: Dict[ImageCategory, float] = {}
         
         # Portrait scoring
         if face_count > 0:
@@ -460,7 +479,7 @@ class ImageClassifier:
         scores[ImageCategory.OTHER] = 0.3
         
         # Determine winner
-        best_category = max(scores, key=scores.get)
+        best_category = max(scores, key=lambda category: scores[category])
         confidence = scores[best_category]
         
         # If confidence is too low, default to OTHER
@@ -512,7 +531,7 @@ class ImageClassifier:
             ImageCategory.OTHER: 0.28,
         }
 
-        best_category = max(scores, key=scores.get)
+        best_category = max(scores, key=lambda category: scores[category])
         confidence = float(scores[best_category])
 
         if confidence < 0.46:

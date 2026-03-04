@@ -104,7 +104,12 @@ a = Analysis(
         'photo_cropper.core.batch',
         'photo_cropper.core.image',
         'photo_cropper.core.settings_model.app_settings',
+        'photo_cropper.core.watch_mode',
+        'photo_cropper.core.manual_extract',
+        'photo_cropper.core.batch.session_service',
+        'photo_cropper.core.image.save_io',
         'photo_cropper.ui.main',
+        'photo_cropper.ui.main.dialog_actions',
         'photo_cropper.ui.widgets.settings',
         'photo_cropper.i18n.catalog',
         'PyQt6.QtCore',
@@ -227,4 +232,11 @@ Tips for further size reduction:
     - Main-window batch edit flow and manual boundary fallback UI were added.
     - No additional third-party dependencies were introduced.
     - Existing hidden imports remain sufficient for frozen builds.
+
+2026-03-04 note:
+    - Hidden imports were explicitly extended for recent split modules used by
+      manual extract/watch mode/session I/O paths to keep one-file discovery
+      stable across PyInstaller environments.
+    - Type-check-only override signature updates (QEvent Optional annotations)
+      do not change runtime packaging requirements.
 """

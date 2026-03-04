@@ -31,6 +31,14 @@
 - **중단 응답성 개선**: 멀티스레드 배치 중 취소 요청 시 pending 작업 취소를 더 빠르게 반영
 - **GPU 설정 연결 보강**: `PerformanceSettings.use_gpu`가 고급 처리기 초기화에 반영
 
+### 🛡️ 처리 정합성 업데이트 (2026-03)
+- **원근 보정 기본값 ON**: `advanced.perspective_correct=True`가 기본 동작이며, OFF 시 4점의 축정렬 bounding box 크롭으로 동작
+- **수동 추출/배치 파이프라인 일치**: 수동 “편집 저장 추출”도 배치와 동일한 후처리/분류 라우팅/네이밍 규칙을 재사용
+- **저장 경로 강건성 강화**: 확장자 누락/오염 경로에서도 `output_format` 기반 인코더로 저장 fallback
+- **메타데이터 보존(best-effort)**: EXIF/ICC 복사 실패 시 경고만 남기고 저장 자체는 성공 처리
+- **멀티포토 하위 폴더 저장**: `separate_output_folders=true` 시 `<원본파일명>_photos/` 구조로 저장
+- **멀티포토 dedup 민감도 연동**: `merge_distance`가 중복 억제 단계에 반영
+
 ### 🔥 v8.5 핵심 기능
 - **다중 사진 자동 감지**: 한 스캔에서 여러 사진을 자동으로 분리
 - **워터마크 추가**: 텍스트/이미지 워터마크 지원
@@ -95,6 +103,9 @@ python run.py
 ### CLI 사용법
 
 ```bash
+# 저장소 루트에서 CLI 실행
+cd ";opencv"
+
 # 기본 사용
 python -m photo_cropper.cli --input ./scans --output ./cropped
 
@@ -114,6 +125,12 @@ python -m photo_cropper.cli -i ./scans -o ./cropped --resize instagram_square
 
 # 멀티포토 감지
 python -m photo_cropper.cli -i ./scans -o ./cropped --multi-photo
+
+# 멀티포토 세부 옵션
+python -m photo_cropper.cli -i ./scans -o ./cropped --multi-photo --multi-photo-merge-distance 80 --multi-photo-separate-folders
+
+# 메타데이터 보존 + 원근 보정 OFF
+python -m photo_cropper.cli -i ./scans -o ./cropped --preserve-metadata --no-perspective-correct
 
 # 병렬 처리 (스레드 수 지정)
 python -m photo_cropper.cli -i ./scans -o ./cropped --jobs 6
@@ -172,22 +189,25 @@ python -m photo_cropper.cli --help
 - **코너 검출**: 추가적인 정확도 향상
 - **검출 모드 (fast/balanced/accurate)**: 속도/정확도 트레이드오프 프리셋
 - **검출 디버그 저장**: `_debug` 폴더에 엣지/마스크/후보 오버레이/`meta.json` 저장 (실패 원인 분석용)
+- **원근 보정 기본값**: 기본 ON, OFF 시 원근 warp 대신 축정렬 bbox 크롭
 
 ### 출력 설정
 - **출력 포맷**: JPG, PNG, WEBP
 - **품질 조절**: JPG/WEBP 품질 (1-100), PNG 압축 (0-9)
+- **메타데이터 보존**: EXIF/ICC best-effort 복사 (실패 시 저장은 계속 진행)
 - **그레이스케일/노이즈 제거/선명도 향상**
 - **자동 분류 저장(선택)**: 분류 신뢰도 조건 충족 시 카테고리 하위 폴더에 저장
 
 > 참고: 파일명 규칙/타임스탬프를 사용하는 경우 `skip processed` 판별은 출력 파일명 기준입니다.
 > 파일명에 시간이 포함되면 이전 처리본을 완전히 탐지하지 못할 수 있습니다.
 > 자동 분류 하위 폴더(`인물/풍경/문서/흑백/기타`)는 `skip processed` 탐지 대상에 포함됩니다.
+> 멀티포토 하위 폴더(`*_photos`) 사용 시에도 `skip processed` 탐지가 동작합니다.
 > 다만 파일명 규칙/타임스탬프 조합에서는 중복 판별 한계가 남을 수 있으므로 대량 재처리 전 샘플 검증을 권장합니다.
 
 ## 🧪 안정성 체크 포인트
 
-- **문법 검증**: `python -m py_compile photo_cropper/core/*.py photo_cropper/ui/*.py photo_cropper/ui/widgets/*.py`
-- **CLI 스모크 테스트**: `python -m photo_cropper.cli -i ./scans -o ./cropped --multi-photo --max-size 1920 --skip-processed`
+- **문법 검증**: `cd ";opencv" && python -m compileall -q photo_cropper`
+- **CLI 스모크 테스트**: `cd ";opencv" && python -m photo_cropper.cli -i ./scans -o ./cropped --multi-photo --multi-photo-separate-folders --preserve-metadata --no-perspective-correct --skip-processed`
 - **워치 모드 검증**: GUI에서 Watch Mode 시작 후 신규 파일 투입 시 배치와 동일한 출력(워터마크/리사이즈/분류 폴더) 확인
 - **유니코드 경로 검증**: 한글 경로의 워터마크 이미지 파일을 지정해 저장 성공 여부 확인
 - **취소 검증**: 멀티스레드 배치 실행 중 중단 요청 시 진행률 및 로그가 빠르게 취소 상태로 전환되는지 확인
@@ -199,9 +219,9 @@ photo_cropper/
 ├── main.py                  # 진입점
 ├── cli.py                   # CLI 인터페이스 (v8.5)
 ├── core/
-│   ├── image_processor.py   # 핵심 이미지 처리
-│   ├── batch_processor.py   # 배치 처리
-│   ├── settings.py          # 설정 관리
+│   ├── image/processor.py   # 핵심 이미지 처리
+│   ├── batch/processor.py   # 배치 처리
+│   ├── settings_model/app_settings.py          # 설정 관리
 │   ├── multi_photo_detector.py  # 다중 사진 감지 (v8.5)
 │   ├── watermark_processor.py   # 워터마크 (v8.5)
 │   ├── resize_processor.py      # 리사이즈 (v8.5)
@@ -209,15 +229,15 @@ photo_cropper/
 │   ├── scheduler.py             # 스케줄러 (v8.5)
 │   └── history_manager.py       # 히스토리 관리 (v8.5)
 ├── ui/
-│   ├── main_window.py
+│   ├── main/window.py
 │   └── widgets/
-│       ├── settings_panel.py
+│       ├── settings/panel.py
 │       ├── preview_widget.py
 │       ├── thumbnail_grid_widget.py  # 썸네일 그리드 (v8.5)
 │       ├── fullscreen_viewer.py      # 전체화면 뷰어 (v8.5)
 │       └── floating_action_button.py # FAB (v8.5)
 ├── i18n/                    # 다국어 지원 (v8.5)
-│   └── translations.py
+│   └── catalog/manager.py
 └── utils/
     └── file_helpers.py
 ```
@@ -332,3 +352,9 @@ MIT License
 - 회귀 테스트가 보강되었습니다(수동 크롭 import, CLI 병합 우선순위, 재귀 감시 유입, max wait roundtrip).
 
 > 참고: 전체 처리 selftest는 OpenCV(cv2) 설치가 필요합니다.
+
+## 2026-03-04 정합성 점검 메모
+
+- `pyright --project pyrightconfig.json` 기준 0 errors / 0 warnings를 확인했습니다.
+- `QWidget` 오버라이드 이벤트 시그니처(`dragEnterEvent`, `dropEvent`, `keyPressEvent`)를 PyQt6 스텁과 일치하도록 `Optional[...]`로 정렬했습니다.
+- PyInstaller spec hidden import에 `watch_mode`, `manual_extract`, `session_service`, `save_io`, `dialog_actions`를 명시해 패키징 안정성을 보강했습니다.

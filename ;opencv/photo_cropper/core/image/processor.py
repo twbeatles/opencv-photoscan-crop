@@ -32,6 +32,11 @@ from ..settings_model import (
     DebugSettings,
 )
 from ..advanced import AdvancedImageProcessor, GPUAccelerator
+from .save_io import (
+    resolve_save_codec as _resolve_save_codec_impl,
+    copy_metadata_best_effort as _copy_metadata_best_effort_impl,
+    save_image_unicode as _save_image_unicode_impl,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -1084,7 +1089,7 @@ class ImageProcessor:
                 corners = cv2.cornerHarris(
                     gray, self.algo.corner_block_size, 3, self.algo.corner_k
                 )
-                corners = cv2.dilate(corners, None)
+                corners = cv2.dilate(corners, np.ones((3, 3), dtype=np.uint8))
                 threshold = 0.01 * corners.max()
                 corner_mask = np.zeros_like(gray)
                 corner_mask[corners > threshold] = 255
@@ -1126,48 +1131,89 @@ class ImageProcessor:
 
             # Scale quad back to original size
             rect = self.order_points(best_quad.reshape(4, 2) * ratio)
-            (tl, tr, br, bl) = rect
-
-            # Calculate output dimensions
-            width_a = np.sqrt(((br[0] - bl[0]) ** 2) + ((br[1] - bl[1]) ** 2))
-            width_b = np.sqrt(((tr[0] - tl[0]) ** 2) + ((tr[1] - tl[1]) ** 2))
-            max_width = max(int(width_a), int(width_b))
-
-            height_a = np.sqrt(((tr[0] - br[0]) ** 2) + ((tr[1] - br[1]) ** 2))
-            height_b = np.sqrt(((tl[0] - bl[0]) ** 2) + ((tl[1] - bl[1]) ** 2))
-            max_height = max(int(height_a), int(height_b))
-
-            if max_width <= 0 or max_height <= 0:
-                return CropResult(
-                    False,
-                    message="Detected region has invalid size.",
-                    original_size=original_size,
-                    confidence=float(best_score),
-                    debug_dir=debug_run_dir,
-                )
-
-            if max_width < 50 or max_height < 50:
-                return CropResult(
-                    False,
-                    message="Detected region is too small.",
-                    original_size=original_size,
-                    confidence=float(best_score),
-                    debug_dir=debug_run_dir,
-                )
-
-            # Perspective transform
-            dst = np.array(
-                [
-                    [0, 0],
-                    [max_width - 1, 0],
-                    [max_width - 1, max_height - 1],
-                    [0, max_height - 1],
-                ],
-                dtype="float32",
+            crop_mode = (
+                "perspective"
+                if bool(getattr(self.advanced, "perspective_correct", True))
+                else "axis_aligned"
             )
 
-            M = cv2.getPerspectiveTransform(rect, dst)
-            warped = cv2.warpPerspective(orig, M, (max_width, max_height))
+            if crop_mode == "perspective":
+                (tl, tr, br, bl) = rect
+
+                # Calculate output dimensions
+                width_a = np.sqrt(((br[0] - bl[0]) ** 2) + ((br[1] - bl[1]) ** 2))
+                width_b = np.sqrt(((tr[0] - tl[0]) ** 2) + ((tr[1] - tl[1]) ** 2))
+                max_width = max(int(width_a), int(width_b))
+
+                height_a = np.sqrt(((tr[0] - br[0]) ** 2) + ((tr[1] - br[1]) ** 2))
+                height_b = np.sqrt(((tl[0] - bl[0]) ** 2) + ((tl[1] - bl[1]) ** 2))
+                max_height = max(int(height_a), int(height_b))
+
+                if max_width <= 0 or max_height <= 0:
+                    return CropResult(
+                        False,
+                        message="Detected region has invalid size.",
+                        original_size=original_size,
+                        confidence=float(best_score),
+                        debug_dir=debug_run_dir,
+                    )
+
+                if max_width < 50 or max_height < 50:
+                    return CropResult(
+                        False,
+                        message="Detected region is too small.",
+                        original_size=original_size,
+                        confidence=float(best_score),
+                        debug_dir=debug_run_dir,
+                    )
+
+                # Perspective transform
+                dst = np.array(
+                    [
+                        [0, 0],
+                        [max_width - 1, 0],
+                        [max_width - 1, max_height - 1],
+                        [0, max_height - 1],
+                    ],
+                    dtype="float32",
+                )
+
+                M = cv2.getPerspectiveTransform(rect, dst)
+                warped = cv2.warpPerspective(orig, M, (max_width, max_height))
+            else:
+                x_min = int(np.floor(float(np.min(rect[:, 0]))))
+                y_min = int(np.floor(float(np.min(rect[:, 1]))))
+                x_max = int(np.ceil(float(np.max(rect[:, 0]))))
+                y_max = int(np.ceil(float(np.max(rect[:, 1]))))
+
+                img_h, img_w = orig.shape[:2]
+                x_min = max(0, min(x_min, max(0, img_w - 1)))
+                y_min = max(0, min(y_min, max(0, img_h - 1)))
+                x_max = max(x_min + 1, min(x_max, img_w))
+                y_max = max(y_min + 1, min(y_max, img_h))
+
+                max_width = int(x_max - x_min)
+                max_height = int(y_max - y_min)
+
+                if max_width <= 0 or max_height <= 0:
+                    return CropResult(
+                        False,
+                        message="Detected region has invalid size.",
+                        original_size=original_size,
+                        confidence=float(best_score),
+                        debug_dir=debug_run_dir,
+                    )
+
+                if max_width < 50 or max_height < 50:
+                    return CropResult(
+                        False,
+                        message="Detected region is too small.",
+                        original_size=original_size,
+                        confidence=float(best_score),
+                        debug_dir=debug_run_dir,
+                    )
+
+                warped = orig[y_min:y_max, x_min:x_max].copy()
 
             # Apply post-processing
             warped = self._apply_post_processing(warped)
@@ -1219,6 +1265,10 @@ class ImageProcessor:
                                 getattr(self.algo, "adaptive_block_size", 15)
                             ),
                             "adaptive_c": float(getattr(self.algo, "adaptive_c", 4.0)),
+                            "perspective_correct": bool(
+                                getattr(self.advanced, "perspective_correct", True)
+                            ),
+                            "crop_mode": crop_mode,
                         },
                     }
                     with open(
@@ -1470,6 +1520,19 @@ class ImageProcessor:
         return result
 
     @staticmethod
+    def _resolve_save_codec(
+        output_path: str,
+        output_format: str,
+    ) -> Tuple[str, str]:
+        """Resolve encoder extension and format with extension fallback."""
+        return _resolve_save_codec_impl(output_path, output_format)
+
+    @staticmethod
+    def _copy_metadata_best_effort(source_path: str, output_path: str) -> None:
+        """Best-effort EXIF/ICC metadata copy via Pillow."""
+        _copy_metadata_best_effort_impl(source_path, output_path)
+
+    @staticmethod
     def save_image(
         image: np.ndarray,
         output_path: str,
@@ -1477,6 +1540,8 @@ class ImageProcessor:
         jpg_quality: int = 95,
         png_compression: int = 6,
         webp_quality: int = 90,
+        source_path: Optional[str] = None,
+        preserve_metadata: bool = False,
     ) -> Tuple[bool, str, float]:
         """
         Save image to file with Unicode path support.
@@ -1488,38 +1553,22 @@ class ImageProcessor:
             jpg_quality: JPEG quality (1-100)
             png_compression: PNG compression (0-9)
             webp_quality: WebP quality (1-100)
+            source_path: Source image path for metadata copy
+            preserve_metadata: Best-effort EXIF/ICC preservation
 
         Returns:
             Tuple of (success, message, file_size_kb)
         """
-        try:
-            fmt = output_format.upper()
-
-            if fmt == "JPG" or fmt == "JPEG":
-                encode_params = [cv2.IMWRITE_JPEG_QUALITY, jpg_quality]
-            elif fmt == "PNG":
-                encode_params = [cv2.IMWRITE_PNG_COMPRESSION, png_compression]
-            elif fmt == "WEBP":
-                encode_params = [cv2.IMWRITE_WEBP_QUALITY, webp_quality]
-            else:
-                encode_params = []
-
-            extension = os.path.splitext(output_path)[1]
-            result, encoded_img = cv2.imencode(extension, image, encode_params)
-
-            if result:
-                # Handle Unicode paths
-                with open(output_path, mode="wb") as f:
-                    encoded_img.tofile(f)
-
-                file_size = os.path.getsize(output_path) / 1024  # KB
-                return True, "저장 완료", file_size
-            else:
-                return False, "인코딩 실패", 0.0
-
-        except Exception as e:
-            logger.error(f"Image save error: {e}")
-            return False, f"저장 오류: {str(e)}", 0.0
+        return _save_image_unicode_impl(
+            image=image,
+            output_path=output_path,
+            output_format=output_format,
+            jpg_quality=jpg_quality,
+            png_compression=png_compression,
+            webp_quality=webp_quality,
+            source_path=source_path,
+            preserve_metadata=preserve_metadata,
+        )
 
     @staticmethod
     def get_image_info(image_path: str) -> Optional[Tuple[int, int, int]]:

@@ -31,6 +31,14 @@ A Python application that automatically detects and accurately crops scanned pho
 - **Faster Cancellation Response**: Multithreaded batch cancellation now reacts faster by cancelling pending tasks
 - **GPU Setting Wiring**: `PerformanceSettings.use_gpu` is now propagated to advanced processor initialization
 
+### 🛡️ Processing Consistency Update (2026-03)
+- **Perspective default ON**: `advanced.perspective_correct=True` by default; OFF now uses axis-aligned bounding-box crop from detected 4 points
+- **Manual extract parity with batch**: manual "Save Edited Extract" now reuses the same post-processing/routing/naming policy as batch
+- **Save fallback hardening**: unsupported/missing output extension now falls back to encoder selected by `output_format`
+- **Metadata preserve (best-effort)**: EXIF/ICC copy failures emit warnings only; image save remains successful
+- **Multi-photo per-file subfolder**: `separate_output_folders=true` writes outputs under `<input_filename>_photos/`
+- **merge_distance wired into dedup**: duplicate suppression sensitivity now follows `merge_distance`
+
 ### 🌐 Multi-Language Support
 - Automatic system locale detection
 - 5 languages: English, Korean, Japanese, Chinese, Spanish
@@ -99,6 +107,9 @@ python run.py
 ### CLI Usage (v8.5+)
 
 ```bash
+# Run CLI from repository root
+cd ";opencv"
+
 # Basic usage
 python -m photo_cropper.cli --input ./scans --output ./cropped
 
@@ -110,6 +121,12 @@ python -m photo_cropper.cli -i ./scans -o ./cropped --watermark "© 2026"
 
 # With resize
 python -m photo_cropper.cli -i ./scans -o ./cropped --max-size 1920
+
+# Multi-photo detailed options
+python -m photo_cropper.cli -i ./scans -o ./cropped --multi-photo --multi-photo-merge-distance 80 --multi-photo-separate-folders
+
+# Preserve metadata + disable perspective warp
+python -m photo_cropper.cli -i ./scans -o ./cropped --preserve-metadata --no-perspective-correct
 
 # Show options
 python -m photo_cropper.cli --help
@@ -162,21 +179,24 @@ python -m photo_cropper.cli --help
 - **Corner Detection**: Additional accuracy improvement
 - **Detection Mode (fast/balanced/accurate)**: Presets to trade speed vs accuracy (enables stronger fallbacks in accurate mode)
 - **Detection Debug Save**: Save stage images/overlays/`meta.json` under `_debug` for failure analysis
+- **Perspective default**: ON by default, OFF switches to axis-aligned bbox crop
 
 ### Output Settings
 - **Output Format**: JPG, PNG, WEBP
 - **Quality Control**: JPG/WEBP quality (1-100), PNG compression (0-9)
+- **Metadata Preserve**: EXIF/ICC best-effort copy (save still succeeds on metadata failure)
 - **Grayscale/Denoise/Sharpening**
 - **Auto Classification Output (optional)**: Save into category subfolders when confidence threshold is met
 
 > Note: `skip processed` is filename-based.
 > Classification subfolders (`Portrait/Landscape/Document/BW/Other`) are now included in `skip processed` probing.
+> Multi-photo subfolders (`*_photos`) are also included in `skip processed` probing.
 > If naming rules/timestamps are enabled, run a small sample validation before large reruns.
 
 ## 🧪 Stability Checklist
 
-- **Syntax validation**: `python -m py_compile photo_cropper/core/*.py photo_cropper/ui/*.py photo_cropper/ui/widgets/*.py`
-- **CLI smoke test**: `python -m photo_cropper.cli -i ./scans -o ./cropped --multi-photo --max-size 1920 --skip-processed`
+- **Syntax validation**: `cd ";opencv" && python -m compileall -q photo_cropper`
+- **CLI smoke test**: `cd ";opencv" && python -m photo_cropper.cli -i ./scans -o ./cropped --multi-photo --multi-photo-separate-folders --preserve-metadata --no-perspective-correct --skip-processed`
 - **Watch mode parity**: verify new files in Watch Mode go through same resize/watermark/classification behavior as batch mode
 - **Unicode path test**: use a watermark image in a non-ASCII path and verify output succeeds
 - **Cancel responsiveness**: during multithreaded batch, request stop and verify quick transition to cancelled state
@@ -188,9 +208,9 @@ photo_cropper/
 ├── main.py                  # Entry point
 ├── cli.py                   # CLI interface (v8.5)
 ├── core/
-│   ├── image_processor.py   # Core image processing
-│   ├── batch_processor.py   # Batch processing
-│   ├── settings.py          # Settings management
+│   ├── image/processor.py   # Core image processing
+│   ├── batch/processor.py   # Batch processing
+│   ├── settings_model/app_settings.py          # Settings dataclasses/manager
 │   ├── multi_photo_detector.py  # Multi-photo detection (v8.5)
 │   ├── watermark_processor.py   # Watermark (v8.5)
 │   ├── resize_processor.py      # Resize (v8.5)
@@ -198,15 +218,15 @@ photo_cropper/
 │   ├── scheduler.py             # Scheduler (v8.5)
 │   └── history_manager.py       # History management (v8.5)
 ├── ui/
-│   ├── main_window.py
+│   ├── main/window.py
 │   └── widgets/
-│       ├── settings_panel.py
+│       ├── settings/panel.py
 │       ├── preview_widget.py
 │       ├── thumbnail_grid_widget.py  # Thumbnail grid (v8.5)
 │       ├── fullscreen_viewer.py      # Fullscreen viewer (v8.5)
 │       └── floating_action_button.py # FAB (v8.5)
 ├── i18n/                    # Internationalization (v8.5)
-│   └── translations.py
+│   └── catalog/manager.py
 └── utils/
     └── file_helpers.py
 ```
@@ -305,3 +325,10 @@ Please report bugs or feature suggestions in Issues.
 - Self-tests were added for import smoke, CLI merge precedence, recursive watch ingestion, and watch max-wait roundtrip.
 
 > Note: full processing self-tests require OpenCV (cv2).
+
+## 2026-03-04 Consistency Check Notes
+
+- Verified `pyright --project pyrightconfig.json` with 0 errors / 0 warnings.
+- Aligned `QWidget` override event signatures (`dragEnterEvent`, `dropEvent`, `keyPressEvent`) to PyQt6 stubs using `Optional[...]`.
+- Strengthened PyInstaller hidden imports for split modules:
+  `watch_mode`, `manual_extract`, `session_service`, `save_io`, `dialog_actions`.

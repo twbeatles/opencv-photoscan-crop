@@ -139,6 +139,22 @@ class ResizeProcessor:
             new_w, new_h = self._calculate_dimensions(
                 original_w, original_h, settings
             )
+
+            effective_mode = settings.mode
+            if (
+                settings.mode == ResizeMode.FILL
+                and not settings.upscale_allowed
+                and (settings.width > original_w or settings.height > original_h)
+            ):
+                # Cannot satisfy FILL target without upscaling; degrade to FIT.
+                effective_mode = ResizeMode.FIT
+                fit_width = settings.width if settings.width > 0 else original_w
+                fit_height = settings.height if settings.height > 0 else original_h
+                ratio_w = fit_width / original_w
+                ratio_h = fit_height / original_h
+                ratio = min(ratio_w, ratio_h, 1.0)
+                new_w = max(1, int(original_w * ratio))
+                new_h = max(1, int(original_h * ratio))
             
             # Check if upscaling is needed and allowed
             if not settings.upscale_allowed:
@@ -163,19 +179,25 @@ class ResizeProcessor:
             resized = cv2.resize(image, (new_w, new_h), interpolation=interpolation)
             
             # Apply aspect ratio crop if mode is FILL
-            if settings.mode == ResizeMode.FILL:
-                resized = self._crop_to_aspect(resized, settings.width, settings.height)
-            
-            scale_x = new_w / original_w
-            scale_y = new_h / original_h
+            if effective_mode == ResizeMode.FILL:
+                target_w = settings.width if settings.width > 0 else resized.shape[1]
+                target_h = settings.height if settings.height > 0 else resized.shape[0]
+                # Never request crop region larger than resized image.
+                target_w = min(target_w, resized.shape[1])
+                target_h = min(target_h, resized.shape[0])
+                resized = self._crop_to_aspect(resized, target_w, target_h)
+
+            final_h, final_w = resized.shape[:2]
+            scale_x = final_w / original_w
+            scale_y = final_h / original_h
             
             return ResizeResult(
                 success=True,
                 image=resized,
                 original_size=(original_w, original_h),
-                new_size=(new_w, new_h),
+                new_size=(final_w, final_h),
                 scale_factor=(scale_x, scale_y),
-                message=f"Resized from {original_w}x{original_h} to {new_w}x{new_h}"
+                message=f"Resized from {original_w}x{original_h} to {final_w}x{final_h}"
             )
             
         except Exception as e:
@@ -259,15 +281,20 @@ class ResizeProcessor:
     ) -> np.ndarray:
         """Crop image to target dimensions (center crop)."""
         h, w = image.shape[:2]
+
+        target_w = max(1, min(int(target_w), w))
+        target_h = max(1, min(int(target_h), h))
         
         if w == target_w and h == target_h:
             return image
         
         # Calculate crop region
-        start_x = (w - target_w) // 2
-        start_y = (h - target_h) // 2
-        
-        return image[start_y:start_y+target_h, start_x:start_x+target_w]
+        start_x = max(0, (w - target_w) // 2)
+        start_y = max(0, (h - target_h) // 2)
+        end_x = min(w, start_x + target_w)
+        end_y = min(h, start_y + target_h)
+
+        return image[start_y:end_y, start_x:end_x]
     
     def resize_to_preset(
         self,

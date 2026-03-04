@@ -16,7 +16,7 @@ Provides advanced CV algorithms:
 import cv2
 import numpy as np
 import logging
-from typing import Optional, Tuple, List
+from typing import Any, Optional, Tuple, List, cast
 from dataclasses import dataclass
 from enum import Enum
 
@@ -29,8 +29,8 @@ class GPUAccelerator:
     Falls back to CPU if CUDA is not available.
     """
     
-    _instance = None
-    _cuda_available = None
+    _instance: Optional["GPUAccelerator"] = None
+    _cuda_available: bool = False
     
     def __new__(cls):
         if cls._instance is None:
@@ -54,17 +54,20 @@ class GPUAccelerator:
     @property
     def is_available(self) -> bool:
         """Check if CUDA is available."""
-        return self._cuda_available
+        return bool(self._cuda_available)
     
-    def upload(self, image: np.ndarray) -> 'cv2.cuda.GpuMat':
+    def upload(self, image: np.ndarray) -> Any:
         """Upload image to GPU memory."""
         if not self._cuda_available:
             raise RuntimeError("CUDA not available")
-        gpu_mat = cv2.cuda_GpuMat()
+        gpu_mat_cls = getattr(cv2, "cuda_GpuMat", None)
+        if gpu_mat_cls is None:
+            raise RuntimeError("CUDA GpuMat API is not available")
+        gpu_mat = gpu_mat_cls()
         gpu_mat.upload(image)
         return gpu_mat
     
-    def download(self, gpu_mat: 'cv2.cuda.GpuMat') -> np.ndarray:
+    def download(self, gpu_mat: Any) -> np.ndarray:
         """Download image from GPU memory."""
         return gpu_mat.download()
     
@@ -100,7 +103,11 @@ class GPUAccelerator:
         
         try:
             gpu_src = self.upload(image)
-            gpu_dst = cv2.cuda.resize(gpu_src, size)
+            cuda_module = getattr(cv2, "cuda", None)
+            resize_fn = getattr(cuda_module, "resize", None) if cuda_module else None
+            if resize_fn is None:
+                return cv2.resize(image, size, interpolation=cv2.INTER_LINEAR)
+            gpu_dst = resize_fn(gpu_src, size)
             return self.download(gpu_dst)
         except Exception as e:
             logger.warning(f"GPU resize failed, falling back to CPU: {e}")
@@ -135,7 +142,7 @@ class AdvancedImageProcessor:
             use_gpu: Whether to use GPU acceleration when available
         """
         self._use_gpu = use_gpu
-        self._gpu = GPUAccelerator() if use_gpu else None
+        self._gpu: Optional[GPUAccelerator] = GPUAccelerator() if use_gpu else None
         
         # Performance: Cached CLAHE objects
         self._clahe_default = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
@@ -271,7 +278,10 @@ class AdvancedImageProcessor:
         weights = []  # Line length as weight
         
         for line in lines:
-            x1, y1, x2, y2 = line[0]
+            line_points = np.asarray(line).reshape(-1)
+            if line_points.size < 4:
+                continue
+            x1, y1, x2, y2 = [float(v) for v in line_points[:4]]
             length = np.sqrt((x2 - x1) ** 2 + (y2 - y1) ** 2)
             
             if x2 - x1 == 0:
@@ -349,6 +359,56 @@ class AdvancedImageProcessor:
         rect[3] = pts[np.argmax(diff)]   # Bottom-left
         
         return rect
+
+    @staticmethod
+    def _validate_perspective_points(
+        points: np.ndarray,
+        image_shape: Tuple[int, int],
+    ) -> Tuple[bool, str]:
+        """Validate 4-point perspective geometry."""
+        if points is None:
+            return False, "원근 교정할 포인트가 없습니다"
+
+        try:
+            pts = np.array(points, dtype=np.float32).reshape((4, 2))
+        except Exception:
+            return False, "원근 교정 포인트 형식이 올바르지 않습니다"
+
+        if not np.all(np.isfinite(pts)):
+            return False, "원근 교정 포인트에 유효하지 않은 값이 포함되어 있습니다"
+
+        h, w = image_shape[:2]
+        if h <= 0 or w <= 0:
+            return False, "이미지 크기가 올바르지 않습니다"
+
+        # Duplicate/near-duplicate points.
+        for i in range(4):
+            for j in range(i + 1, 4):
+                if float(np.linalg.norm(pts[i] - pts[j])) < 2.0:
+                    return False, "원근 교정 포인트가 서로 너무 가깝거나 중복됩니다"
+
+        # Convexity check.
+        contour = pts.reshape((-1, 1, 2)).astype(np.float32)
+        if not bool(cv2.isContourConvex(contour)):
+            return False, "원근 교정 포인트가 비볼록 사각형입니다"
+
+        # Degenerate polygon area check.
+        area = float(cv2.contourArea(contour))
+        min_area = max(64.0, (float(w) * float(h)) * 0.0002)
+        if area < min_area:
+            return False, "원근 교정 영역이 너무 작거나 퇴화되었습니다"
+
+        # Minimum side length check.
+        ordered = AdvancedImageProcessor.order_points(pts)
+        side_lengths = []
+        for i in range(4):
+            p1 = ordered[i]
+            p2 = ordered[(i + 1) % 4]
+            side_lengths.append(float(np.linalg.norm(p1 - p2)))
+        if min(side_lengths) < 5.0:
+            return False, "원근 교정 영역의 변 길이가 너무 짧습니다"
+
+        return True, ""
     
     def correct_perspective(self, image: np.ndarray,
                            src_points: Optional[np.ndarray] = None,
@@ -390,6 +450,18 @@ class AdvancedImageProcessor:
         
         # Order points
         src_points = self.order_points(src_points.astype(np.float32))
+
+        valid, invalid_reason = self._validate_perspective_points(
+            src_points, image.shape[:2]
+        )
+        if not valid:
+            return PerspectiveResult(
+                image=image.copy(),
+                src_points=np.array([]),
+                dst_points=np.array([]),
+                success=False,
+                message=invalid_reason
+            )
         
         # Calculate output dimensions
         width_a = np.linalg.norm(src_points[2] - src_points[3])
@@ -399,6 +471,14 @@ class AdvancedImageProcessor:
         height_a = np.linalg.norm(src_points[1] - src_points[2])
         height_b = np.linalg.norm(src_points[0] - src_points[3])
         max_height = int(max(height_a, height_b))
+        if max_width <= 0 or max_height <= 0:
+            return PerspectiveResult(
+                image=image.copy(),
+                src_points=np.array([]),
+                dst_points=np.array([]),
+                success=False,
+                message="원근 교정 결과 크기가 올바르지 않습니다"
+            )
         
         # Destination points
         dst_points = np.array([
@@ -645,7 +725,13 @@ class AdvancedImageProcessor:
         bright_lines += cv2.morphologyEx(gray, cv2.MORPH_TOPHAT, kernel_line)
         
         # Threshold to create mask
-        _, mask = cv2.threshold(bright_lines, 30, 255, cv2.THRESH_BINARY)
+        threshold_fn = cast(Any, cv2.threshold)
+        _, mask = threshold_fn(
+            np.asarray(bright_lines, dtype=np.uint8),
+            30,
+            255,
+            cv2.THRESH_BINARY,
+        )
         
         # Dilate mask slightly
         kernel = np.ones((3, 3), np.uint8)
@@ -679,19 +765,20 @@ class AdvancedImageProcessor:
             Denoised image
         """
         strength = max(1, min(20, strength))
+        gpu = self._gpu
         
         if len(image.shape) != 3:
             # Grayscale
-            if self._use_gpu and self.gpu_available:
-                return self._gpu.denoise_gpu(
+            if self._use_gpu and gpu is not None and gpu.is_available:
+                return gpu.denoise_gpu(
                     cv2.cvtColor(image, cv2.COLOR_GRAY2BGR),
                     h=strength
                 )[:, :, 0]
             return cv2.fastNlMeansDenoising(image, None, strength, 7, 21)
         
         # Color image
-        if self._use_gpu and self.gpu_available:
-            result = self._gpu.denoise_gpu(image, h=strength)
+        if self._use_gpu and gpu is not None and gpu.is_available:
+            result = gpu.denoise_gpu(image, h=strength)
         else:
             result = cv2.fastNlMeansDenoisingColored(
                 image, None, strength, strength, 7, 21

@@ -19,7 +19,7 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtCore import Qt, pyqtSignal, QRectF, QPointF, QLineF
 from PyQt6.QtGui import (
     QPixmap, QImage, QPainter, QPen, QBrush, QColor, 
-    QWheelEvent, QMouseEvent, QPainterPath
+    QWheelEvent, QMouseEvent, QPainterPath, QKeyEvent
 )
 
 
@@ -29,18 +29,38 @@ def numpy_to_qpixmap(image: np.ndarray) -> QPixmap:
         return QPixmap()
     
     if len(image.shape) == 2:
-        height, width = image.shape
+        gray = np.ascontiguousarray(image)
+        height, width = gray.shape
         bytes_per_line = width
-        qimage = QImage(image.data, width, height, bytes_per_line, QImage.Format.Format_Grayscale8)
+        qimage = QImage(
+            gray.tobytes(),
+            width,
+            height,
+            bytes_per_line,
+            QImage.Format.Format_Grayscale8,
+        )
     else:
         height, width, channels = image.shape
         if channels == 4:
+            rgba = np.ascontiguousarray(image)
             bytes_per_line = 4 * width
-            qimage = QImage(image.data, width, height, bytes_per_line, QImage.Format.Format_RGBA8888)
+            qimage = QImage(
+                rgba.tobytes(),
+                width,
+                height,
+                bytes_per_line,
+                QImage.Format.Format_RGBA8888,
+            )
         else:
-            image_rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+            image_rgb = np.ascontiguousarray(cv2.cvtColor(image, cv2.COLOR_BGR2RGB))
             bytes_per_line = 3 * width
-            qimage = QImage(image_rgb.data, width, height, bytes_per_line, QImage.Format.Format_RGB888)
+            qimage = QImage(
+                image_rgb.tobytes(),
+                width,
+                height,
+                bytes_per_line,
+                QImage.Format.Format_RGB888,
+            )
     
     return QPixmap.fromImage(qimage.copy())
 
@@ -74,7 +94,7 @@ class CompareGraphicsView(QGraphicsView):
         self._zoom_factor = 1.0
         self._image_item: Optional[QGraphicsPixmapItem] = None
     
-    def set_image(self, image: np.ndarray):
+    def set_image(self, image: Optional[np.ndarray]):
         """Set the image to display."""
         self._scene.clear()
         if image is not None:
@@ -317,6 +337,9 @@ class OverlayCompareWidget(QWidget):
         if self._before_image is not None:
             h, w = self._before_image.shape[:2]
         else:
+            if self._after_image is None:
+                painter.fillRect(rect, QColor(40, 40, 40))
+                return
             h, w = self._after_image.shape[:2]
         
         # Scale to fit

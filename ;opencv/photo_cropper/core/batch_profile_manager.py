@@ -331,7 +331,8 @@ class BatchProfileManager:
         if isinstance(data, dict):
             normalized: Dict[str, Any] = {}
             for key, value in data.items():
-                mapped_key = _LEGACY_SETTINGS_KEY_ALIASES.get(key, key)
+                key_str = str(key)
+                mapped_key = _LEGACY_SETTINGS_KEY_ALIASES.get(key_str, key_str)
                 normalized_value = cls._normalize_settings_dict(value)
                 if (
                     mapped_key in normalized
@@ -523,7 +524,7 @@ class BatchProfileManager:
             return False
         
         # Apply settings recursively
-        self._apply_dict_to_settings(profile.settings, settings)
+        self._apply_dict_to_settings(profile.settings or {}, settings)
         
         self._current_profile = name
         logger.info(f"Applied profile: {name}")
@@ -564,7 +565,8 @@ class BatchProfileManager:
             settings: Settings object to modify
         """
         for key, value in data.items():
-            resolved_key = _LEGACY_SETTINGS_KEY_ALIASES.get(key, key)
+            key_str = str(key)
+            resolved_key = _LEGACY_SETTINGS_KEY_ALIASES.get(key_str, key_str)
             if hasattr(settings, resolved_key):
                 attr = getattr(settings, resolved_key)
                 if isinstance(value, dict) and hasattr(attr, '__dataclass_fields__'):

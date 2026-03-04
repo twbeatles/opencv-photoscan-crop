@@ -6,6 +6,8 @@ Preview Widget for Photo Cropper.
 Provides image preview with zoom, pan, and contour overlay capabilities.
 """
 
+from typing import Any, Dict, List, Optional
+
 import numpy as np
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, 
@@ -14,7 +16,7 @@ from PyQt6.QtWidgets import (
     QSplitter,
     QGraphicsTextItem, QGraphicsDropShadowEffect
 )
-from PyQt6.QtCore import Qt, pyqtSignal, QPointF, QEvent
+from PyQt6.QtCore import Qt, pyqtSignal, QPointF, QEvent, QObject
 from PyQt6.QtGui import (
     QPixmap,
     QImage,
@@ -28,7 +30,7 @@ from PyQt6.QtGui import (
 )
 
 
-def numpy_to_qimage(image: np.ndarray) -> QImage:
+def numpy_to_qimage(image: Optional[np.ndarray]) -> QImage:
     """
     Convert numpy array to QImage.
     
@@ -46,20 +48,42 @@ def numpy_to_qimage(image: np.ndarray) -> QImage:
         h, w = image.shape
         image_copy = np.ascontiguousarray(image)
         bytes_per_line = w
-        qimage = QImage(image_copy.data, w, h, bytes_per_line, QImage.Format.Format_Grayscale8)
+        qimage = QImage(
+            image_copy.tobytes(),
+            w,
+            h,
+            bytes_per_line,
+            QImage.Format.Format_Grayscale8,
+        )
         # Copy to ensure QImage owns its data
         return qimage.copy()
     else:
-        # Color (BGR) - use native BGR888 format to avoid channel conversion.
+        # Color
         h, w, c = image.shape
-        bgr = np.ascontiguousarray(image)
-        bytes_per_line = 3 * w
-        qimage = QImage(bgr.data, w, h, bytes_per_line, QImage.Format.Format_BGR888)
+        color = np.ascontiguousarray(image)
+        if c == 4:
+            bytes_per_line = 4 * w
+            qimage = QImage(
+                color.tobytes(),
+                w,
+                h,
+                bytes_per_line,
+                QImage.Format.Format_RGBA8888,
+            )
+        else:
+            bytes_per_line = 3 * w
+            qimage = QImage(
+                color.tobytes(),
+                w,
+                h,
+                bytes_per_line,
+                QImage.Format.Format_BGR888,
+            )
         # Copy to ensure QImage owns its data
         return qimage.copy()
 
 
-def numpy_to_qpixmap(image: np.ndarray) -> QPixmap:
+def numpy_to_qpixmap(image: Optional[np.ndarray]) -> QPixmap:
     """Convert numpy array to QPixmap."""
     qimage = numpy_to_qimage(image)
     return QPixmap.fromImage(qimage)
@@ -132,8 +156,10 @@ class ZoomableGraphicsView(QGraphicsView):
             
             h_bar = self.horizontalScrollBar()
             v_bar = self.verticalScrollBar()
-            h_bar.setValue(int(h_bar.value() - delta.x()))
-            v_bar.setValue(int(v_bar.value() - delta.y()))
+            if h_bar is not None:
+                h_bar.setValue(int(h_bar.value() - delta.x()))
+            if v_bar is not None:
+                v_bar.setValue(int(v_bar.value() - delta.y()))
         else:
             super().mouseMoveEvent(event)
     
@@ -179,16 +205,16 @@ class ImagePreviewWidget(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         
-        self._original_image: np.ndarray = None
-        self._processed_image: np.ndarray = None
-        self._contour_overlay: np.ndarray = None
+        self._original_image: Optional[np.ndarray] = None
+        self._processed_image: Optional[np.ndarray] = None
+        self._contour_overlay: Optional[np.ndarray] = None
         self._show_contour = True
-        self._contour_points: np.ndarray = None
-        self._manual_seed_points = []
-        self._contour_lines = []
-        self._contour_handles = []
-        self._drag_handle_index = None
-        self._hover_handle_index = None
+        self._contour_points: Optional[np.ndarray] = None
+        self._manual_seed_points: List[List[float]] = []
+        self._contour_lines: List[Any] = []
+        self._contour_handles: List[Any] = []
+        self._drag_handle_index: Optional[int] = None
+        self._hover_handle_index: Optional[int] = None
         self._handle_pick_radius = 20.0
         self._contour_pen = QPen(QColor(64, 220, 128, 220), 2)
         self._seed_line_pen = QPen(
@@ -198,12 +224,12 @@ class ImagePreviewWidget(QWidget):
         self._handle_brush = QBrush(QColor(244, 63, 94, 220))
         self._seed_brush = QBrush(QColor(251, 191, 36, 210))
         self._handle_radius = 8.0
-        self._pixmap_cache = {
+        self._pixmap_cache: Dict[str, Optional[QPixmap]] = {
             "original": None,
             "overlay": None,
             "processed": None,
         }
-        self._source_cache = {
+        self._source_cache: Dict[str, Optional[np.ndarray]] = {
             "original": None,
             "overlay": None,
             "processed": None,
@@ -266,7 +292,9 @@ class ImagePreviewWidget(QWidget):
         self.original_scene = QGraphicsScene()
         self.original_view = ZoomableGraphicsView()
         self.original_view.setScene(self.original_scene)
-        self.original_view.viewport().installEventFilter(self)
+        viewport = self.original_view.viewport()
+        if viewport is not None:
+            viewport.installEventFilter(self)
         self.original_pixmap_item = QGraphicsPixmapItem()
         self.original_scene.addItem(self.original_pixmap_item)
         
@@ -371,9 +399,9 @@ class ImagePreviewWidget(QWidget):
         
     def set_original_image(
         self,
-        image: np.ndarray,
-        contour_overlay: np.ndarray = None,
-        contour_points: np.ndarray = None,
+        image: Optional[np.ndarray],
+        contour_overlay: Optional[np.ndarray] = None,
+        contour_points: Optional[np.ndarray] = None,
     ):
         """
         Set original image with optional contour overlay.
@@ -407,7 +435,7 @@ class ImagePreviewWidget(QWidget):
 
         self._update_original_display()
     
-    def set_processed_image(self, image: np.ndarray):
+    def set_processed_image(self, image: Optional[np.ndarray]):
         """
         Set processed image.
         
@@ -431,9 +459,10 @@ class ImagePreviewWidget(QWidget):
     
     def _update_original_display(self):
         """Update original image display based on contour toggle."""
-        pixmap = self._pixmap_cache["original"]
-        if pixmap is None and self._show_contour and self._pixmap_cache["overlay"] is not None:
+        if self._show_contour and self._pixmap_cache["overlay"] is not None:
             pixmap = self._pixmap_cache["overlay"]
+        else:
+            pixmap = self._pixmap_cache["original"]
 
         if pixmap is not None:
             self.original_pixmap_item.setPixmap(pixmap)
@@ -467,16 +496,17 @@ class ImagePreviewWidget(QWidget):
             if not self._manual_seed_points:
                 return
             seed_points = self._manual_seed_points
-            for i in range(len(seed_points) - 1):
-                p1 = seed_points[i]
-                p2 = seed_points[i + 1]
-                line = self.original_scene.addLine(
-                    float(p1[0]),
+        for i in range(len(seed_points) - 1):
+            p1 = seed_points[i]
+            p2 = seed_points[i + 1]
+            line = self.original_scene.addLine(
+                float(p1[0]),
                     float(p1[1]),
                     float(p2[0]),
-                    float(p2[1]),
-                    self._seed_line_pen,
-                )
+                float(p2[1]),
+                self._seed_line_pen,
+            )
+            if line is not None:
                 line.setZValue(45)
                 self._contour_lines.append(line)
 
@@ -490,11 +520,14 @@ class ImagePreviewWidget(QWidget):
                     self._handle_pen,
                     self._seed_brush,
                 )
-                handle.setZValue(55)
-                self._contour_handles.append(handle)
+                if handle is not None:
+                    handle.setZValue(55)
+                    self._contour_handles.append(handle)
             return
 
         points = self._contour_points
+        if points is None:
+            return
         for i in range(4):
             p1 = points[i]
             p2 = points[(i + 1) % 4]
@@ -505,8 +538,9 @@ class ImagePreviewWidget(QWidget):
                 float(p2[1]),
                 self._contour_pen,
             )
-            line.setZValue(50)
-            self._contour_lines.append(line)
+            if line is not None:
+                line.setZValue(50)
+                self._contour_lines.append(line)
 
         for i, p in enumerate(points):
             handle = self.original_scene.addEllipse(
@@ -517,11 +551,12 @@ class ImagePreviewWidget(QWidget):
                 self._handle_pen,
                 self._handle_brush,
             )
-            handle.setZValue(60)
-            handle.setData(0, i)
-            self._contour_handles.append(handle)
+            if handle is not None:
+                handle.setZValue(60)
+                handle.setData(0, i)
+                self._contour_handles.append(handle)
 
-    def _pick_contour_handle(self, scene_pos: QPointF):
+    def _pick_contour_handle(self, scene_pos: QPointF) -> Optional[int]:
         if self._contour_points is None or len(self._contour_points) != 4:
             return None
         px = float(scene_pos.x())
@@ -567,8 +602,9 @@ class ImagePreviewWidget(QWidget):
             return
         self._redraw_contour_overlay()
 
-    def eventFilter(self, watched, event):
-        if watched is self.original_view.viewport():
+    def eventFilter(self, watched: QObject | None, event: QEvent) -> bool:
+        viewport = self.original_view.viewport()
+        if viewport is not None and watched is viewport:
             event_type = event.type()
             if event_type == QEvent.Type.MouseButtonPress:
                 if (
@@ -582,15 +618,11 @@ class ImagePreviewWidget(QWidget):
                         idx = self._pick_contour_handle(scene_pos)
                         if idx is not None:
                             self._drag_handle_index = idx
-                            self.original_view.viewport().setCursor(
-                                Qt.CursorShape.ClosedHandCursor
-                            )
+                            viewport.setCursor(Qt.CursorShape.ClosedHandCursor)
                             return True
                     elif self._has_visible_original_image():
                         self._append_manual_seed_point(scene_pos)
-                        self.original_view.viewport().setCursor(
-                            Qt.CursorShape.CrossCursor
-                        )
+                        viewport.setCursor(Qt.CursorShape.CrossCursor)
                         return True
             elif event_type == QEvent.Type.MouseMove:
                 if (
@@ -618,14 +650,10 @@ class ImagePreviewWidget(QWidget):
                     if idx is not None:
                         if self._hover_handle_index != idx:
                             self._hover_handle_index = idx
-                            self.original_view.viewport().setCursor(
-                                Qt.CursorShape.PointingHandCursor
-                            )
+                            viewport.setCursor(Qt.CursorShape.PointingHandCursor)
                     elif self._hover_handle_index is not None:
                         self._hover_handle_index = None
-                        self.original_view.viewport().setCursor(
-                            Qt.CursorShape.ArrowCursor
-                        )
+                        viewport.setCursor(Qt.CursorShape.ArrowCursor)
                 elif (
                     isinstance(event, QMouseEvent)
                     and self._show_contour
@@ -633,7 +661,7 @@ class ImagePreviewWidget(QWidget):
                     and self._has_visible_original_image()
                     and not (event.modifiers() & Qt.KeyboardModifier.ControlModifier)
                 ):
-                    self.original_view.viewport().setCursor(Qt.CursorShape.CrossCursor)
+                    viewport.setCursor(Qt.CursorShape.CrossCursor)
             elif event_type == QEvent.Type.MouseButtonRelease:
                 if (
                     isinstance(event, QMouseEvent)
@@ -641,7 +669,7 @@ class ImagePreviewWidget(QWidget):
                     and self._drag_handle_index is not None
                 ):
                     self._drag_handle_index = None
-                    self.original_view.viewport().setCursor(Qt.CursorShape.ArrowCursor)
+                    viewport.setCursor(Qt.CursorShape.ArrowCursor)
                     if self._contour_points is not None and len(self._contour_points) == 4:
                         self.contour_edited.emit(
                             np.array(self._contour_points, dtype=np.float32)
@@ -658,12 +686,12 @@ class ImagePreviewWidget(QWidget):
                     self._contour_points = None
                     self._manual_seed_points = []
                     self._redraw_contour_overlay()
-                    self.original_view.viewport().setCursor(Qt.CursorShape.CrossCursor)
+                    viewport.setCursor(Qt.CursorShape.CrossCursor)
                     return True
             elif event_type == QEvent.Type.Leave:
                 self._hover_handle_index = None
                 if self._drag_handle_index is None:
-                    self.original_view.viewport().setCursor(Qt.CursorShape.ArrowCursor)
+                    viewport.setCursor(Qt.CursorShape.ArrowCursor)
         return super().eventFilter(watched, event)
     
     def _on_zoom_changed(self, zoom: float):

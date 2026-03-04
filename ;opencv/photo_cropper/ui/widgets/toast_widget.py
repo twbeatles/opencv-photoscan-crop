@@ -8,7 +8,7 @@ Provides non-intrusive toast notifications with auto-dismiss functionality.
 
 from typing import Optional
 from PyQt6.QtWidgets import QWidget, QLabel, QHBoxLayout, QGraphicsOpacityEffect
-from PyQt6.QtCore import Qt, QTimer, QPropertyAnimation, QEasingCurve, pyqtProperty
+from PyQt6.QtCore import Qt, QTimer, QPropertyAnimation, QEasingCurve
 from PyQt6.QtGui import QFont
 
 
@@ -148,8 +148,9 @@ class ToastWidget(QWidget):
     
     def _position_toast(self):
         """Position toast at top-right of parent window."""
-        if self.parent():
-            parent_rect = self.parent().rect()
+        parent_widget = self.parentWidget()
+        if parent_widget is not None:
+            parent_rect = parent_widget.rect()
             x = parent_rect.right() - self.width() - 20
             y = parent_rect.top() + 60  # Below toolbar
             self.move(x, y)

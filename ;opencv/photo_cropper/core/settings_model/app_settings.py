@@ -206,7 +206,7 @@ class AdvancedProcessingSettings:
     color_correct_method: str = "gray_world"  # gray_world, white_patch, histogram
     
     # Perspective
-    perspective_correct: bool = False
+    perspective_correct: bool = True
     
     # Enhanced processing
     enhanced_denoise: bool = False
@@ -339,6 +339,14 @@ class MultiPhotoSettings:
     max_area_ratio: float = 0.8
     merge_distance: int = 50
     separate_output_folders: bool = False
+
+    def __post_init__(self):
+        """Validate and clamp multi-photo settings."""
+        self.min_photos = max(1, min(100, int(self.min_photos)))
+        self.max_photos = max(self.min_photos, min(200, int(self.max_photos)))
+        self.min_area_ratio = max(0.001, min(0.95, float(self.min_area_ratio)))
+        self.max_area_ratio = max(self.min_area_ratio, min(1.0, float(self.max_area_ratio)))
+        self.merge_distance = max(0, min(1000, int(self.merge_distance)))
 
 
 # v9.0 Settings

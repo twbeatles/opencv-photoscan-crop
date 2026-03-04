@@ -1,0 +1,26 @@
+{
+  "include": [
+    "photo_cropper",
+    "run.py"
+  ],
+  "exclude": [
+    "**/__pycache__",
+    "backups",
+    "**/backups"
+  ],
+  "typeCheckingMode": "basic",
+  "reportMissingTypeStubs": "none",
+  "reportUnknownMemberType": "none",
+  "reportUnknownParameterType": "none",
+  "reportUnknownVariableType": "none",
+  "reportUnknownArgumentType": "none",
+  "reportPrivateImportUsage": "none",
+  "executionEnvironments": [
+    {
+      "root": ".",
+      "extraPaths": [
+        "."
+      ]
+    }
+  ]
+}

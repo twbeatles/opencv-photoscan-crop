@@ -29,3 +29,30 @@ except Exception:  # pragma: no cover - optional runtime dependency (cv2)
     EnhancementPreset = None  # type: ignore[assignment]
     SmartEnhancer = None  # type: ignore[assignment]
     get_smart_enhancer = None  # type: ignore[assignment]
+
+try:
+    from .manual_extract import (
+        ManualExtractOutcome,
+        ManualExtractProcessor,
+        ManualExtractSessionRunner,
+        scale_contour_to_preview,
+        normalize_contour_points,
+        denormalize_contour_points,
+        is_boundary_detection_failure,
+        collect_boundary_failed_files,
+    )
+except Exception:  # pragma: no cover - optional runtime dependency (cv2)
+    ManualExtractOutcome = None  # type: ignore[assignment]
+    ManualExtractProcessor = None  # type: ignore[assignment]
+    ManualExtractSessionRunner = None  # type: ignore[assignment]
+    scale_contour_to_preview = None  # type: ignore[assignment]
+    normalize_contour_points = None  # type: ignore[assignment]
+    denormalize_contour_points = None  # type: ignore[assignment]
+    is_boundary_detection_failure = None  # type: ignore[assignment]
+    collect_boundary_failed_files = None  # type: ignore[assignment]
+
+try:
+    from .watch_mode import WatchModeCoordinator, WatchStartResult
+except Exception:  # pragma: no cover - optional runtime dependency (PyQt6)
+    WatchModeCoordinator = None  # type: ignore[assignment]
+    WatchStartResult = None  # type: ignore[assignment]

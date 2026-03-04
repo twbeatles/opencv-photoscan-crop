@@ -16,6 +16,11 @@ dist/
 # Ruff cache
 ;opencv/.ruff_cache/
 
+# Local backups / ad-hoc reports
+backups/
+;opencv/pyright_report.json
+;opencv/pyright_report*.json
+
 # Test / type-check / coverage caches
 .pytest_cache/
 .mypy_cache/

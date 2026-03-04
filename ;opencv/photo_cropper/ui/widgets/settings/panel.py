@@ -6,6 +6,8 @@ Settings Panel Widget for Photo Cropper v9.0.
 Provides tabbed settings interface for all application settings.
 """
 
+from typing import Optional
+
 from PyQt6.QtWidgets import (
     QWidget,
     QVBoxLayout,
@@ -42,6 +44,7 @@ from ....core.settings_model import (
     WatermarkSettings,
     ResizeSettings,
     WatchModeSettings,
+    MultiPhotoSettings,
     ClassificationSettings,
     FaceDetectionSettings,
     SmartEnhancementSettings,
@@ -94,7 +97,7 @@ class SettingsPanel(QWidget):
     settings_changed = pyqtSignal(AppSettings)
     preview_requested = pyqtSignal()
 
-    def __init__(self, settings: AppSettings = None, parent=None):
+    def __init__(self, settings: Optional[AppSettings] = None, parent=None):
         super().__init__(parent)
         self._settings = settings or AppSettings()
         self._block_signals = False
@@ -205,6 +208,13 @@ class SettingsPanel(QWidget):
         self.timestamp_check = QCheckBox("타임스탬프 추가")
         self.timestamp_check.stateChanged.connect(self._on_setting_changed)
         out_layout.addRow(self.timestamp_check)
+
+        self.preserve_metadata_check = QCheckBox("메타데이터 보존 (가능한 경우)")
+        self.preserve_metadata_check.setToolTip(
+            "EXIF/ICC 메타데이터를 best-effort로 복사합니다. 실패해도 저장은 계속됩니다."
+        )
+        self.preserve_metadata_check.stateChanged.connect(self._on_setting_changed)
+        out_layout.addRow(self.preserve_metadata_check)
 
         self.backup_original_check = QCheckBox("원본 백업")
         self.backup_original_check.setToolTip(
@@ -689,6 +699,44 @@ class SettingsPanel(QWidget):
         sched_section.add_widget(sched_group)
         layout.addWidget(sched_section)
 
+        # === Multi-photo section ===
+        mp_section = CollapsibleSection("🖼️ 멀티포토", initially_expanded=False)
+        mp_group = QWidget()
+        mp_layout = QVBoxLayout(mp_group)
+        mp_layout.setContentsMargins(0, 0, 0, 0)
+
+        self.multi_photo_enable_check = ModernToggleSwitch("멀티포토 감지 사용")
+        self.multi_photo_enable_check.setToolTip(
+            "한 장의 스캔 이미지에서 여러 사진을 분리 저장합니다."
+        )
+        self.multi_photo_enable_check.toggled.connect(self._on_setting_changed)
+        mp_layout.addWidget(self.multi_photo_enable_check)
+
+        merge_row = QHBoxLayout()
+        merge_row.addWidget(QLabel("중복 병합 거리(px):"))
+        self.multi_photo_merge_distance_spin = NoScrollSpinBox()
+        self.multi_photo_merge_distance_spin.setRange(0, 1000)
+        self.multi_photo_merge_distance_spin.setValue(50)
+        self.multi_photo_merge_distance_spin.setToolTip(
+            "값이 클수록 가까운 검출 결과를 같은 사진으로 병합합니다."
+        )
+        self.multi_photo_merge_distance_spin.valueChanged.connect(
+            self._on_setting_changed
+        )
+        merge_row.addWidget(self.multi_photo_merge_distance_spin)
+        mp_layout.addLayout(merge_row)
+
+        self.multi_photo_separate_folders_check = QCheckBox(
+            "파일별 하위폴더(<원본파일명>_photos)로 저장"
+        )
+        self.multi_photo_separate_folders_check.stateChanged.connect(
+            self._on_setting_changed
+        )
+        mp_layout.addWidget(self.multi_photo_separate_folders_check)
+
+        mp_section.add_widget(mp_group)
+        layout.addWidget(mp_section)
+
         # === File management section ===
         fm_section = CollapsibleSection("📂 파일 관리", initially_expanded=False)
         fm_group = QWidget()
@@ -903,6 +951,7 @@ class SettingsPanel(QWidget):
             png_compression=self.png_compression_spin.value(),
             webp_quality=self.quality_spin.value(),  # Use same quality value as JPG
             add_timestamp=self.timestamp_check.isChecked(),
+            preserve_metadata=self.preserve_metadata_check.isChecked(),
         )
 
         filter_settings = FilterSettings(
@@ -961,6 +1010,10 @@ class SettingsPanel(QWidget):
         )
 
         # Build watch_mode with scheduler fields
+        scheduler_check = getattr(self, "scheduler_enable_check", None)
+        schedule_type_combo = getattr(self, "schedule_type_combo", None)
+        schedule_time_edit = getattr(self, "schedule_time_edit", None)
+        schedule_interval_spin = getattr(self, "schedule_interval_spin", None)
         watch_mode = WatchModeSettings(
             enabled=self.watch_mode_check.isChecked(),
             recursive=self.watch_recursive_check.isChecked(),
@@ -970,17 +1023,41 @@ class SettingsPanel(QWidget):
                 if hasattr(self, "watch_max_wait_spin")
                 else 30.0
             ),
-            scheduler_enabled=getattr(self, "scheduler_enable_check", None)
-            and self.scheduler_enable_check.isChecked(),
-            schedule_type=getattr(self, "schedule_type_combo", None)
-            and self.schedule_type_combo.currentText()
-            or "interval",
-            schedule_time=getattr(self, "schedule_time_edit", None)
-            and self.schedule_time_edit.text()
-            or "00:00",
-            schedule_interval_minutes=getattr(self, "schedule_interval_spin", None)
-            and self.schedule_interval_spin.value()
-            or 60,
+            scheduler_enabled=bool(
+                scheduler_check.isChecked() if scheduler_check is not None else False
+            ),
+            schedule_type=(
+                schedule_type_combo.currentText()
+                if schedule_type_combo is not None
+                else "interval"
+            ),
+            schedule_time=(
+                schedule_time_edit.text()
+                if schedule_time_edit is not None
+                else "00:00"
+            ),
+            schedule_interval_minutes=(
+                int(schedule_interval_spin.value())
+                if schedule_interval_spin is not None
+                else 60
+            ),
+        )
+
+        prev_multi_photo = getattr(self._settings, "multi_photo", MultiPhotoSettings())
+        multi_photo = MultiPhotoSettings(
+            enabled=self.multi_photo_enable_check.isChecked()
+            if hasattr(self, "multi_photo_enable_check")
+            else bool(getattr(prev_multi_photo, "enabled", False)),
+            min_photos=int(getattr(prev_multi_photo, "min_photos", 1)),
+            max_photos=int(getattr(prev_multi_photo, "max_photos", 20)),
+            min_area_ratio=float(getattr(prev_multi_photo, "min_area_ratio", 0.02)),
+            max_area_ratio=float(getattr(prev_multi_photo, "max_area_ratio", 0.8)),
+            merge_distance=self.multi_photo_merge_distance_spin.value()
+            if hasattr(self, "multi_photo_merge_distance_spin")
+            else int(getattr(prev_multi_photo, "merge_distance", 50)),
+            separate_output_folders=self.multi_photo_separate_folders_check.isChecked()
+            if hasattr(self, "multi_photo_separate_folders_check")
+            else bool(getattr(prev_multi_photo, "separate_output_folders", False)),
         )
 
         # v8.0 Advanced settings - safely build if widgets exist
@@ -1106,6 +1183,7 @@ class SettingsPanel(QWidget):
             watermark=watermark,
             resize=resize,
             watch_mode=watch_mode,
+            multi_photo=multi_photo,
             classification=classification,
             face_detection=face_detection,
             smart_enhancement=smart_enhancement,
@@ -1158,6 +1236,9 @@ class SettingsPanel(QWidget):
         self.quality_spin.setValue(settings.output.jpg_quality)
         self.png_compression_spin.setValue(settings.output.png_compression)
         self.timestamp_check.setChecked(settings.output.add_timestamp)
+        self.preserve_metadata_check.setChecked(
+            bool(getattr(settings.output, "preserve_metadata", False))
+        )
 
         # Filter
         self.skip_small_check.setChecked(settings.filter.skip_small_images)
@@ -1226,6 +1307,19 @@ class SettingsPanel(QWidget):
             if hasattr(self, "watch_max_wait_spin"):
                 self.watch_max_wait_spin.setValue(
                     float(getattr(wm, "max_wait_seconds", 30.0))
+                )
+
+        if hasattr(settings, "multi_photo"):
+            mp = settings.multi_photo
+            if hasattr(self, "multi_photo_enable_check"):
+                self.multi_photo_enable_check.setChecked(bool(mp.enabled))
+            if hasattr(self, "multi_photo_merge_distance_spin"):
+                self.multi_photo_merge_distance_spin.setValue(
+                    int(getattr(mp, "merge_distance", 50))
+                )
+            if hasattr(self, "multi_photo_separate_folders_check"):
+                self.multi_photo_separate_folders_check.setChecked(
+                    bool(getattr(mp, "separate_output_folders", False))
                 )
 
         # v9.0 AI settings
@@ -1347,7 +1441,7 @@ class SettingsPanel(QWidget):
 
         if lang_code:
 
-            from ...i18n.catalog import set_language
+            from ....i18n.catalog import set_language
 
 
 

@@ -28,24 +28,44 @@ from ..widgets.toast_notification import ToastManager
 from ...core.smart_enhancer import SmartEnhancer, EnhancementPreset, get_smart_enhancer
 
 
-def numpy_to_qpixmap(image: np.ndarray) -> QPixmap:
+def numpy_to_qpixmap(image: Optional[np.ndarray]) -> QPixmap:
     """Convert numpy array to QPixmap."""
     if image is None:
         return QPixmap()
     
     if len(image.shape) == 2:
-        h, w = image.shape
+        gray = np.ascontiguousarray(image)
+        h, w = gray.shape
         bytes_per_line = w
-        qimage = QImage(image.data, w, h, bytes_per_line, QImage.Format.Format_Grayscale8)
+        qimage = QImage(
+            gray.tobytes(),
+            w,
+            h,
+            bytes_per_line,
+            QImage.Format.Format_Grayscale8,
+        )
     else:
         h, w, ch = image.shape
         if ch == 4:
+            rgba = np.ascontiguousarray(image)
             bytes_per_line = 4 * w
-            qimage = QImage(image.data, w, h, bytes_per_line, QImage.Format.Format_RGBA8888)
+            qimage = QImage(
+                rgba.tobytes(),
+                w,
+                h,
+                bytes_per_line,
+                QImage.Format.Format_RGBA8888,
+            )
         else:
-            rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+            rgb = np.ascontiguousarray(cv2.cvtColor(image, cv2.COLOR_BGR2RGB))
             bytes_per_line = 3 * w
-            qimage = QImage(rgb.data, w, h, bytes_per_line, QImage.Format.Format_RGB888)
+            qimage = QImage(
+                rgb.tobytes(),
+                w,
+                h,
+                bytes_per_line,
+                QImage.Format.Format_RGB888,
+            )
     
     return QPixmap.fromImage(qimage.copy())
 
@@ -94,12 +114,17 @@ class SyncedGraphicsView(QGraphicsView):
             }
         """)
     
-    def set_image(self, image: np.ndarray, title: str = ""):
+    def set_image(self, image: Optional[np.ndarray], title: str = ""):
         """Set image to display."""
         self._original_image = image
         
         if self._pixmap_item:
             self._scene.removeItem(self._pixmap_item)
+
+        if image is None:
+            self._pixmap_item = None
+            self._scene.setSceneRect(QRectF())
+            return
         
         pixmap = numpy_to_qpixmap(image)
         self._pixmap_item = self._scene.addPixmap(pixmap)
@@ -172,8 +197,10 @@ class SyncedGraphicsView(QGraphicsView):
         super().mouseMoveEvent(event)
         
         if self._sync_enabled and event.buttons() == Qt.MouseButton.LeftButton:
-            center = self.mapToScene(self.viewport().rect().center())
-            self.pan_changed.emit(center)
+            viewport = self.viewport()
+            if viewport is not None:
+                center = self.mapToScene(viewport.rect().center())
+                self.pan_changed.emit(center)
 
 
 class ImagePanel(QFrame):
@@ -235,7 +262,7 @@ class ImagePanel(QFrame):
             }
         """)
     
-    def set_image(self, image: np.ndarray, title: str = ""):
+    def set_image(self, image: Optional[np.ndarray], title: str = ""):
         """Set image to display."""
         self._original_image = image.copy() if image is not None else None
         self.view.set_image(image, title)
@@ -407,7 +434,12 @@ class MultiCompareWindow(QMainWindow):
         """Apply layout to panels."""
         # Clear current layout
         for i in reversed(range(self._main_layout.count())):
-            self._main_layout.itemAt(i).widget().setParent(None)
+            item = self._main_layout.itemAt(i)
+            if item is None:
+                continue
+            widget = item.widget()
+            if widget is not None:
+                widget.setParent(None)
         
         # Hide all panels first
         for panel in self._panels:
@@ -443,6 +475,8 @@ class MultiCompareWindow(QMainWindow):
     def _on_layout_changed(self, index: int):
         """Handle layout change."""
         layout = self.layout_combo.currentData()
+        if not isinstance(layout, CompareLayout):
+            return
         self._apply_layout(layout)
     
     def _on_sync_changed(self, state: int):

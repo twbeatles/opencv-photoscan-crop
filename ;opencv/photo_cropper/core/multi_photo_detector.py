@@ -21,7 +21,7 @@ class DetectedPhoto:
     bounding_box: Tuple[int, int, int, int]  # x, y, w, h
     contour: np.ndarray
     confidence: float
-    area: int
+    area: float
     aspect_ratio: float
 
 
@@ -287,7 +287,10 @@ class MultiPhotoDetector:
         kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (kernel_size, kernel_size))
         opened = cv2.morphologyEx(roi_mask, cv2.MORPH_OPEN, kernel, iterations=1)
 
-        num_labels, labels, stats, _ = cv2.connectedComponentsWithStats(opened, 8)
+        num_labels, labels, stats, _ = cv2.connectedComponentsWithStats(
+            opened,
+            connectivity=8,
+        )
         if num_labels <= 2:
             return [contour]
 
@@ -343,6 +346,31 @@ class MultiPhotoDetector:
             and iy + ih <= oy + oh + margin
         )
 
+    @staticmethod
+    def _bbox_center_distance(
+        a: Tuple[int, int, int, int], b: Tuple[int, int, int, int]
+    ) -> float:
+        ax, ay, aw, ah = a
+        bx, by, bw, bh = b
+        acx = ax + aw * 0.5
+        acy = ay + ah * 0.5
+        bcx = bx + bw * 0.5
+        bcy = by + bh * 0.5
+        return float(((acx - bcx) ** 2 + (acy - bcy) ** 2) ** 0.5)
+
+    @staticmethod
+    def _bbox_gap_distance(
+        a: Tuple[int, int, int, int], b: Tuple[int, int, int, int]
+    ) -> float:
+        ax, ay, aw, ah = a
+        bx, by, bw, bh = b
+        ax2, ay2 = ax + aw, ay + ah
+        bx2, by2 = bx + bw, by + bh
+
+        dx = max(0, max(ax, bx) - min(ax2, bx2))
+        dy = max(0, max(ay, by) - min(ay2, by2))
+        return float((dx * dx + dy * dy) ** 0.5)
+
     def _merge_overlapping(self, photos: List[DetectedPhoto]) -> List[DetectedPhoto]:
         """Deduplicate highly-overlapping detections without proximity over-merge."""
         if len(photos) <= 1:
@@ -376,6 +404,36 @@ class MultiPhotoDetector:
                 if self._bbox_contains(existing.bounding_box, photo.bounding_box):
                     drop = True
                     break
+
+                # Distance-based duplicate suppression for nearby, similarly sized boxes.
+                if self.merge_distance > 0:
+                    center_dist = self._bbox_center_distance(
+                        photo.bounding_box, existing.bounding_box
+                    )
+                    gap_dist = self._bbox_gap_distance(
+                        photo.bounding_box, existing.bounding_box
+                    )
+                    area_small = max(1, min(photo.area, existing.area))
+                    area_ratio = max(photo.area, existing.area) / float(area_small)
+
+                    near_duplicate = (
+                        gap_dist <= float(self.merge_distance)
+                        and center_dist <= float(self.merge_distance * 2)
+                        and area_ratio <= 1.6
+                        and iou >= 0.15
+                    )
+
+                    if near_duplicate:
+                        drop = True
+                        if (
+                            photo.confidence > existing.confidence + 0.03
+                            or (
+                                abs(photo.confidence - existing.confidence) <= 0.03
+                                and photo.area > existing.area
+                            )
+                        ):
+                            replace_index = idx
+                        break
 
             if replace_index >= 0:
                 kept[replace_index] = photo

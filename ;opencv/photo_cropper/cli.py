@@ -77,7 +77,8 @@ def _normalize_legacy_keys(data: Any) -> Any:
     if isinstance(data, dict):
         normalized: Dict[str, Any] = {}
         for key, value in data.items():
-            mapped_key = _LEGACY_KEY_ALIASES.get(key, key)
+            key_str = str(key)
+            mapped_key = _LEGACY_KEY_ALIASES.get(key_str, key_str)
             normalized_value = _normalize_legacy_keys(value)
             if (
                 mapped_key in normalized
@@ -244,6 +245,16 @@ def _apply_cli_overrides(settings_data: Dict[str, Any], args: argparse.Namespace
     if args.png_compression is not None:
         _set_nested(settings_data, "output.png_compression", int(args.png_compression))
 
+    if args.preserve_metadata:
+        _set_nested(settings_data, "output.preserve_metadata", True)
+
+    if args.perspective_correct is not None:
+        _set_nested(
+            settings_data,
+            "advanced.perspective_correct",
+            bool(args.perspective_correct),
+        )
+
     if args.watermark is not None:
         _set_nested(settings_data, "watermark.enabled", True)
         _set_nested(settings_data, "watermark.text", args.watermark)
@@ -254,6 +265,18 @@ def _apply_cli_overrides(settings_data: Dict[str, Any], args: argparse.Namespace
 
     if args.multi_photo:
         _set_nested(settings_data, "multi_photo.enabled", True)
+
+    if args.multi_photo_merge_distance is not None:
+        _set_nested(settings_data, "multi_photo.enabled", True)
+        _set_nested(
+            settings_data,
+            "multi_photo.merge_distance",
+            int(args.multi_photo_merge_distance),
+        )
+
+    if args.multi_photo_separate_folders:
+        _set_nested(settings_data, "multi_photo.enabled", True)
+        _set_nested(settings_data, "multi_photo.separate_output_folders", True)
 
     if args.max_size is not None:
         _set_nested(settings_data, "resize.enabled", True)
@@ -468,11 +491,41 @@ def create_parser() -> argparse.ArgumentParser:
         type=_int_in_range(0, 9),
         help="PNG compression level",
     )
+    parser.add_argument(
+        "--preserve-metadata",
+        action="store_true",
+        help="Best-effort preserve EXIF/ICC metadata",
+    )
+    perspective_group = parser.add_mutually_exclusive_group()
+    perspective_group.add_argument(
+        "--perspective-correct",
+        dest="perspective_correct",
+        action="store_true",
+        default=None,
+        help="Enable perspective correction (warp)",
+    )
+    perspective_group.add_argument(
+        "--no-perspective-correct",
+        dest="perspective_correct",
+        action="store_false",
+        default=None,
+        help="Disable perspective warp and use axis-aligned crop",
+    )
     parser.add_argument("--watermark", help="Text watermark")
     parser.add_argument("--watermark-image", help="Image watermark path")
     parser.add_argument("--resize", help="Resize spec (50%%, 1200x900, 1920, instagram_square)")
     parser.add_argument("--max-size", type=_int_in_range(1, 20000), help="Resize max dimension")
     parser.add_argument("--multi-photo", action="store_true", help="Enable multi-photo split mode")
+    parser.add_argument(
+        "--multi-photo-merge-distance",
+        type=_int_in_range(0, 1000),
+        help="Distance threshold for multi-photo duplicate merge",
+    )
+    parser.add_argument(
+        "--multi-photo-separate-folders",
+        action="store_true",
+        help="Store multi-photo outputs in <input>_photos subfolder",
+    )
     parser.add_argument("--backup", action="store_true", help="Create backups")
 
     # AI core toggles

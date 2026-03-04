@@ -340,11 +340,14 @@ class ProgressDialog(QDialog):
         
         # Auto scroll
         scrollbar = self.log_text.verticalScrollBar()
-        scrollbar.setValue(scrollbar.maximum())
+        if scrollbar is not None:
+            scrollbar.setValue(scrollbar.maximum())
 
     def _trim_log_blocks(self, block_count: int):
         """Trim oldest log blocks from QTextEdit document."""
         doc = self.log_text.document()
+        if doc is None:
+            return
         cursor = QTextCursor(doc)
         cursor.movePosition(QTextCursor.MoveOperation.Start)
         removed = 0

@@ -29,6 +29,14 @@ A Python application that automatically detects and accurately crops scanned pho
 - **Faster Cancellation Response**: Multithreaded batch cancellation now reacts faster by cancelling pending tasks
 - **GPU Setting Wiring**: `PerformanceSettings.use_gpu` is now propagated to advanced processor initialization
 
+### 🛡️ Processing Consistency Update (2026-03)
+- **Perspective default ON**: `advanced.perspective_correct=True` by default; OFF now uses axis-aligned bounding-box crop from detected 4 points
+- **Manual extract parity with batch**: manual "Save Edited Extract" now reuses the same post-processing/routing/naming policy as batch
+- **Save fallback hardening**: unsupported/missing output extension now falls back to encoder selected by `output_format`
+- **Metadata preserve (best-effort)**: EXIF/ICC copy failures emit warnings only; image save remains successful
+- **Multi-photo per-file subfolder**: `separate_output_folders=true` writes outputs under `<input_filename>_photos/`
+- **merge_distance wired into dedup**: duplicate suppression sensitivity now follows `merge_distance`
+
 ### 🌐 Multi-Language Support
 - Automatic system locale detection
 - 5 languages: English, Korean, Japanese, Chinese, Spanish
@@ -104,6 +112,12 @@ python -m photo_cropper.cli -i ./scans -o ./cropped --watermark "© 2026"
 # With resize
 python -m photo_cropper.cli -i ./scans -o ./cropped --max-size 1920
 
+# Multi-photo detailed options
+python -m photo_cropper.cli -i ./scans -o ./cropped --multi-photo --multi-photo-merge-distance 80 --multi-photo-separate-folders
+
+# Preserve metadata + disable perspective warp
+python -m photo_cropper.cli -i ./scans -o ./cropped --preserve-metadata --no-perspective-correct
+
 # Show options
 python -m photo_cropper.cli --help
 ```
@@ -155,21 +169,24 @@ python -m photo_cropper.cli --help
 - **Corner Detection**: Additional accuracy improvement
 - **Detection Mode (fast/balanced/accurate)**: Presets to trade speed vs accuracy (enables stronger fallbacks in accurate mode)
 - **Detection Debug Save**: Save stage images/overlays/`meta.json` under `_debug` for failure analysis
+- **Perspective default**: ON by default, OFF switches to axis-aligned bbox crop
 
 ### Output Settings
 - **Output Format**: JPG, PNG, WEBP
 - **Quality Control**: JPG/WEBP quality (1-100), PNG compression (0-9)
+- **Metadata Preserve**: EXIF/ICC best-effort copy (save still succeeds on metadata failure)
 - **Grayscale/Denoise/Sharpening**
 - **Auto Classification Output (optional)**: Save into category subfolders when confidence threshold is met
 
 > Note: `skip processed` is filename-based.
 > Classification subfolders (`Portrait/Landscape/Document/BW/Other`) are now included in `skip processed` probing.
+> Multi-photo subfolders (`*_photos`) are also included in `skip processed` probing.
 > If naming rules/timestamps are enabled, run a small sample validation before large reruns.
 
 ## 🧪 Stability Checklist
 
 - **Syntax validation**: `python -m compileall -q photo_cropper`
-- **CLI smoke test**: `python -m photo_cropper.cli -i ./scans -o ./cropped --multi-photo --max-size 1920 --skip-processed`
+- **CLI smoke test**: `python -m photo_cropper.cli -i ./scans -o ./cropped --multi-photo --multi-photo-separate-folders --preserve-metadata --no-perspective-correct --skip-processed`
 - **Watch mode parity**: verify new files in Watch Mode go through same resize/watermark/classification behavior as batch mode
 - **Unicode path test**: use a watermark image in a non-ASCII path and verify output succeeds
 - **Cancel responsiveness**: during multithreaded batch, request stop and verify quick transition to cancelled state
@@ -312,3 +329,10 @@ Please report bugs or feature suggestions in Issues.
   - `ui/main`, `ui/widgets/settings`, `i18n/catalog`
 - Updated internal imports and packaging metadata (`photo_cropper.spec`) for the new package layout.
 - Runtime behavior target remains unchanged: CLI options, settings schema, output rules, watch/batch contracts.
+
+## 2026-03-04 Consistency Check Notes
+
+- Verified `pyright --project pyrightconfig.json` with 0 errors / 0 warnings.
+- Aligned `QWidget` override event signatures (`dragEnterEvent`, `dropEvent`, `keyPressEvent`) to PyQt6 stubs using `Optional[...]`.
+- Strengthened PyInstaller hidden imports for split modules:
+  `watch_mode`, `manual_extract`, `session_service`, `save_io`, `dialog_actions`.

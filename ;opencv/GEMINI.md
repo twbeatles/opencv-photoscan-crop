@@ -278,3 +278,10 @@ pyinstaller photo_cropper.spec --clean
   - `ui/main`, `ui/widgets/settings`, `i18n/catalog`
 - Updated internal imports and packaging metadata (`photo_cropper.spec`) for the new package layout.
 - Runtime behavior target remains unchanged: CLI options, settings schema, output rules, watch/batch contracts.
+
+## 2026-03-04 Consistency Check Notes
+
+- Verified `pyright --project pyrightconfig.json` with 0 errors / 0 warnings.
+- Updated `QWidget` override event signatures (`dragEnterEvent`, `dropEvent`, `keyPressEvent`) to match PyQt6 stub types via `Optional[...]`.
+- Added explicit PyInstaller hidden imports for split modules:
+  `watch_mode`, `manual_extract`, `session_service`, `save_io`, `dialog_actions`.

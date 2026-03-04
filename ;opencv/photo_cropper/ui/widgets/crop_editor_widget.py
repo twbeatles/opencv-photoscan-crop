@@ -33,18 +33,38 @@ from PyQt6.QtGui import (
 def numpy_to_qpixmap(image: np.ndarray) -> QPixmap:
     """Convert numpy array to QPixmap."""
     if len(image.shape) == 2:
-        height, width = image.shape
+        gray = np.ascontiguousarray(image)
+        height, width = gray.shape
         bytes_per_line = width
-        qimage = QImage(image.data, width, height, bytes_per_line, QImage.Format.Format_Grayscale8)
+        qimage = QImage(
+            gray.tobytes(),
+            width,
+            height,
+            bytes_per_line,
+            QImage.Format.Format_Grayscale8,
+        )
     else:
         height, width, channels = image.shape
         if channels == 4:
+            rgba = np.ascontiguousarray(image)
             bytes_per_line = 4 * width
-            qimage = QImage(image.data, width, height, bytes_per_line, QImage.Format.Format_RGBA8888)
+            qimage = QImage(
+                rgba.tobytes(),
+                width,
+                height,
+                bytes_per_line,
+                QImage.Format.Format_RGBA8888,
+            )
         else:
-            image_rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+            image_rgb = np.ascontiguousarray(cv2.cvtColor(image, cv2.COLOR_BGR2RGB))
             bytes_per_line = 3 * width
-            qimage = QImage(image_rgb.data, width, height, bytes_per_line, QImage.Format.Format_RGB888)
+            qimage = QImage(
+                image_rgb.tobytes(),
+                width,
+                height,
+                bytes_per_line,
+                QImage.Format.Format_RGB888,
+            )
     
     return QPixmap.fromImage(qimage.copy())
 
@@ -121,7 +141,7 @@ class CropEditorView(QGraphicsView):
         
         # Interaction state
         self._dragging = False
-        self._drag_handle: Optional[HandlePosition] = None
+        self._drag_handle: Optional[Tuple[HandlePosition, int]] = None
         self._drag_start = QPointF()
         self._drawing_new_rect = False
         
@@ -259,8 +279,9 @@ class CropEditorView(QGraphicsView):
         
         for pos, handle_type in handle_positions:
             handle = self._create_handle(pos)
-            handle.setData(0, handle_type)
-            self._handles.append(handle)
+            if handle is not None:
+                handle.setData(0, handle_type)
+                self._handles.append(handle)
     
     def _update_perspective_overlay(self):
         """Update perspective editing overlay."""
@@ -273,13 +294,15 @@ class CropEditorView(QGraphicsView):
             p1 = self._perspective_points[i]
             p2 = self._perspective_points[(i + 1) % 4]
             line = self._scene.addLine(QLineF(p1, p2), pen)
-            self._perspective_lines.append(line)
+            if line is not None:
+                self._perspective_lines.append(line)
         
         # Draw handles at corners
         for i, point in enumerate(self._perspective_points):
             handle = self._create_handle(point)
-            handle.setData(0, i)
-            self._perspective_handles.append(handle)
+            if handle is not None:
+                handle.setData(0, i)
+                self._perspective_handles.append(handle)
     
     def _update_grid(self):
         """Update rule of thirds grid."""
@@ -299,13 +322,15 @@ class CropEditorView(QGraphicsView):
         for i in range(1, 3):
             x = rect.left() + rect.width() * i / 3
             line = self._scene.addLine(x, rect.top(), x, rect.bottom(), pen)
-            self._grid_lines.append(line)
+            if line is not None:
+                self._grid_lines.append(line)
         
         # Horizontal lines (thirds)
         for i in range(1, 3):
             y = rect.top() + rect.height() * i / 3
             line = self._scene.addLine(rect.left(), y, rect.right(), y, pen)
-            self._grid_lines.append(line)
+            if line is not None:
+                self._grid_lines.append(line)
     
     def _create_handle(self, pos: QPointF) -> QGraphicsEllipseItem:
         """Create a handle at the given position."""
@@ -317,6 +342,11 @@ class CropEditorView(QGraphicsView):
             QPen(Qt.GlobalColor.white, 2),
             QBrush(self.HANDLE_COLOR)
         )
+        if handle is None:
+            handle = QGraphicsEllipseItem(rect)
+            handle.setPen(QPen(Qt.GlobalColor.white, 2))
+            handle.setBrush(QBrush(self.HANDLE_COLOR))
+            self._scene.addItem(handle)
         handle.setZValue(100)
         handle.setCursor(QCursor(Qt.CursorShape.SizeAllCursor))
         
@@ -330,7 +360,9 @@ class CropEditorView(QGraphicsView):
         for i, handle in enumerate(self._handles):
             center = handle.rect().center()
             if (pos - center).manhattanLength() < threshold:
-                return (handle.data(0), i)
+                handle_type = handle.data(0)
+                if isinstance(handle_type, HandlePosition):
+                    return (handle_type, i)
         
         # Check perspective handles
         for i, handle in enumerate(self._perspective_handles):
@@ -661,13 +693,9 @@ class CropEditorWidget(QWidget):
         processor = AdvancedImageProcessor()
         
         image = self._original_image.copy()
-        
-        # Apply rotation if any
-        angle = self._rotation_spin.value()
-        if abs(angle) > 0.1:
-            image = processor.rotate_free(image, angle)
-        
-        # Apply crop or perspective
+
+        # IMPORTANT: preserve editor coordinate system.
+        # Apply crop/perspective first, then rotate the extracted result.
         if self._rect_mode_btn.isChecked():
             rect = self._editor.get_crop_rect()
             x, y, w, h = int(rect.x()), int(rect.y()), int(rect.width()), int(rect.height())
@@ -689,6 +717,11 @@ class CropEditorWidget(QWidget):
                 result = processor.correct_perspective(image, pts)
                 if result.success:
                     image = result.image
+
+        # Apply rotation at the end so crop coordinates always match editor view.
+        angle = self._rotation_spin.value()
+        if abs(angle) > 0.1:
+            image = processor.rotate_free(image, angle)
         
         self.crop_applied.emit(image)
 

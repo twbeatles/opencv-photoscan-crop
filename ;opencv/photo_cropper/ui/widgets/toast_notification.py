@@ -94,7 +94,12 @@ class ToastNotification(QWidget):
         self._opacity_animation.setDuration(self._animation_duration)
         self._opacity_animation.setEasingCurve(QEasingCurve.Type.OutCubic)
     
-    def show_toast(self, message: str, toast_type: str = "info", duration: int = None):
+    def show_toast(
+        self,
+        message: str,
+        toast_type: str = "info",
+        duration: int | None = None,
+    ):
         """
         Show toast notification.
         
@@ -128,8 +133,9 @@ class ToastNotification(QWidget):
         self.adjustSize()
         
         # Position at bottom center of parent
-        if self.parent():
-            parent_rect = self.parent().rect()
+        parent_widget = self.parentWidget()
+        if parent_widget is not None:
+            parent_rect = parent_widget.rect()
             x = parent_rect.center().x() - self.width() // 2
             y = parent_rect.bottom() - self.height() - 30
             
@@ -165,8 +171,9 @@ class ToastNotification(QWidget):
         self._dismiss_timer.stop()
         
         # Reverse animations
-        if self.parent():
-            parent_rect = self.parent().rect()
+        parent_widget = self.parentWidget()
+        if parent_widget is not None:
+            parent_rect = parent_widget.rect()
             x = self.x()
             end_pos = QPoint(x, parent_rect.bottom())
             

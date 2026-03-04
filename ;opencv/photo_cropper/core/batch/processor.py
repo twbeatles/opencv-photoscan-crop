@@ -17,6 +17,7 @@ import threading
 import traceback
 import time
 import cv2
+import numpy as np
 from concurrent.futures import ThreadPoolExecutor, wait, FIRST_COMPLETED
 from datetime import datetime
 from typing import Optional, List, Dict, Any, Callable, Tuple
@@ -429,15 +430,45 @@ class BatchProcessor:
 
         return self._naming_engine
 
+    def _resolve_multi_photo_output_dir(self, input_path: str, output_dir: str) -> str:
+        """Resolve per-input subfolder for multi-photo outputs when enabled."""
+        if not (
+            self.settings.multi_photo.enabled
+            and self.settings.multi_photo.separate_output_folders
+        ):
+            return output_dir
+
+        base_name = os.path.splitext(os.path.basename(input_path))[0]
+        folder_name = f"{base_name}_photos"
+
+        # Avoid duplicate nesting if caller already passed the per-input folder.
+        if os.path.basename(os.path.normpath(output_dir)) == folder_name:
+            resolved = output_dir
+        else:
+            resolved = os.path.join(output_dir, folder_name)
+
+        os.makedirs(resolved, exist_ok=True)
+        return resolved
+
     def _build_output_path(self, input_path: str, output_dir: str, suffix: str) -> str:
         """Build output path using naming rules or default scheme."""
+        effective_output_dir = output_dir
+        if suffix.startswith("_photo"):
+            effective_output_dir = self._resolve_multi_photo_output_dir(
+                input_path, output_dir
+            )
+
+        os.makedirs(effective_output_dir, exist_ok=True)
+
         output_format = self.settings.output.output_format
         if self.settings.file_management.use_naming_rules:
             engine = self._ensure_naming_engine()
             if engine:
                 with self._naming_lock:
                     path = engine.generate_name(
-                        input_path, output_dir=output_dir, output_format=output_format
+                        input_path,
+                        output_dir=effective_output_dir,
+                        output_format=output_format,
                     )
                 if suffix and suffix != "_cropped":
                     base, ext = os.path.splitext(path)
@@ -447,7 +478,7 @@ class BatchProcessor:
         base_name = os.path.splitext(os.path.basename(input_path))[0] + suffix
         extension = "." + output_format.lower()
         return get_unique_filename(
-            output_dir,
+            effective_output_dir,
             base_name,
             extension,
             add_timestamp=self.settings.output.add_timestamp,
@@ -595,6 +626,20 @@ class BatchProcessor:
 
         processed = self._maybe_apply_watermark(processed)
         return processed, resolved_output_dir
+
+    def apply_post_pipeline(
+        self, image: np.ndarray, output_dir: str
+    ) -> Tuple[np.ndarray, str]:
+        """
+        Public wrapper for unified post-processing pipeline.
+
+        Kept for parity with manual extraction / external reuse.
+        """
+        return self._run_post_pipeline(image, output_dir)
+
+    def build_output_path(self, input_path: str, output_dir: str, suffix: str) -> str:
+        """Public wrapper for output path generation."""
+        return self._build_output_path(input_path, output_dir, suffix)
 
     def _maybe_apply_watermark(self, image: np.ndarray) -> np.ndarray:
         """Apply watermark settings if enabled."""
@@ -753,25 +798,38 @@ class BatchProcessor:
             self._log(f"  이미지 분류 오류: {e}", "warning")
             return output_dir
 
-    def _iter_candidate_output_dirs(self, output_dir: str) -> List[str]:
+    def _iter_candidate_output_dirs(
+        self,
+        output_dir: str,
+        *,
+        multi_photo: bool = False,
+        input_path: Optional[str] = None,
+    ) -> List[str]:
         """
         Candidate output directories for duplicate probing.
 
         Includes classification category folders when auto-folder routing is enabled.
         """
-        dirs = [output_dir]
+        roots: List[str] = [output_dir]
+        if multi_photo and input_path:
+            roots.append(self._resolve_multi_photo_output_dir(input_path, output_dir))
+
+        dirs: List[str] = []
+        for root in roots:
+            dirs.append(root)
         cls_settings = self.settings.classification
         if not cls_settings.enabled or not cls_settings.auto_folder:
-            return dirs
+            return list(dict.fromkeys(dirs))
 
         try:
             classifier = self._get_classifier()
             enabled_map = cls_settings.categories_enabled or {}
             for category in ImageCategory:
                 if enabled_map.get(category.value, True):
-                    dirs.append(
-                        os.path.join(output_dir, classifier.get_output_folder(category))
-                    )
+                    for root in roots:
+                        dirs.append(
+                            os.path.join(root, classifier.get_output_folder(category))
+                        )
         except Exception:
             # Best-effort: keep base output_dir only.
             pass
@@ -786,11 +844,16 @@ class BatchProcessor:
         output_dir: str,
         *,
         multi_photo: bool = False,
+        input_path: Optional[str] = None,
     ) -> Optional[str]:
         """
         Find existing output path for skip-processed checks across candidate dirs.
         """
-        for candidate_dir in self._iter_candidate_output_dirs(output_dir):
+        for candidate_dir in self._iter_candidate_output_dirs(
+            output_dir,
+            multi_photo=multi_photo,
+            input_path=input_path,
+        ):
             expected = os.path.join(candidate_dir, f"{base_name}_cropped{ext}")
             if os.path.exists(expected):
                 return expected
@@ -800,11 +863,35 @@ class BatchProcessor:
                     prefix = f"{base_name}_photo"
                     if os.path.isdir(candidate_dir):
                         for entry in os.listdir(candidate_dir):
-                            if entry.startswith(prefix):
-                                return os.path.join(candidate_dir, entry)
+                            if not entry.startswith(prefix):
+                                continue
+                            candidate_path = os.path.join(candidate_dir, entry)
+                            if not os.path.isfile(candidate_path):
+                                continue
+                            if ext and not entry.lower().endswith(ext.lower()):
+                                continue
+                            return candidate_path
                 except Exception:
                     pass
         return None
+
+    def find_existing_output(
+        self,
+        base_name: str,
+        ext: str,
+        output_dir: str,
+        *,
+        multi_photo: bool = False,
+        input_path: Optional[str] = None,
+    ) -> Optional[str]:
+        """Public wrapper for skip-processed duplicate probing."""
+        return self._find_existing_output(
+            base_name,
+            ext,
+            output_dir,
+            multi_photo=multi_photo,
+            input_path=input_path,
+        )
 
     def _safe_callback(self, callback: Optional[Callable], *args, **kwargs):
         """
@@ -1198,7 +1285,8 @@ class BatchProcessor:
                 futures = {}
                 pending = set()
                 try:
-                    self._executor = ThreadPoolExecutor(max_workers=self._thread_count)
+                    executor = ThreadPoolExecutor(max_workers=self._thread_count)
+                    self._executor = executor
                     max_in_flight = max(self._thread_count * 3, self._thread_count)
                     work_iter = iter(enumerate(work_items, 1))
 
@@ -1207,7 +1295,7 @@ class BatchProcessor:
                             item_index, (filename, output_path_override) = next(work_iter)
                         except StopIteration:
                             return False
-                        future = self._executor.submit(
+                        future = executor.submit(
                             self._process_single_file,
                             input_dir,
                             output_dir,
@@ -1298,12 +1386,12 @@ class BatchProcessor:
                 self._log("모든 작업 완료!", "success")
 
             with self._lock:
-                progress = self._progress
-                self._log(
-                    f"최종 통계 - 총: {progress.processed}, 성공: {progress.success}, "
-                    f"실패: {progress.failed}, 건너뜀: {progress.skipped}",
-                    "info",
-                )
+                progress = BatchProgress(**self._progress.__dict__)
+            self._log(
+                f"최종 통계 - 총: {progress.processed}, 성공: {progress.success}, "
+                f"실패: {progress.failed}, 건너뜀: {progress.skipped}",
+                "info",
+            )
 
             if self._failed_files:
                 self._log(f"실패한 파일: {len(self._failed_files)}개", "warning")
@@ -1442,6 +1530,7 @@ class BatchProcessor:
                     ext,
                     output_dir,
                     multi_photo=self.settings.multi_photo.enabled,
+                    input_path=input_path,
                 )
                 if existing:
                     self._log(
@@ -1507,6 +1596,8 @@ class BatchProcessor:
                 self.settings.output.jpg_quality,
                 self.settings.output.png_compression,
                 self.settings.output.webp_quality,
+                source_path=input_path,
+                preserve_metadata=self.settings.output.preserve_metadata,
             )
 
             if success:
@@ -1609,6 +1700,7 @@ class BatchProcessor:
         )
 
         saved_count = 0
+        multi_output_root = self._resolve_multi_photo_output_dir(input_path, output_dir)
 
         for idx, (cropped_img, photo_info) in enumerate(cropped_photos, 1):
             if self._is_stop_requested():
@@ -1616,7 +1708,7 @@ class BatchProcessor:
 
             processed_img, resolved_output_dir = self._run_post_pipeline(
                 cropped_img,
-                output_dir,
+                multi_output_root,
             )
             output_path = self._build_output_path(
                 input_path,
@@ -1632,6 +1724,8 @@ class BatchProcessor:
                 self.settings.output.jpg_quality,
                 self.settings.output.png_compression,
                 self.settings.output.webp_quality,
+                source_path=input_path,
+                preserve_metadata=self.settings.output.preserve_metadata,
             )
 
             if success:
@@ -1676,6 +1770,13 @@ class BatchProcessor:
     ) -> FileResult:
         """Save a single processed result."""
         active_processor = processor or self.processor
+        if result.image is None:
+            return FileResult(
+                filename=filename,
+                status=ProcessStatus.FAILED,
+                message="저장할 이미지가 없습니다",
+                processing_time_ms=processing_time,
+            )
         processed_image, resolved_output_dir = self._run_post_pipeline(
             result.image,
             output_dir,
@@ -1693,6 +1794,8 @@ class BatchProcessor:
             self.settings.output.jpg_quality,
             self.settings.output.png_compression,
             self.settings.output.webp_quality,
+            source_path=input_path,
+            preserve_metadata=self.settings.output.preserve_metadata,
         )
 
         if success:

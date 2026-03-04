@@ -99,7 +99,13 @@ class ThumbnailItem(QFrame):
             rgb = cv2.cvtColor(thumbnail, cv2.COLOR_BGR2RGB)
             h, w, ch = rgb.shape
             bytes_per_line = ch * w
-            qimg = QImage(rgb.data, w, h, bytes_per_line, QImage.Format.Format_RGB888)
+            qimg = QImage(
+                np.ascontiguousarray(rgb).tobytes(),
+                w,
+                h,
+                bytes_per_line,
+                QImage.Format.Format_RGB888,
+            )
             
             self._pixmap = QPixmap.fromImage(qimg)
             self.image_label.setPixmap(self._pixmap)
@@ -364,8 +370,11 @@ class ThumbnailGridWidget(QWidget):
         """Clear grid layout."""
         while self.grid_layout.count():
             item = self.grid_layout.takeAt(0)
-            if item.widget():
-                item.widget().deleteLater()
+            if item is None:
+                continue
+            widget = item.widget()
+            if widget is not None:
+                widget.deleteLater()
         
         self._thumbnail_items.clear()
     
@@ -431,12 +440,14 @@ class ThumbnailGridWidget(QWidget):
         menu = QMenu(self)
         
         open_action = menu.addAction("열기")
-        open_action.triggered.connect(lambda: self.file_double_clicked.emit(filepath))
+        if open_action is not None:
+            open_action.triggered.connect(lambda: self.file_double_clicked.emit(filepath))
         
         menu.addSeparator()
         
         explorer_action = menu.addAction("파일 위치 열기")
-        explorer_action.triggered.connect(lambda: self._open_in_explorer(filepath))
+        if explorer_action is not None:
+            explorer_action.triggered.connect(lambda: self._open_in_explorer(filepath))
         
         menu.exec(pos)
     

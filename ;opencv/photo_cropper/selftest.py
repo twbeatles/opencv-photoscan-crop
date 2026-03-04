@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# pyright: reportAttributeAccessIssue=false
 # -*- coding: utf-8 -*-
 """
 Lightweight self-tests for Photo Cropper.
@@ -19,6 +20,192 @@ def _test_crop_editor_import_smoke() -> None:
         raise AssertionError(f"Crop editor import failed: {e}")
 
     assert CropEditorWidget is not None
+
+
+def _test_preview_worker_import_smoke() -> None:
+    try:
+        from .ui.main.preview_worker import PreviewWorker
+    except Exception as e:
+        raise AssertionError(f"Preview worker import failed: {e}")
+
+    assert PreviewWorker is not None
+
+
+def _test_ui_action_modules_import_smoke() -> None:
+    try:
+        from .ui.main.batch_actions import BatchActions
+        from .ui.main.preview_actions import PreviewActions
+        from .ui.main.feature_actions import FeatureActions
+        from .ui.main.navigation_actions import NavigationActions
+        from .ui.main.dialog_actions import DialogActions
+    except Exception as e:
+        raise AssertionError(f"UI action modules import failed: {e}")
+
+    assert BatchActions is not None
+    assert PreviewActions is not None
+    assert FeatureActions is not None
+    assert NavigationActions is not None
+    assert DialogActions is not None
+
+
+def _test_manual_extract_service_import_smoke() -> None:
+    try:
+        from .core.manual_extract import ManualExtractProcessor, ManualExtractOutcome
+    except Exception as e:
+        raise AssertionError(f"Manual extract service import failed: {e}")
+
+    assert ManualExtractProcessor is not None
+    assert ManualExtractOutcome is not None
+
+
+def _test_image_save_io_module_smoke() -> None:
+    try:
+        from .core.image.save_io import resolve_save_codec, save_image_unicode
+    except Exception as e:
+        raise AssertionError(f"Image save IO module import failed: {e}")
+
+    ext, fmt = resolve_save_codec("out", "PNG")
+    assert ext == ".png"
+    assert fmt == "PNG"
+    assert save_image_unicode is not None
+
+
+def _test_watch_mode_coordinator_import_smoke() -> None:
+    try:
+        from .core.watch_mode import WatchModeCoordinator, WatchStartResult
+    except Exception as e:
+        raise AssertionError(f"Watch mode coordinator import failed: {e}")
+
+    assert WatchModeCoordinator is not None
+    assert WatchStartResult is not None
+
+
+def _test_watch_mode_coordinator_invalid_input() -> None:
+    from .core.settings_model import AppSettings
+    from .core.watch_mode import WatchModeCoordinator
+
+    coordinator = WatchModeCoordinator(settings=AppSettings())
+    result = coordinator.start(input_path="", output_path="")
+    assert result.success is False
+    assert result.error_code == "invalid_input"
+    coordinator.stop()
+    coordinator.deleteLater()
+
+
+def _test_batch_session_service_smoke() -> None:
+    from .core.batch import BatchSessionService
+
+    service = BatchSessionService()
+    assert service.processor is None
+    assert service.failed_files == []
+    service.request_stop()
+    service.cleanup()
+
+
+def _test_manual_extract_session_runner_empty() -> None:
+    import tempfile
+    from threading import Event
+
+    from .core.manual_extract import ManualExtractSessionRunner
+
+    calls = {"progress": 0, "log": 0, "completed": 0, "results": None}
+
+    def on_progress(_progress):
+        calls["progress"] += 1
+
+    def on_log(_message: str, _level: str):
+        calls["log"] += 1
+
+    def on_complete(_progress, results):
+        calls["completed"] += 1
+        calls["results"] = results
+
+    runner = ManualExtractSessionRunner()
+    with tempfile.TemporaryDirectory(prefix="photocropper_manual_runner_") as td:
+        runner.run(
+            output_path=td,
+            files=[],
+            contours_norm={},
+            settings_snapshot={},
+            stop_event=Event(),
+            on_progress=on_progress,
+            on_log=on_log,
+            on_complete=on_complete,
+        )
+
+    assert calls["progress"] >= 2
+    assert calls["log"] == 0
+    assert calls["completed"] == 1
+    assert calls["results"] == []
+
+
+def _test_contour_utils_roundtrip() -> None:
+    import numpy as np
+
+    from .core.manual_extract import (
+        normalize_contour_points,
+        denormalize_contour_points,
+        scale_contour_to_preview,
+    )
+    from .core.image import CropResult
+
+    pts = np.array([[10, 20], [90, 20], [90, 80], [10, 80]], dtype=np.float32)
+    normalized = normalize_contour_points(pts, (100, 100, 3))
+    assert normalized is not None
+    restored = denormalize_contour_points(normalized, (100, 100, 3))
+    assert restored is not None
+    assert np.allclose(restored, pts, atol=1.0)
+
+    preview = np.zeros((200, 300, 3), dtype=np.uint8)
+    crop_result = CropResult(
+        success=True,
+        contour_points=pts,
+        original_size=(100, 100),
+    )
+    scaled = scale_contour_to_preview(preview, crop_result)
+    assert scaled is not None
+    assert np.allclose(scaled[0], [30.0, 40.0], atol=1.0)
+
+
+def _test_boundary_failed_file_collection_helper() -> None:
+    import os
+    import tempfile
+
+    from .core.batch import ProcessStatus
+    from .core.manual_extract import collect_boundary_failed_files
+
+    class _Result:
+        def __init__(self, status, message, filename):
+            self.status = status
+            self.message = message
+            self.filename = filename
+
+    with tempfile.TemporaryDirectory(prefix="photocropper_boundary_fail_") as td:
+        in_dir = os.path.join(td, "in")
+        os.makedirs(in_dir, exist_ok=True)
+        f1 = os.path.join(in_dir, "a.jpg")
+        f2 = os.path.join(in_dir, "b.jpg")
+        with open(f1, "wb") as f:
+            f.write(b"x")
+        with open(f2, "wb") as f:
+            f.write(b"y")
+
+        results = [
+            _Result(ProcessStatus.FAILED, "Failed to detect photo boundary.", "a.jpg"),
+            _Result(ProcessStatus.FAILED, "other error", "b.jpg"),
+        ]
+
+        resolved = collect_boundary_failed_files(
+            results=results,
+            input_root=in_dir,
+            image_list=[f1, f2],
+            batch_failed_entries=["a.jpg", "b.jpg"],
+            recursive_search=False,
+            get_image_files_fn=lambda root, recursive=False: [f1, f2],
+            logger=None,
+        )
+        assert len(resolved) == 1
+        assert os.path.basename(resolved[0]).lower() == "a.jpg"
 
 
 def _test_cli_settings_merge_priority() -> None:
@@ -819,8 +1006,10 @@ def _test_skip_processed_with_classification_subfolder() -> None:
             jpg_quality=95,
             png_compression=6,
             webp_quality=90,
+            source_path=None,
+            preserve_metadata=False,
         ):
-            del output_format, png_compression, webp_quality
+            del output_format, png_compression, webp_quality, source_path, preserve_metadata
             os.makedirs(os.path.dirname(output_path), exist_ok=True)
             ok, buf = cv2.imencode(".jpg", image, [cv2.IMWRITE_JPEG_QUALITY, int(jpg_quality)])
             if not ok:
@@ -855,9 +1044,247 @@ def _test_skip_processed_with_classification_subfolder() -> None:
         assert r2.status == ProcessStatus.SKIPPED, r2.message
 
 
+def _test_perspective_toggle_warp_vs_axis_crop() -> None:
+    import numpy as np
+
+    from .core.image import ImageProcessor
+    from .core.settings_model import (
+        AlgorithmSettings,
+        ProcessingSettings,
+        AdvancedProcessingSettings,
+    )
+
+    image = np.full((220, 260, 3), 240, dtype=np.uint8)
+    quad = np.array(
+        [[30, 35], [220, 20], [210, 180], [50, 190]],
+        dtype=np.float32,
+    )
+
+    def fake_find_best_contour(_edge, _area, min_area_ratio=None, max_area_ratio=None):
+        del min_area_ratio, max_area_ratio
+        return quad.copy(), 0.99, [{"quad": quad.copy(), "score": 0.99}]
+
+    algo = AlgorithmSettings(
+        detection_mode="fast",
+        canny_min=30,
+        canny_max=120,
+        use_clahe=False,
+        multi_scale_edge=False,
+    )
+    proc = ProcessingSettings(auto_contrast=False)
+
+    ip_on = ImageProcessor(algo, proc, AdvancedProcessingSettings(perspective_correct=True))
+    ip_off = ImageProcessor(
+        algo, proc, AdvancedProcessingSettings(perspective_correct=False)
+    )
+    ip_on.find_best_contour = fake_find_best_contour
+    ip_off.find_best_contour = fake_find_best_contour
+
+    res_on = ip_on._process_loaded_image(image, "synthetic_on")
+    res_off = ip_off._process_loaded_image(image, "synthetic_off")
+
+    assert res_on.success and res_on.image is not None, res_on.message
+    assert res_off.success and res_off.image is not None, res_off.message
+    assert res_on.cropped_size != res_off.cropped_size, (
+        f"Expected different sizes for perspective on/off, got {res_on.cropped_size}"
+    )
+
+    bbox_w = int(np.ceil(np.max(quad[:, 0])) - np.floor(np.min(quad[:, 0])))
+    bbox_h = int(np.ceil(np.max(quad[:, 1])) - np.floor(np.min(quad[:, 1])))
+    assert res_off.cropped_size == (bbox_w, bbox_h), res_off.cropped_size
+
+
+def _test_save_image_fallback_and_metadata_best_effort() -> None:
+    import os
+    import tempfile
+
+    import cv2
+    import numpy as np
+
+    from .core.image import ImageProcessor
+
+    image = np.full((120, 160, 3), 190, dtype=np.uint8)
+
+    with tempfile.TemporaryDirectory(prefix="photocropper_save_") as td:
+        no_ext_path = os.path.join(td, "no_extension")
+        ok, msg, _ = ImageProcessor.save_image(image, no_ext_path, output_format="PNG")
+        assert ok, msg
+        assert os.path.exists(no_ext_path)
+        assert os.path.getsize(no_ext_path) > 0
+
+        invalid_ext_path = os.path.join(td, "bad.ext")
+        ok, msg, _ = ImageProcessor.save_image(
+            image, invalid_ext_path, output_format="WEBP"
+        )
+        assert ok, msg
+        assert os.path.exists(invalid_ext_path)
+        assert os.path.getsize(invalid_ext_path) > 0
+
+        # Metadata copy failure must not fail the save.
+        missing_source_out = os.path.join(td, "missing_source.jpg")
+        ok, msg, _ = ImageProcessor.save_image(
+            image,
+            missing_source_out,
+            output_format="JPG",
+            source_path=os.path.join(td, "missing.jpg"),
+            preserve_metadata=True,
+        )
+        assert ok, msg
+
+        try:
+            from PIL import Image
+        except Exception:
+            return
+
+        source_path = os.path.join(td, "source_with_exif.jpg")
+        output_path = os.path.join(td, "copied_meta.jpg")
+        rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+        src_img = Image.fromarray(rgb)
+        exif = Image.Exif()
+        exif[0x010F] = "PhotoCropperSelfTest"  # Make
+        src_img.save(source_path, format="JPEG", exif=exif.tobytes())
+
+        ok, msg, _ = ImageProcessor.save_image(
+            image,
+            output_path,
+            output_format="JPG",
+            source_path=source_path,
+            preserve_metadata=True,
+        )
+        assert ok, msg
+        with Image.open(output_path) as out_img:
+            out_exif = out_img.getexif()
+            assert out_exif is not None and len(out_exif) > 0
+            assert out_exif.get(0x010F) == "PhotoCropperSelfTest"
+
+
+def _test_resize_fill_no_upscale_boundary() -> None:
+    import numpy as np
+
+    from .core.resize_processor import ResizeProcessor, ResizeSettings, ResizeMode
+
+    image = np.full((80, 100, 3), 120, dtype=np.uint8)
+    processor = ResizeProcessor()
+    settings = ResizeSettings(
+        enabled=True,
+        mode=ResizeMode.FILL,
+        width=300,
+        height=240,
+        upscale_allowed=False,
+    )
+    result = processor.resize(image, settings)
+    assert result.success, result.message
+    assert result.image is not None
+    h, w = result.image.shape[:2]
+    assert w > 0 and h > 0
+    assert w <= 100 and h <= 80
+    assert result.new_size == (w, h)
+
+
+def _test_multi_photo_merge_distance_and_separate_folders() -> None:
+    import os
+    import tempfile
+
+    import numpy as np
+
+    from .core.batch import BatchProcessor
+    from .core.multi_photo_detector import MultiPhotoDetector, DetectedPhoto
+    from .core.settings_model import AppSettings
+
+    def make_box(x: int, y: int, w: int, h: int) -> np.ndarray:
+        return np.array(
+            [[[x, y]], [[x + w, y]], [[x + w, y + h]], [[x, y + h]]],
+            dtype=np.int32,
+        )
+
+    photo_a = DetectedPhoto(
+        bounding_box=(100, 120, 320, 220),
+        contour=make_box(100, 120, 320, 220),
+        confidence=0.8,
+        area=320 * 220,
+        aspect_ratio=320 / 220,
+    )
+    photo_b = DetectedPhoto(
+        bounding_box=(125, 130, 315, 215),
+        contour=make_box(125, 130, 315, 215),
+        confidence=0.79,
+        area=315 * 215,
+        aspect_ratio=315 / 215,
+    )
+
+    detector_small = MultiPhotoDetector(merge_distance=5)
+    detector_large = MultiPhotoDetector(merge_distance=80)
+    merged_small = detector_small._merge_overlapping([photo_a, photo_b])
+    merged_large = detector_large._merge_overlapping([photo_a, photo_b])
+    assert len(merged_small) >= len(merged_large)
+    assert len(merged_large) == 1
+
+    settings = AppSettings()
+    settings.multi_photo.enabled = True
+    settings.multi_photo.separate_output_folders = True
+    batch = BatchProcessor(settings)
+
+    with tempfile.TemporaryDirectory(prefix="photocropper_mp_folder_") as td:
+        src = os.path.join(td, "scan_a.jpg")
+        out_root = os.path.join(td, "out")
+        os.makedirs(out_root, exist_ok=True)
+
+        output_path = batch.build_output_path(src, out_root, "_photo01")
+        expected_dir = os.path.join(out_root, "scan_a_photos")
+        assert os.path.dirname(output_path) == expected_dir
+
+        with open(output_path, "wb") as f:
+            f.write(b"dummy")
+
+        found = batch.find_existing_output(
+            "scan_a",
+            ".jpg",
+            out_root,
+            multi_photo=True,
+            input_path=src,
+        )
+        assert found is not None
+        assert os.path.abspath(found) == os.path.abspath(output_path)
+
+
+def _test_cli_new_crop_options() -> None:
+    from . import cli as cli_mod
+
+    parser = cli_mod.create_parser()
+    args = parser.parse_args(
+        [
+            "--preserve-metadata",
+            "--no-perspective-correct",
+            "--multi-photo-merge-distance",
+            "77",
+            "--multi-photo-separate-folders",
+        ]
+    )
+    settings = cli_mod.build_settings_from_args(args)
+    assert settings.output.preserve_metadata is True
+    assert settings.advanced.perspective_correct is False
+    assert settings.multi_photo.enabled is True
+    assert settings.multi_photo.merge_distance == 77
+    assert settings.multi_photo.separate_output_folders is True
+
+    args_on = parser.parse_args(["--perspective-correct"])
+    settings_on = cli_mod.build_settings_from_args(args_on)
+    assert settings_on.advanced.perspective_correct is True
+
+
 def main() -> int:
     try:
         _test_crop_editor_import_smoke()
+        _test_preview_worker_import_smoke()
+        _test_ui_action_modules_import_smoke()
+        _test_manual_extract_service_import_smoke()
+        _test_batch_session_service_smoke()
+        _test_manual_extract_session_runner_empty()
+        _test_image_save_io_module_smoke()
+        _test_watch_mode_coordinator_import_smoke()
+        _test_watch_mode_coordinator_invalid_input()
+        _test_contour_utils_roundtrip()
+        _test_boundary_failed_file_collection_helper()
         _test_cli_settings_merge_priority()
         _test_settings_forward_compat()
         _test_unicode_text_watermark()
@@ -868,6 +1295,11 @@ def main() -> int:
         _test_watch_max_wait_roundtrip()
         _test_batch_post_pipeline_order()
         _test_skip_processed_with_classification_subfolder()
+        _test_perspective_toggle_warp_vs_axis_crop()
+        _test_save_image_fallback_and_metadata_best_effort()
+        _test_resize_fill_no_upscale_boundary()
+        _test_multi_photo_merge_distance_and_separate_folders()
+        _test_cli_new_crop_options()
         _test_crop_accuracy_synthetic()
         _test_no_photo_false_positive_regression()
         _test_multi_photo_close_gap_split()

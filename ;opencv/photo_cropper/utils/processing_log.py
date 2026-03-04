@@ -196,8 +196,10 @@ class ProcessingLogger:
         if self._current_session is None:
             logger.warning("No active session, creating temporary session")
             self.start_session("", "", 0)
-        
-        self._current_session.entries.append(entry)
+        session = self._current_session
+        if session is None:
+            return
+        session.entries.append(entry)
     
     def log_success(self, input_file: str, output_file: str,
                    detection_stage: str, processing_time_ms: float,
@@ -308,6 +310,7 @@ class ProcessingLogger:
             path = os.path.join(self.log_directory, f"processing_log_{timestamp}.json")
         
         # Prepare data
+        data: Dict[str, Any]
         if include_all_sessions:
             data = {
                 'sessions': [s.to_dict() for s in self._all_sessions]

@@ -9,7 +9,7 @@ Adds text and image watermarks to processed photos.
 import cv2
 import numpy as np
 import logging
-from typing import Tuple, Optional
+from typing import Any, Tuple, Optional, cast
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
@@ -554,7 +554,13 @@ class WatermarkProcessor:
                 for x in range(0, canvas, step):
                     draw.text((x, y), text, font=font, fill=fill)
 
-            rotated = tile.rotate(float(angle), resample=Image.BICUBIC, expand=False)
+            resampling = getattr(Image, "Resampling", Image)
+            bicubic = getattr(resampling, "BICUBIC", getattr(Image, "BICUBIC", 3))
+            rotated = tile.rotate(
+                float(angle),
+                resample=cast(Any, bicubic),
+                expand=False,
+            )
 
             left = max(0, (canvas - width) // 2)
             top = max(0, (canvas - height) // 2)
