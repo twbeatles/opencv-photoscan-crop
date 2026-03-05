@@ -38,6 +38,10 @@ A Python application that automatically detects and accurately crops scanned pho
 - **Metadata preserve (best-effort)**: EXIF/ICC copy failures emit warnings only; image save remains successful
 - **Multi-photo per-file subfolder**: `separate_output_folders=true` writes outputs under `<input_filename>_photos/`
 - **merge_distance wired into dedup**: duplicate suppression sensitivity now follows `merge_distance`
+- **Local processed index introduced**: `.photocropper/processed_index.json` improves `skip_processed` reproducibility
+- **Custom classification folder names**: default Korean folders preserved, plus user-configurable per-category names in settings
+- **Watch readiness fairness improvements**: not-ready files are re-queued fairly with explicit timeout/read-fail statuses
+- **Scheduler runtime wiring**: scheduler settings in UI now trigger real automatic batch runs while app is running
 
 ### 🌐 Multi-Language Support
 - Automatic system locale detection
@@ -188,18 +192,19 @@ python -m photo_cropper.cli --help
 - **Grayscale/Denoise/Sharpening**
 - **Auto Classification Output (optional)**: Save into category subfolders when confidence threshold is met
 
-> Note: `skip processed` is filename-based.
-> Classification subfolders (`Portrait/Landscape/Document/BW/Other`) are now included in `skip processed` probing.
-> Multi-photo subfolders (`*_photos`) are also included in `skip processed` probing.
-> If naming rules/timestamps are enabled, run a small sample validation before large reruns.
+> Note: `skip processed` now uses a local processed index first (`.photocropper/processed_index.json`).
+> Index key: `source_path + size + mtime_ns + pipeline_signature`; multi-photo outputs are stored in `outputs[]`.
+> Filename-based probing is used as fallback only when the index is unavailable.
+> Classification subfolders (default Korean names, user-configurable) and multi-photo subfolders (`*_photos`) are both included in fallback probing.
 
 ## 🧪 Stability Checklist
 
 - **Syntax validation**: `cd ";opencv" && python -m compileall -q photo_cropper`
 - **CLI smoke test**: `cd ";opencv" && python -m photo_cropper.cli -i ./scans -o ./cropped --multi-photo --multi-photo-separate-folders --preserve-metadata --no-perspective-correct --skip-processed`
 - **Watch mode parity**: verify new files in Watch Mode go through same resize/watermark/classification behavior as batch mode
+- **Scheduler check**: with `watch_mode.scheduler_enabled=true`, confirm auto-batch starts at scheduled time and overlapping triggers are skipped
 - **Unicode path test**: use a watermark image in a non-ASCII path and verify output succeeds
-- **Cancel responsiveness**: during multithreaded batch, request stop and verify quick transition to cancelled state
+- **Cancel semantics**: in multithreaded batch, request stop and verify final stats consistency and CLI exit code `130`
 
 ## 📁 Project Structure
 
@@ -216,6 +221,7 @@ photo_cropper/
 │   ├── resize_processor.py      # Resize (v8.5)
 │   ├── folder_watcher.py        # Folder watch (v8.5)
 │   ├── scheduler.py             # Scheduler (v8.5)
+│   ├── processed_index.py       # Local skip_processed index (v9.0)
 │   └── history_manager.py       # History management (v8.5)
 ├── ui/
 │   ├── main/window.py
@@ -264,6 +270,16 @@ Install [UPX](https://github.com/upx/upx/releases) to reduce executable size by 
 | UPX Compression | Compressed executable (~40% size reduction) |
 
 ## 📋 Changelog
+
+### v9.0 Integrated Improvements (2026-03-05)
+- ✨ Added local processed index (`.photocropper/processed_index.json`) and wired it across batch/watch/manual flows
+- ✨ Added configurable classification folder mapping (`ClassificationSettings.category_folders`) while preserving default Korean folder compatibility
+- ✨ Connected scheduler UI settings to runtime automatic batch triggering (while app is running)
+- 🛡️ Improved watch readiness/retry policy (stat/read timeout handling, fair queueing, retry-count diagnostics)
+- 🛡️ Improved cancellation consistency with completed-future draining and explicit `CANCELLED` accounting for unstarted tasks
+- 🛡️ Removed duplicate watch toasts by making detailed completion the user-facing notification path
+- 🛡️ Standardized CLI exit codes: cancel `130`, failure `1`, success `0`
+- 🛡️ Unified profile application through `to_dict + deep-merge + AppSettings.from_dict`
 
 ### v9.0 Manual Boundary Workflow Update (2026-03)
 - ✨ Added main-screen flow for folder batch editing (`Load Batch`, `Prev/Next`, `Save Edited Extract`)

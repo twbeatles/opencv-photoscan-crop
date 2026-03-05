@@ -61,6 +61,7 @@ photo_cropper/
 - `start_async(input_path, output_path, files)`
 - `process_single(input_path, output_dir)` (Watch Mode에서 재사용)
 - `apply_post_pipeline`, `build_output_path`, `find_existing_output`
+- `lookup_processed_outputs_from_index`, `record_processed_outputs` (`skip_processed` 로컬 인덱스)
 
 ### 3) MainWindow (`ui/main/window.py`)
 
@@ -101,6 +102,11 @@ UI 진입 오케스트레이터입니다.
    - Windows: `%APPDATA%/PhotoCropper/settings.json`
    - macOS/Linux: `~/.photo_cropper/photo_cropper_settings.json`
 
+5. **스케줄러 자동 배치**
+   - `MainWindow._reconfigure_scheduler()`에서 `watch_mode.scheduler_*`를 런타임 스케줄에 반영
+   - 앱 실행 중 예약 시각 도달 시 `BatchActions.start_processing()` 경로로 전체 배치 트리거
+   - 배치/수동/워치 실행 중에는 스케줄 트리거를 skip 처리
+
 ## 코딩 가이드라인
 
 ### 이미지 I/O
@@ -112,12 +118,13 @@ UI 진입 오케스트레이터입니다.
 
 - 후처리 순서: 얼굴 보정 -> 스마트 보정 -> 리사이즈 -> 분류 라우팅 -> 워터마크
 - Watch/Batch/수동 추출 경로가 동일 규칙을 사용해야 함
+- `skip_processed`는 `.photocropper/processed_index.json` 인덱스 우선, 실패 시 파일명 기반 fallback
 
 ### 성능/안정성
 
 - 대용량 파일 제한: `performance.max_image_size_mb`
 - DNN 얼굴 감지 실패 시 Haar 즉시 폴백
-- 멀티스레드 취소 시 pending 작업 우선 취소
+- 멀티스레드 취소 시 완료 future drain + 미실행 작업 `CANCELLED` 통계 반영
 
 ## 빌드
 
@@ -140,8 +147,8 @@ pyinstaller photo_cropper.spec --clean
 
 ### 중단 응답 지연
 
-- 멀티스레드 작업 중 일부 in-flight task는 완료 대기될 수 있음
-- pending task 취소 설정 및 thread count 재점검
+- 현재 구현은 취소 시 in-flight future 결과를 drain하고, 남은 미실행 항목은 `CANCELLED`로 집계함
+- 여전히 실제 실행 중인 외부 I/O는 즉시 중단되지 않을 수 있으므로 thread count/입력 크기 점검
 
 ## 2026-03-01 Agent Update
 
@@ -176,3 +183,13 @@ pyinstaller photo_cropper.spec --clean
 - `pyright --project pyrightconfig.json`: 0 errors / 0 warnings
 - QWidget 이벤트 오버라이드 타입 시그니처를 PyQt6 스텁 기준 `Optional[...]`로 정렬
 - `photo_cropper.spec` hidden imports에 `watch_mode`, `manual_extract`, `session_service`, `save_io`, `dialog_actions`를 명시
+
+## 2026-03-05 Integrated Improvement Notes
+
+- `skip_processed` 로직을 출력 폴더 로컬 인덱스(`.photocropper/processed_index.json`) 기반으로 강화
+- 분류 폴더명 매핑(`ClassificationSettings.category_folders`) 추가 및 설정 패널 노출
+- Watch 재시도 정책 개선: stat/read 실패 만료 처리, 공정 큐 재시도, retry_count 로그
+- 스케줄러 UI 설정과 런타임 자동 배치 트리거 연결
+- Watch 완료 알림은 `processing_completed_detailed` 중심으로 사용자 토스트 중복 제거
+- CLI 취소 종료코드 표준화: cancel `130`, failed `1`, success `0`
+- 프로파일 적용 경로를 `to_dict + deep-merge + AppSettings.from_dict`로 일원화

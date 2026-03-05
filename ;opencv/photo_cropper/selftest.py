@@ -961,6 +961,7 @@ def _test_skip_processed_with_classification_subfolder() -> None:
     settings = AppSettings()
     settings.classification.enabled = True
     settings.classification.auto_folder = True
+    settings.classification.category_folders["portrait"] = "인물커스텀"
     settings.filter.skip_processed = True
     settings.filter.skip_small_images = False
     settings.output.output_format = "JPG"
@@ -1037,7 +1038,7 @@ def _test_skip_processed_with_classification_subfolder() -> None:
         r1 = processor.process_single(src, out_dir)
         assert r1.status == ProcessStatus.SUCCESS, r1.message
         assert r1.output_path
-        assert os.path.isdir(os.path.join(out_dir, "인물"))
+        assert os.path.isdir(os.path.join(out_dir, "인물커스텀"))
         assert os.path.exists(r1.output_path)
 
         r2 = processor.process_single(src, out_dir)
@@ -1272,6 +1273,173 @@ def _test_cli_new_crop_options() -> None:
     assert settings_on.advanced.perspective_correct is True
 
 
+def _test_processed_index_roundtrip_and_source_change() -> None:
+    import os
+    import tempfile
+    import time
+
+    from .core.batch import BatchProcessor
+    from .core.settings_model import AppSettings
+
+    settings = AppSettings()
+    settings.filter.skip_processed = True
+    settings.file_management.use_naming_rules = True
+    processor = BatchProcessor(settings)
+
+    with tempfile.TemporaryDirectory(prefix="photocropper_index_") as td:
+        in_dir = os.path.join(td, "in")
+        out_dir = os.path.join(td, "out")
+        os.makedirs(in_dir, exist_ok=True)
+        os.makedirs(out_dir, exist_ok=True)
+
+        src = os.path.join(in_dir, "sample.jpg")
+        out = os.path.join(out_dir, "sample_cropped.jpg")
+        with open(src, "wb") as f:
+            f.write(b"source-v1")
+        with open(out, "wb") as f:
+            f.write(b"result-v1")
+
+        processor.record_processed_outputs(src, out_dir, [out])
+        matched, usable = processor.lookup_processed_outputs_from_index(src, out_dir)
+        assert usable is True
+        assert matched is not None and len(matched) == 1
+        assert os.path.normcase(os.path.abspath(matched[0])) == os.path.normcase(
+            os.path.abspath(out)
+        )
+
+        time.sleep(0.01)
+        with open(src, "ab") as f:
+            f.write(b"-changed")
+
+        matched_changed, usable_changed = processor.lookup_processed_outputs_from_index(
+            src, out_dir
+        )
+        assert usable_changed is True
+        assert matched_changed is None
+
+
+def _test_profile_apply_rebuild_validation() -> None:
+    import tempfile
+
+    from .core.batch_profile_manager import BatchProfile, BatchProfileManager
+    from .core.settings_model import AppSettings
+
+    with tempfile.TemporaryDirectory(prefix="photocropper_profile_apply_") as td:
+        manager = BatchProfileManager(profiles_dir=td)
+        manager._profiles["selftest-invalid"] = BatchProfile(
+            name="selftest-invalid",
+            settings={
+                "advanced_processing": {"auto_deskew": True},
+                "face_detection": {"min_face_size": 1},
+                "classification": {"min_confidence": 5.0},
+            },
+        )
+
+        settings = AppSettings()
+        ok = manager.apply_profile("selftest-invalid", settings)
+        assert ok is True
+        assert settings.advanced.auto_deskew is True
+        assert settings.face_detection.min_face_size == 20
+        assert abs(settings.classification.min_confidence - 1.0) < 1e-6
+
+
+def _test_settings_panel_classification_folder_roundtrip() -> None:
+    import os
+
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    try:
+        from PyQt6.QtWidgets import QApplication
+    except Exception as e:
+        print(f"WARN: PyQt6 unavailable for classification folder roundtrip test: {e}")
+        return
+
+    from .core.settings_model import AppSettings
+    from .ui.widgets.settings import SettingsPanel
+
+    app = QApplication.instance()
+    owned_app = False
+    if app is None:
+        app = QApplication([])
+        owned_app = True
+
+    settings = AppSettings()
+    settings.classification.category_folders["portrait"] = "프로필"
+    settings.classification.category_folders["other"] = "기타커스텀"
+
+    panel = SettingsPanel(settings)
+    panel._load_settings(settings)
+    assert panel.classification_folder_inputs["portrait"].text() == "프로필"
+    assert panel.classification_folder_inputs["other"].text() == "기타커스텀"
+
+    panel.classification_folder_inputs["portrait"].setText("인물새폴더")
+    panel.classification_folder_inputs["other"].setText("")
+    out = panel._build_settings()
+    assert out.classification.category_folders["portrait"] == "인물새폴더"
+    assert out.classification.category_folders["other"] == "기타"
+
+    panel.deleteLater()
+    if owned_app:
+        app.quit()
+
+
+def _test_cli_cancel_exit_code_130() -> None:
+    import os
+    import tempfile
+
+    from . import cli as cli_mod
+    from .core import batch as batch_mod
+
+    class FakeProgress:
+        processed = 0
+        success = 0
+        failed = 0
+        skipped = 0
+        is_cancelled = True
+
+    class FakeProcessor:
+        def __init__(self, _settings):
+            self._progress = FakeProgress()
+
+        def set_callbacks(self, on_log=None, **_kwargs):
+            self._on_log = on_log
+
+        def start_async(self, _input, _output):
+            return True
+
+        @property
+        def is_running(self):
+            return True
+
+        def request_stop(self):
+            return None
+
+        def wait_for_completion(self, timeout=None):
+            return True
+
+        @property
+        def progress(self):
+            return self._progress
+
+    original_batch_processor = batch_mod.BatchProcessor
+    original_sleep = cli_mod.time.sleep
+    batch_mod.BatchProcessor = FakeProcessor
+    cli_mod.time.sleep = lambda _seconds: (_ for _ in ()).throw(KeyboardInterrupt())
+    try:
+        with tempfile.TemporaryDirectory(prefix="photocropper_cli_cancel_") as td:
+            in_dir = os.path.join(td, "in")
+            out_dir = os.path.join(td, "out")
+            os.makedirs(in_dir, exist_ok=True)
+            os.makedirs(out_dir, exist_ok=True)
+
+            parser = cli_mod.create_parser()
+            args = parser.parse_args(["-i", in_dir, "-o", out_dir])
+            code = cli_mod.process_batch(args)
+            assert code == 130
+    finally:
+        batch_mod.BatchProcessor = original_batch_processor
+        cli_mod.time.sleep = original_sleep
+
+
 def main() -> int:
     try:
         _test_crop_editor_import_smoke()
@@ -1300,6 +1468,10 @@ def main() -> int:
         _test_resize_fill_no_upscale_boundary()
         _test_multi_photo_merge_distance_and_separate_folders()
         _test_cli_new_crop_options()
+        _test_processed_index_roundtrip_and_source_change()
+        _test_profile_apply_rebuild_validation()
+        _test_settings_panel_classification_folder_roundtrip()
+        _test_cli_cancel_exit_code_130()
         _test_crop_accuracy_synthetic()
         _test_no_photo_false_positive_regression()
         _test_multi_photo_close_gap_split()

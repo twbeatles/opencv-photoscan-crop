@@ -18,10 +18,10 @@ import traceback
 import time
 import cv2
 import numpy as np
-from concurrent.futures import ThreadPoolExecutor, wait, FIRST_COMPLETED
+from concurrent.futures import ThreadPoolExecutor, wait, FIRST_COMPLETED, CancelledError
 from datetime import datetime
 from typing import Optional, List, Dict, Any, Callable, Tuple
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import Enum
 from queue import Queue
 
@@ -50,6 +50,7 @@ from ...utils.file_helpers import (
 )
 from ...utils.processing_log import ProcessingLogger, get_processing_logger
 from ...utils.naming_rules import NamingRule, NamingRuleEngine
+from ..processed_index import ProcessedIndexStore, build_pipeline_signature
 
 logger = logging.getLogger(__name__)
 
@@ -73,6 +74,7 @@ class FileResult:
     status: ProcessStatus
     message: str = ""
     output_path: str = ""
+    output_paths: List[str] = field(default_factory=list)
     file_size_kb: float = 0.0
     processing_time_ms: float = 0.0
 
@@ -159,6 +161,9 @@ class BatchProcessor:
         self._naming_engine: Optional[NamingRuleEngine] = None
         self._naming_lock = threading.Lock()
         self._skip_processed_notice_shown = False
+        self._processed_index_stores: Dict[str, ProcessedIndexStore] = {}
+        self._processed_index_warned_roots: set[str] = set()
+        self._pipeline_signature_cache: Optional[str] = None
 
         # Thread pool for multithreading - dynamic based on CPU cores
         self._executor: Optional[ThreadPoolExecutor] = None
@@ -233,6 +238,7 @@ class BatchProcessor:
         self._classifier = None
         self._smart_enhancer = None
         self._naming_engine = None
+        self._pipeline_signature_cache = None
         self._thread_count = self._calculate_optimal_threads()
         self._worker_local = threading.local()
 
@@ -483,6 +489,85 @@ class BatchProcessor:
             extension,
             add_timestamp=self.settings.output.add_timestamp,
         )
+
+    def _pipeline_signature(self) -> str:
+        if self._pipeline_signature_cache is None:
+            self._pipeline_signature_cache = build_pipeline_signature(self.settings)
+        return self._pipeline_signature_cache
+
+    def _get_processed_index_store(self, output_dir: str) -> ProcessedIndexStore:
+        key = os.path.normcase(os.path.abspath(str(output_dir or "")))
+        store = self._processed_index_stores.get(key)
+        if store is None:
+            store = ProcessedIndexStore(key)
+            self._processed_index_stores[key] = store
+        return store
+
+    def _warn_processed_index_issue(self, output_dir: str, message: str) -> None:
+        key = os.path.normcase(os.path.abspath(str(output_dir or "")))
+        if key in self._processed_index_warned_roots:
+            return
+        self._processed_index_warned_roots.add(key)
+        self._log(
+            f"처리 이력 인덱스 사용 불가({os.path.join(key, '.photocropper', 'processed_index.json')}): {message}",
+            "warning",
+        )
+
+    @staticmethod
+    def _source_stat_signature(source_path: str) -> Optional[Tuple[int, int]]:
+        try:
+            st = os.stat(source_path)
+        except Exception:
+            return None
+        size = int(st.st_size)
+        mtime_ns = int(getattr(st, "st_mtime_ns", int(st.st_mtime * 1e9)))
+        return size, mtime_ns
+
+    def lookup_processed_outputs_from_index(
+        self, source_path: str, output_dir: str
+    ) -> Tuple[Optional[List[str]], bool]:
+        """Lookup previously produced outputs by source signature and pipeline signature."""
+        signature = self._source_stat_signature(source_path)
+        if signature is None:
+            return None, False
+
+        size, mtime_ns = signature
+        store = self._get_processed_index_store(output_dir)
+        outputs, usable = store.lookup_outputs(
+            source_path=source_path,
+            size=size,
+            mtime_ns=mtime_ns,
+            pipeline_signature=self._pipeline_signature(),
+        )
+        if not usable and store.last_error:
+            self._warn_processed_index_issue(output_dir, store.last_error)
+        return outputs, usable
+
+    def record_processed_outputs(
+        self,
+        source_path: str,
+        output_dir: str,
+        outputs: List[str],
+    ) -> None:
+        """Persist processed outputs for future skip-processed checks."""
+        if not outputs:
+            return
+
+        signature = self._source_stat_signature(source_path)
+        if signature is None:
+            return
+
+        size, mtime_ns = signature
+        store = self._get_processed_index_store(output_dir)
+        ok = store.upsert_record(
+            source_path=source_path,
+            size=size,
+            mtime_ns=mtime_ns,
+            outputs=outputs,
+            pipeline_signature=self._pipeline_signature(),
+        )
+        if not ok and store.last_error:
+            self._warn_processed_index_issue(output_dir, store.last_error)
 
     def _build_resize_settings(self) -> ResizeProcessorSettings:
         """Build resize processor settings from app settings."""
@@ -786,7 +871,9 @@ class BatchProcessor:
             if not enabled_map.get(category_key, True):
                 return output_dir
 
-            category_dir_name = classifier.get_output_folder(classify_result.category)
+            category_dir_name = self._resolve_category_folder_name(
+                classify_result.category
+            )
             classified_output_dir = os.path.join(output_dir, category_dir_name)
             os.makedirs(classified_output_dir, exist_ok=True)
             self._log(
@@ -797,6 +884,25 @@ class BatchProcessor:
         except Exception as e:
             self._log(f"  이미지 분류 오류: {e}", "warning")
             return output_dir
+
+    def _resolve_category_folder_name(self, category: ImageCategory) -> str:
+        cls_settings = self.settings.classification
+        folder_map = getattr(cls_settings, "category_folders", {}) or {}
+        key = getattr(category, "value", str(category or "")).lower()
+        mapped_name = str(folder_map.get(key, "") or "").strip()
+        if mapped_name:
+            return mapped_name
+        try:
+            return self._get_classifier().get_output_folder(category)
+        except Exception:
+            fallback = {
+                "portrait": "인물",
+                "landscape": "풍경",
+                "document": "문서",
+                "blackwhite": "흑백",
+                "other": "기타",
+            }
+            return fallback.get(key, "기타")
 
     def _iter_candidate_output_dirs(
         self,
@@ -822,13 +928,12 @@ class BatchProcessor:
             return list(dict.fromkeys(dirs))
 
         try:
-            classifier = self._get_classifier()
             enabled_map = cls_settings.categories_enabled or {}
             for category in ImageCategory:
                 if enabled_map.get(category.value, True):
                     for root in roots:
                         dirs.append(
-                            os.path.join(root, classifier.get_output_folder(category))
+                            os.path.join(root, self._resolve_category_folder_name(category))
                         )
         except Exception:
             # Best-effort: keep base output_dir only.
@@ -1289,6 +1394,7 @@ class BatchProcessor:
                     self._executor = executor
                     max_in_flight = max(self._thread_count * 3, self._thread_count)
                     work_iter = iter(enumerate(work_items, 1))
+                    cancel_requested = False
 
                     def submit_next() -> bool:
                         try:
@@ -1310,7 +1416,8 @@ class BatchProcessor:
                         return True
 
                     while (
-                        not self._is_stop_requested()
+                        not cancel_requested
+                        and not self._is_stop_requested()
                         and len(pending) < max_in_flight
                         and submit_next()
                     ):
@@ -1318,53 +1425,82 @@ class BatchProcessor:
 
                     processed = 0
                     while pending:
-                        done, pending = wait(
+                        done, still_pending = wait(
                             pending,
                             timeout=0.2,
                             return_when=FIRST_COMPLETED,
                         )
+                        pending = set(still_pending)
+
+                        if self._is_stop_requested() and not cancel_requested:
+                            cancel_requested = True
+                            for pending_future in list(pending):
+                                pending_future.cancel()
 
                         if not done:
-                            if self._is_stop_requested():
-                                for pending_future in pending:
-                                    pending_future.cancel()
-                                break
                             continue
 
                         for future in done:
                             processed += 1
                             filename, _ = futures.pop(future, ("", 0))
-                            try:
-                                result = future.result()
-                            except Exception as e:
+                            if future.cancelled():
                                 result = FileResult(
                                     filename=os.path.basename(filename),
-                                    status=ProcessStatus.FAILED,
-                                    message=str(e),
+                                    status=ProcessStatus.CANCELLED,
+                                    message="작업 취소됨",
                                 )
+                            else:
+                                try:
+                                    result = future.result()
+                                except CancelledError:
+                                    result = FileResult(
+                                        filename=os.path.basename(filename),
+                                        status=ProcessStatus.CANCELLED,
+                                        message="작업 취소됨",
+                                    )
+                                except Exception as e:
+                                    result = FileResult(
+                                        filename=os.path.basename(filename),
+                                        status=ProcessStatus.FAILED,
+                                        message=str(e),
+                                    )
                             self._handle_result(result, input_dir, filename, processed)
 
                         while (
-                            not self._is_stop_requested()
+                            not cancel_requested
+                            and not self._is_stop_requested()
                             and len(pending) < max_in_flight
                             and submit_next()
                         ):
                             pass
 
-                        if self._is_stop_requested():
-                            for pending_future in pending:
+                        if self._is_stop_requested() and not cancel_requested:
+                            cancel_requested = True
+                            for pending_future in list(pending):
                                 pending_future.cancel()
-                            break
+
+                    if self._is_stop_requested():
+                        for item_index, (filename, _output_path_override) in work_iter:
+                            processed += 1
+                            cancelled = FileResult(
+                                filename=os.path.basename(filename),
+                                status=ProcessStatus.CANCELLED,
+                                message="작업 취소됨",
+                            )
+                            self._handle_result(cancelled, input_dir, filename, processed)
                 finally:
-                    for pending_future in pending:
+                    for pending_future in list(pending):
                         pending_future.cancel()
                     if self._executor is not None:
                         self._executor.shutdown(wait=True)
                         self._executor = None
             else:
+                processed = 0
+                cancelled_tail: List[Tuple[str, Optional[str]]] = []
                 for i, (filename, output_path_override) in enumerate(work_items, 1):
                     if self._is_stop_requested():
                         self._log("작업이 중단되었습니다", "warning")
+                        cancelled_tail = work_items[i - 1 :]
                         break
 
                     result = self._process_single_file(
@@ -1376,7 +1512,18 @@ class BatchProcessor:
                         total,
                         output_path_override,
                     )
+                    processed = i
                     self._handle_result(result, input_dir, filename, i)
+
+                if self._is_stop_requested() and cancelled_tail:
+                    for filename, _output_path_override in cancelled_tail:
+                        processed += 1
+                        cancelled = FileResult(
+                            filename=os.path.basename(filename),
+                            status=ProcessStatus.CANCELLED,
+                            message="작업 취소됨",
+                        )
+                        self._handle_result(cancelled, input_dir, filename, processed)
 
             # Completion
             self._log("=" * 50, "info")
@@ -1501,6 +1648,34 @@ class BatchProcessor:
 
         # Skip already processed files
         if self.settings.filter.skip_processed:
+            index_outputs, index_usable = self.lookup_processed_outputs_from_index(
+                input_path,
+                output_dir,
+            )
+            if index_outputs:
+                self._log(
+                    f"  건너뜀: 처리 이력 일치 - {os.path.basename(index_outputs[0])}",
+                    "skip",
+                )
+                return FileResult(
+                    filename=display_name,
+                    status=ProcessStatus.SKIPPED,
+                    message="이미 처리됨(인덱스)",
+                )
+
+            naming_or_timestamp = (
+                self.settings.file_management.use_naming_rules
+                or self.settings.output.add_timestamp
+            )
+            if naming_or_timestamp and (not index_usable) and (
+                not self._skip_processed_notice_shown
+            ):
+                self._log(
+                    "현재 파일명 규칙/타임스탬프 설정으로는 정확한 중복 여부 판별이 어렵습니다.",
+                    "warning",
+                )
+                self._skip_processed_notice_shown = True
+
             if output_path_override is not None:
                 if os.path.exists(output_path_override):
                     self._log(
@@ -1512,17 +1687,7 @@ class BatchProcessor:
                         status=ProcessStatus.SKIPPED,
                         message="이미 처리됨",
                     )
-            elif (
-                self.settings.file_management.use_naming_rules
-                or self.settings.output.add_timestamp
-            ):
-                if not self._skip_processed_notice_shown:
-                    self._log(
-                        "현재 파일명 규칙/타임스탬프 설정으로는 정확한 중복 여부 판별이 어렵습니다.",
-                        "warning",
-                    )
-                    self._skip_processed_notice_shown = True
-            else:
+            elif not naming_or_timestamp:
                 base_name = os.path.splitext(display_name)[0]
                 ext = "." + self.settings.output.output_format.lower()
                 existing = self._find_existing_output(
@@ -1553,7 +1718,7 @@ class BatchProcessor:
         # v9.0: Multi-photo detection mode
         if self.settings.multi_photo.enabled:
             try:
-                return self._process_multi_photo(
+                multi_result = self._process_multi_photo(
                     input_path,
                     output_dir,
                     display_name,
@@ -1562,6 +1727,13 @@ class BatchProcessor:
                     start_time,
                     processor,
                 )
+                if multi_result.status == ProcessStatus.SUCCESS:
+                    outputs = list(multi_result.output_paths or [])
+                    if not outputs and multi_result.output_path:
+                        outputs = [multi_result.output_path]
+                    if outputs:
+                        self.record_processed_outputs(input_path, output_dir, outputs)
+                return multi_result
             except Exception as e:
                 self._log(f"  멀티포토 처리 오류: {e}, 단일 모드로 전환", "warning")
 
@@ -1605,11 +1777,14 @@ class BatchProcessor:
                 self._log(
                     f"  ✓ 성공: {output_filename} ({file_size:.1f} KB)", "success"
                 )
+                output_paths = [output_path]
+                self.record_processed_outputs(input_path, output_dir, output_paths)
                 return FileResult(
                     filename=display_name,
                     status=ProcessStatus.SUCCESS,
                     message=f"탐지: {result.detection_stage.value if result.detection_stage else 'Unknown'}",
                     output_path=output_path,
+                    output_paths=output_paths,
                     file_size_kb=file_size,
                     processing_time_ms=processing_time,
                 )
@@ -1700,6 +1875,7 @@ class BatchProcessor:
         )
 
         saved_count = 0
+        saved_outputs: List[str] = []
         multi_output_root = self._resolve_multi_photo_output_dir(input_path, output_dir)
 
         for idx, (cropped_img, photo_info) in enumerate(cropped_photos, 1):
@@ -1730,6 +1906,7 @@ class BatchProcessor:
 
             if success:
                 saved_count += 1
+                saved_outputs.append(output_path)
                 self._log(
                     f"    ✓ 사진 {idx}: {os.path.basename(output_path)}", "success"
                 )
@@ -1749,6 +1926,8 @@ class BatchProcessor:
                 filename=filename,
                 status=ProcessStatus.SUCCESS,
                 message=f"멀티포토: {saved_count}/{detection_result.total_found}개 저장",
+                output_path=saved_outputs[0] if saved_outputs else "",
+                output_paths=saved_outputs,
                 processing_time_ms=processing_time,
             )
         else:
@@ -1799,11 +1978,13 @@ class BatchProcessor:
         )
 
         if success:
+            output_paths = [output_path]
             return FileResult(
                 filename=filename,
                 status=ProcessStatus.SUCCESS,
                 message=f"탐지: {result.detection_stage.value if result.detection_stage else 'Unknown'}",
                 output_path=output_path,
+                output_paths=output_paths,
                 file_size_kb=file_size,
                 processing_time_ms=processing_time,
             )

@@ -99,6 +99,8 @@ a = Analysis(
         'photo_cropper.core.settings_model',
         'photo_cropper.core.batch_profile_manager',
         'photo_cropper.core.folder_watcher',
+        'photo_cropper.core.processed_index',
+        'photo_cropper.core.scheduler',
         'photo_cropper.core.advanced',
         'photo_cropper.core.face',
         'photo_cropper.core.batch',
@@ -239,4 +241,9 @@ Tips for further size reduction:
       stable across PyInstaller environments.
     - Type-check-only override signature updates (QEvent Optional annotations)
       do not change runtime packaging requirements.
+
+2026-03-05 note:
+    - Added hidden imports for `core.processed_index` and `core.scheduler` to
+      keep frozen builds stable after skip-processed index persistence and
+      runtime scheduler wiring.
 """

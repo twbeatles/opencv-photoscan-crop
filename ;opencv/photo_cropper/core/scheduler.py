@@ -8,7 +8,6 @@ Provides scheduled batch processing functionality.
 
 from __future__ import annotations
 
-import os
 import logging
 from datetime import datetime, time as dtime
 from typing import Optional, Callable, List
@@ -199,7 +198,7 @@ class Scheduler(QObject):
         """Check all schedules and run due tasks."""
         now = datetime.now()
         
-        for task in self._tasks.values():
+        for task in list(self._tasks.values()):
             if not task.enabled:
                 continue
             
@@ -251,17 +250,11 @@ class Scheduler(QObject):
             logger.warning("No process callback set")
             return False
         
-        if not task.input_path or not os.path.isdir(task.input_path):
-            logger.error(f"Invalid input path for task {task.task_id}")
-            return False
-        
-        output_path = task.output_path or task.input_path
-        
         self.task_started.emit(task.task_id)
         logger.info(f"Starting scheduled task: {task.name}")
         
         try:
-            success = self._process_callback(task.input_path, output_path)
+            success = bool(self._process_callback(task.input_path, task.output_path))
             task.last_run = datetime.now()
             
             self.task_completed.emit(task.task_id, success)

@@ -517,9 +517,11 @@ class AutoProcessor(QObject):
 
         ready, expired, reason = self._check_file_ready(filepath)
         if not ready:
+            state = self._file_states.get(filepath) or {}
+            retry_count = int(state.get("retry_count", 0))
             if expired:
                 status = self._status_from_reason(reason)
-                message = f"File not ready: {reason}"
+                message = f"File not ready: {reason} (retry={retry_count})"
                 logger.error("%s (%s)", message, filepath)
 
                 self.processing_completed.emit(filepath, False)
@@ -544,8 +546,14 @@ class AutoProcessor(QObject):
                 self._emit_queue_metrics()
                 return
 
-            # Requeue at front and retry later.
-            self._queue.appendleft(filepath)
+            # Requeue at tail for fairness (don't block younger files behind one slow file).
+            logger.debug(
+                "File not ready yet (retry=%d, reason=%s): %s",
+                retry_count,
+                reason,
+                filepath,
+            )
+            self._queue.append(filepath)
             self._queued_files.add(filepath)
             self._emit_queue_metrics()
             self._process_timer.start(self._retry_interval_ms)
@@ -599,24 +607,35 @@ class AutoProcessor(QObject):
     def _check_file_ready(self, filepath: str) -> Tuple[bool, bool, str]:
         now = time.monotonic()
 
+        state = self._file_states.get(filepath)
+        if state is None:
+            state = {
+                "first_seen": now,
+                "last_size": None,
+                "last_mtime_ns": None,
+                "last_change": now,
+                "retry_count": 0,
+            }
+            self._file_states[filepath] = state
+
         if not filepath or not os.path.exists(filepath):
             return False, True, "missing"
+
+        state["retry_count"] = int(state.get("retry_count", 0)) + 1
 
         try:
             st = os.stat(filepath)
             size = int(st.st_size)
             mtime_ns = int(getattr(st, "st_mtime_ns", int(st.st_mtime * 1e9)))
         except Exception as exc:
+            if now - float(state["first_seen"]) > self._max_wait_s:
+                return False, True, f"stat failed: {exc}"
             return False, False, f"stat failed: {exc}"
 
-        state = self._file_states.get(filepath)
-        if state is None:
-            self._file_states[filepath] = {
-                "first_seen": now,
-                "last_size": size,
-                "last_mtime_ns": mtime_ns,
-                "last_change": now,
-            }
+        if state["last_size"] is None or state["last_mtime_ns"] is None:
+            state["last_size"] = size
+            state["last_mtime_ns"] = mtime_ns
+            state["last_change"] = now
             return False, False, "initial"
 
         if size != state["last_size"] or mtime_ns != state["last_mtime_ns"]:

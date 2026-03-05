@@ -90,11 +90,25 @@ class ManualExtractProcessor:
         if not self.settings.filter.skip_processed:
             return None, ""
 
+        index_outputs, index_usable = self._batch_processor.lookup_processed_outputs_from_index(
+            path,
+            self.output_path,
+        )
+        if index_outputs:
+            filename = os.path.basename(path)
+            skip_result = FileResult(
+                filename=filename,
+                status=ProcessStatus.SKIPPED,
+                message="이미 처리됨(인덱스)",
+                processing_time_ms=(time.time() - started_at) * 1000.0,
+            )
+            return skip_result, ""
+
         if (
             self.settings.file_management.use_naming_rules
             or self.settings.output.add_timestamp
         ):
-            if not self._skip_processed_notice_shown:
+            if (not index_usable) and (not self._skip_processed_notice_shown):
                 self._skip_processed_notice_shown = True
                 return (
                     None,
@@ -207,12 +221,15 @@ class ManualExtractProcessor:
             if not ok:
                 raise RuntimeError(save_msg or "저장 실패")
 
+            self._batch_processor.record_processed_outputs(path, self.output_path, [out_path])
+
             mode_label = "수동" if used_manual else "자동"
             result = FileResult(
                 filename=filename,
                 status=ProcessStatus.SUCCESS,
                 message=f"{mode_label} 외곽선 적용",
                 output_path=out_path,
+                output_paths=[out_path],
                 file_size_kb=float(size_kb or 0.0),
                 processing_time_ms=(time.time() - started_at) * 1000.0,
             )
@@ -235,4 +252,3 @@ class ManualExtractProcessor:
                 notice_message=notice,
                 notice_level="warning" if notice else "info",
             )
-

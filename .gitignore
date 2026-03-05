@@ -21,6 +21,9 @@ backups/
 ;opencv/pyright_report.json
 ;opencv/pyright_report*.json
 
+# Runtime processed-index cache (skip_processed v2)
+**/.photocropper/
+
 # Test / type-check / coverage caches
 .pytest_cache/
 .mypy_cache/

@@ -48,7 +48,7 @@ from PyQt6.QtWidgets import (
     QProgressBar,
     QStackedWidget,
 )
-from PyQt6.QtCore import Qt, QTimer, pyqtSlot, pyqtSignal, QSettings, QSize, QThread
+from PyQt6.QtCore import Qt, QTimer, pyqtSlot, pyqtSignal, QSettings, QSize, QThread, QTime
 from PyQt6.QtGui import (
     QAction,
     QKeySequence,
@@ -85,6 +85,7 @@ from ...core.manual_extract import (
 )
 from ...core.history_manager import HistoryManager, ImageHolder
 from ...core.watch_mode import WatchModeCoordinator
+from ...core.scheduler import Scheduler, ScheduleTask, ScheduleType
 from ...core.smart_enhancer import SmartEnhancer, EnhancementPreset, get_smart_enhancer
 from ...core.face import FaceDetector, get_face_detector
 from ...core.image_classifier import ImageClassifier, ImageCategory, get_classifier
@@ -163,6 +164,13 @@ class MainWindow(QMainWindow):
         self.watch_mode_coordinator.queue_metrics_updated.connect(
             self._on_watch_queue_metrics
         )
+        self._scheduler = Scheduler(
+            process_callback=self._on_scheduled_batch_trigger,
+            parent=self,
+        )
+        self._scheduler_task_id: Optional[str] = None
+        self._scheduler.task_started.connect(self._on_scheduler_task_started)
+        self._scheduler.task_completed.connect(self._on_scheduler_task_completed)
 
         # State
         self._current_image_path: Optional[str] = None
@@ -574,6 +582,7 @@ class MainWindow(QMainWindow):
         self.output_path_edit.setPlaceholderText("결과물이 저장될 폴더 (자동 설정됨)")
         self.output_path_edit.setMinimumHeight(32)
         self.output_path_edit.setTextMargins(8, 0, 8, 0)
+        self.output_path_edit.textChanged.connect(self._on_output_path_changed)
         path_grid.addWidget(self.output_path_edit, 1, 1)
 
         output_browse_btn = QPushButton("변경")
@@ -835,6 +844,8 @@ class MainWindow(QMainWindow):
         if settings.last_output_path:
             self.output_path_edit.setText(settings.last_output_path)
 
+        self._reconfigure_scheduler()
+
     @pyqtSlot(AppSettings)
     def _on_settings_changed(self, settings: AppSettings):
         """Handle settings change from panel."""
@@ -850,6 +861,7 @@ class MainWindow(QMainWindow):
 
         self.batch_actions.update_settings(settings)
         self.watch_mode_coordinator.update_settings(settings)
+        self._reconfigure_scheduler()
 
         # Check theme change
         if settings.ui.theme != self._get_current_theme():
@@ -878,6 +890,130 @@ class MainWindow(QMainWindow):
             self.status_label.setText("✓ 설정 자동 저장됨")
         else:
             self.status_label.setText("⚠ 설정 저장 실패")
+
+    @staticmethod
+    def _resolve_schedule_type(raw_value: str) -> ScheduleType:
+        normalized = str(raw_value or "").strip().lower()
+        mapping = {
+            "once": ScheduleType.ONCE,
+            "daily": ScheduleType.DAILY,
+            "interval": ScheduleType.INTERVAL,
+            "hourly": ScheduleType.HOURLY,
+        }
+        return mapping.get(normalized, ScheduleType.INTERVAL)
+
+    def _reconfigure_scheduler(self) -> None:
+        """Apply watch-mode scheduler settings to runtime scheduler."""
+        self._scheduler.stop()
+        for task in list(self._scheduler.get_all_tasks()):
+            self._scheduler.remove_task(task.task_id)
+        self._scheduler_task_id = None
+
+        watch_settings = getattr(self._settings, "watch_mode", None)
+        if not watch_settings or not bool(getattr(watch_settings, "scheduler_enabled", False)):
+            return
+
+        schedule_type = self._resolve_schedule_type(
+            str(getattr(watch_settings, "schedule_type", "interval"))
+        )
+        schedule_time_text = str(getattr(watch_settings, "schedule_time", "00:00") or "00:00")
+        schedule_time = QTime.fromString(schedule_time_text, "HH:mm")
+        if schedule_type in (ScheduleType.DAILY, ScheduleType.ONCE) and not schedule_time.isValid():
+            logger.warning("Scheduler time is invalid: %s", schedule_time_text)
+            self.status_label.setText(f"⏰ 스케줄러 시간 형식 오류: {schedule_time_text}")
+            return
+
+        interval_minutes = int(getattr(watch_settings, "schedule_interval_minutes", 60) or 60)
+        interval_minutes = max(5, min(1440, interval_minutes))
+
+        task = ScheduleTask(
+            task_id="",
+            name="ui_auto_batch",
+            schedule_type=schedule_type,
+            time=schedule_time if schedule_time.isValid() else None,
+            interval_minutes=interval_minutes,
+            input_path=str(self.input_path_edit.text() or ""),
+            output_path=str(self.output_path_edit.text() or ""),
+            enabled=True,
+        )
+        self._scheduler_task_id = self._scheduler.add_task(task)
+        self._scheduler.start()
+        logger.info(
+            "Scheduler configured: type=%s, time=%s, interval=%s",
+            schedule_type.value,
+            schedule_time_text,
+            interval_minutes,
+        )
+
+    def _busy_reason_for_scheduled_batch(self) -> str:
+        if self.batch_processor and self.batch_processor.is_running:
+            return "batch"
+        if self._manual_extract_running:
+            return "manual"
+        if self.watch_mode_coordinator.is_active:
+            return "watch"
+        return ""
+
+    def _on_scheduled_batch_trigger(self, _input_dir: str, _output_dir: str) -> bool:
+        """Scheduler callback: start a full batch using current UI paths."""
+        busy_reason = self._busy_reason_for_scheduled_batch()
+        if busy_reason:
+            message = f"⏰ 스케줄 실행 건너뜀: {busy_reason} 작업 진행 중"
+            logger.info(message)
+            self.status_label.setText(message)
+            ToastManager.info(message)
+            return False
+
+        input_path = self.input_path_edit.text().strip()
+        output_path = self.output_path_edit.text().strip()
+
+        valid, error = validate_directory(input_path)
+        if not valid:
+            message = f"⏰ 스케줄 실행 실패(입력 폴더): {error}"
+            logger.warning(message)
+            self.status_label.setText(message)
+            ToastManager.warning(message)
+            return False
+
+        if not output_path:
+            output_path = os.path.join(input_path, "output_cropped")
+            self.output_path_edit.setText(output_path)
+
+        try:
+            os.makedirs(output_path, exist_ok=True)
+        except Exception as exc:
+            message = f"⏰ 스케줄 실행 실패(출력 폴더): {exc}"
+            logger.warning(message)
+            self.status_label.setText(message)
+            ToastManager.warning(message)
+            return False
+
+        recursive = bool(getattr(self._settings.file_management, "recursive_search", False))
+        files = get_image_files(input_path, recursive=recursive)
+        if not files:
+            message = "⏰ 스케줄 실행 건너뜀: 처리할 이미지가 없습니다"
+            logger.info(message)
+            self.status_label.setText(message)
+            return False
+
+        self.batch_actions.start_processing()
+        started = bool(self.batch_processor and self.batch_processor.is_running)
+        if started:
+            message = f"⏰ 스케줄 배치 시작: {len(files)}개 파일"
+            logger.info(message)
+            self.status_label.setText(message)
+            ToastManager.info(message)
+        return started
+
+    def _on_scheduler_task_started(self, task_id: str) -> None:
+        if task_id != self._scheduler_task_id:
+            return
+        logger.info("Scheduled task fired: %s", task_id)
+
+    def _on_scheduler_task_completed(self, task_id: str, success: bool) -> None:
+        if task_id != self._scheduler_task_id:
+            return
+        logger.info("Scheduled task completed: %s (started=%s)", task_id, success)
 
     def _set_theme(self, theme_name: str):
         """Apply theme stylesheet."""
@@ -951,6 +1087,11 @@ class MainWindow(QMainWindow):
         """Handle input path change."""
         self._pending_input_path = path or ""
         self._input_path_scan_timer.start(250)
+        self._reconfigure_scheduler()
+
+    def _on_output_path_changed(self, _path: str):
+        """Handle output path change."""
+        self._reconfigure_scheduler()
 
     def _flush_input_path_change(self):
         """Apply debounced input-path side effects."""
@@ -1664,14 +1805,12 @@ class MainWindow(QMainWindow):
         self.status_label.setText("폴더 감시 중지됨")
 
     def _on_watched_file_complete(self, filepath: str, success: bool):
-        """Handle completion of watched file processing."""
+        """Compatibility callback for coarse watch completion signal."""
         filename = os.path.basename(filepath)
         if success:
             self.status_label.setText(f"👁️ 처리 완료: {filename}")
-            ToastManager.success(f"✅ 자동 처리 완료: {filename}")
         else:
             self.status_label.setText(f"👁️ 처리 실패: {filename}")
-            ToastManager.warning(f"⚠️ 자동 처리 실패: {filename}")
 
     def _on_watched_file_complete_detailed(
         self,
@@ -1763,6 +1902,7 @@ class MainWindow(QMainWindow):
         # v9.0: Stop watch mode if active
         if self.watch_mode_coordinator.is_active:
             self.watch_mode_coordinator.stop()
+        self._scheduler.stop()
 
         self._teardown_preview_worker()
 

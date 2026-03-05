@@ -1109,6 +1109,16 @@ class SettingsPanel(QWidget):
         prev_cls = getattr(self._settings, "classification", ClassificationSettings())
         classification = ClassificationSettings()
         if hasattr(self, "classification_enable_check"):
+            category_folders = dict(getattr(prev_cls, "category_folders", {}) or {})
+            default_folders = ClassificationSettings().category_folders
+            folder_inputs = getattr(self, "classification_folder_inputs", {}) or {}
+            if isinstance(folder_inputs, dict):
+                for key in ("portrait", "landscape", "document", "blackwhite", "other"):
+                    widget = folder_inputs.get(key)
+                    if widget is None:
+                        continue
+                    value = str(widget.text() if hasattr(widget, "text") else "").strip()
+                    category_folders[key] = value or str(default_folders.get(key, key))
             classification = ClassificationSettings(
                 enabled=self.classification_enable_check.isChecked(),
                 model=self.classification_model_combo.currentText()
@@ -1118,6 +1128,7 @@ class SettingsPanel(QWidget):
                 categories_enabled=dict(
                     getattr(prev_cls, "categories_enabled", {}) or {}
                 ),
+                category_folders=category_folders,
                 min_confidence=float(getattr(prev_cls, "min_confidence", 0.5)),
             )
 
@@ -1308,6 +1319,26 @@ class SettingsPanel(QWidget):
                 self.watch_max_wait_spin.setValue(
                     float(getattr(wm, "max_wait_seconds", 30.0))
                 )
+            if hasattr(self, "scheduler_enable_check"):
+                self.scheduler_enable_check.setChecked(
+                    bool(getattr(wm, "scheduler_enabled", False))
+                )
+            if hasattr(self, "schedule_type_combo"):
+                idx = self.schedule_type_combo.findText(
+                    str(getattr(wm, "schedule_type", "interval") or "interval")
+                )
+                if idx >= 0:
+                    self.schedule_type_combo.setCurrentIndex(idx)
+            if hasattr(self, "schedule_time_edit"):
+                self.schedule_time_edit.setText(
+                    str(getattr(wm, "schedule_time", "00:00") or "00:00")
+                )
+            if hasattr(self, "schedule_interval_spin"):
+                self.schedule_interval_spin.setValue(
+                    int(getattr(wm, "schedule_interval_minutes", 60) or 60)
+                )
+            if hasattr(self, "schedule_type_combo"):
+                self._on_schedule_type_changed(self.schedule_type_combo.currentText())
 
         if hasattr(settings, "multi_photo"):
             mp = settings.multi_photo
@@ -1333,6 +1364,14 @@ class SettingsPanel(QWidget):
                 )
                 if idx >= 0:
                     self.classification_model_combo.setCurrentIndex(idx)
+            folder_inputs = getattr(self, "classification_folder_inputs", {}) or {}
+            folder_map = dict(getattr(cs, "category_folders", {}) or {})
+            defaults = ClassificationSettings().category_folders
+            for key in ("portrait", "landscape", "document", "blackwhite", "other"):
+                widget = folder_inputs.get(key) if isinstance(folder_inputs, dict) else None
+                if widget is None:
+                    continue
+                widget.setText(str(folder_map.get(key, defaults.get(key, key))))
 
         if hasattr(settings, "face_detection"):
             fd = settings.face_detection
@@ -1483,6 +1522,24 @@ class SettingsPanel(QWidget):
             self._on_setting_changed
         )
         class_layout.addWidget(self.classification_subfolders_check)
+
+        folder_form = QFormLayout()
+        self.classification_folder_inputs = {}
+        folder_labels = [
+            ("portrait", "인물 폴더명:"),
+            ("landscape", "풍경 폴더명:"),
+            ("document", "문서 폴더명:"),
+            ("blackwhite", "흑백 폴더명:"),
+            ("other", "기타 폴더명:"),
+        ]
+        defaults = ClassificationSettings().category_folders
+        for key, label in folder_labels:
+            folder_edit = QLineEdit()
+            folder_edit.setPlaceholderText(str(defaults.get(key, key)))
+            folder_edit.textChanged.connect(self._on_setting_changed)
+            self.classification_folder_inputs[key] = folder_edit
+            folder_form.addRow(label, folder_edit)
+        class_layout.addLayout(folder_form)
 
         layout.addWidget(class_group)
 

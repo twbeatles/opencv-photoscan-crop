@@ -56,15 +56,17 @@
 | `multi_photo_detector.py` | 한 스캔에서 여러 사진 분리 |
 | `watermark_processor.py` | 텍스트/이미지 워터마크 |
 | `resize_processor.py` | 이미지 리사이즈 |
+| `processed_index.py` | `skip_processed` 로컬 처리 이력 인덱스 |
 
 ### Stability-Critical Flow
 
 - Watch Mode는 `ui/main/window.py`에서 `BatchProcessor.process_single()`을 호출해 배치와 동일 파이프라인을 재사용합니다.
 - 저장 전 후처리 순서는 단일/멀티포토 모두 얼굴 보정 → 스마트 보정 → 리사이즈 → 분류 폴더 라우팅(워터마크 전) → 워터마크입니다.
 - `performance.max_image_size_mb`는 실제 처리 전에 파일 크기 제한으로 적용됩니다.
-- `skip_processed`는 자동 분류 하위 폴더까지 포함해 중복 결과를 탐지합니다.
+- `skip_processed`는 `.photocropper/processed_index.json` 인덱스를 우선 사용하고, 실패 시 자동 분류 하위 폴더까지 포함해 fallback 탐지합니다.
 - 얼굴 감지 `use_dnn=True`는 모델 자동 다운로드/체크섬 검증 후 로드하며, 실패 시 Haar로 즉시 폴백합니다.
-- 멀티스레드 취소는 pending future를 우선 취소해 중단 응답성을 확보합니다.
+- 멀티스레드 취소는 완료 future를 drain하고 남은 미실행 항목을 `CANCELLED`로 집계해 통계 정합성을 유지합니다.
+- 스케줄러는 `watch_mode.scheduler_*` 설정과 런타임 연결되어 앱 실행 중 자동 배치를 트리거합니다.
 
 ### UI Components
 
@@ -153,6 +155,7 @@ class AppSettings:
 class ClassificationSettings:
     enabled: bool = False
     model: str = "basic"   # basic | advanced | custom(custom=advanced)
+    category_folders: dict[str, str]  # portrait/landscape/document/blackwhite/other
 
 @dataclass
 class FaceDetectionSettings:
@@ -217,7 +220,7 @@ class SmartEnhancementSettings:
 3. **비동기 처리**
     - `BatchProcessor`는 `threading.Thread` + `ThreadPoolExecutor` 기반
     - 콜백으로 진행률 업데이트
-    - 취소 시 pending 작업을 우선 취소하고 in-flight 작업은 완료를 기다릴 수 있음
+    - 취소 시 완료 future drain + 미실행 작업 `CANCELLED` 반영
 
 4. **설정 자동 저장**
    - `_schedule_auto_save()` + debounce
@@ -285,3 +288,12 @@ pyinstaller photo_cropper.spec --clean
 - Updated `QWidget` override event signatures (`dragEnterEvent`, `dropEvent`, `keyPressEvent`) to match PyQt6 stub types via `Optional[...]`.
 - Added explicit PyInstaller hidden imports for split modules:
   `watch_mode`, `manual_extract`, `session_service`, `save_io`, `dialog_actions`.
+
+## 2026-03-05 Integrated Improvement Notes
+
+- Added processed index module: `core/processed_index.py` (`.photocropper/processed_index.json`)
+- Wired skip-processed index checks/updates across batch/watch/manual flows
+- Added classification folder mapping setting (`category_folders`) and settings-panel UI exposure
+- Improved watch readiness fairness and timeout handling (`stat failed`/`read failed` paths)
+- Connected runtime scheduler execution path in `MainWindow` with busy-conflict skip policy
+- CLI cancel exit code aligned to `130`

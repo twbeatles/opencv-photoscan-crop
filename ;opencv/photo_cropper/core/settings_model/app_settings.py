@@ -357,12 +357,19 @@ class ClassificationSettings:
     enabled: bool = False
     model: str = "basic"  # basic, advanced, custom(custom=advanced for now)
     auto_folder: bool = True  # Create category folders automatically
-    categories_enabled: dict = field(default_factory=lambda: {
+    categories_enabled: dict[str, bool] = field(default_factory=lambda: {
         "portrait": True,
         "landscape": True,
         "document": True,
         "blackwhite": True,
         "other": True
+    })
+    category_folders: dict[str, str] = field(default_factory=lambda: {
+        "portrait": "인물",
+        "landscape": "풍경",
+        "document": "문서",
+        "blackwhite": "흑백",
+        "other": "기타",
     })
     min_confidence: float = 0.5
 
@@ -372,6 +379,37 @@ class ClassificationSettings:
         if model not in ("basic", "advanced", "custom"):
             model = "basic"
         self.model = model
+
+        default_enabled = {
+            "portrait": True,
+            "landscape": True,
+            "document": True,
+            "blackwhite": True,
+            "other": True,
+        }
+        incoming_enabled = (
+            self.categories_enabled if isinstance(self.categories_enabled, dict) else {}
+        )
+        self.categories_enabled = {
+            key: bool(incoming_enabled.get(key, default_value))
+            for key, default_value in default_enabled.items()
+        }
+
+        default_folders = {
+            "portrait": "인물",
+            "landscape": "풍경",
+            "document": "문서",
+            "blackwhite": "흑백",
+            "other": "기타",
+        }
+        incoming_folders = (
+            self.category_folders if isinstance(self.category_folders, dict) else {}
+        )
+        normalized_folders: dict[str, str] = {}
+        for key, default_name in default_folders.items():
+            raw_name = str(incoming_folders.get(key, "")).strip()
+            normalized_folders[key] = raw_name or default_name
+        self.category_folders = normalized_folders
 
 
 @dataclass

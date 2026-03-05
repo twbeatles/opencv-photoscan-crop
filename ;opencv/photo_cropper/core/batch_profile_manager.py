@@ -10,6 +10,7 @@ Provides complete settings profile management:
 - Category-specific settings
 """
 
+import copy
 import os
 import json
 import logging
@@ -522,9 +523,13 @@ class BatchProfileManager:
         profile = self._profiles.get(name)
         if not profile:
             return False
-        
-        # Apply settings recursively
-        self._apply_dict_to_settings(profile.settings or {}, settings)
+
+        base_data = self._normalize_settings_dict(settings.to_dict())
+        override_data = self._normalize_settings_dict(profile.settings or {})
+        merged_data = self._deep_merge_settings_dict(base_data, override_data)
+        rebuilt = AppSettings.from_dict(merged_data)
+        for field_name in settings.__dataclass_fields__:
+            setattr(settings, field_name, getattr(rebuilt, field_name))
         
         self._current_profile = name
         logger.info(f"Applied profile: {name}")
@@ -551,31 +556,33 @@ class BatchProfileManager:
         rules = profile.category_rules.get(category.lower())
         if not rules:
             return False
-        
-        self._apply_dict_to_settings(rules, settings)
+
+        base_data = self._normalize_settings_dict(settings.to_dict())
+        override_data = self._normalize_settings_dict(rules)
+        merged_data = self._deep_merge_settings_dict(base_data, override_data)
+        rebuilt = AppSettings.from_dict(merged_data)
+        for field_name in settings.__dataclass_fields__:
+            setattr(settings, field_name, getattr(rebuilt, field_name))
         return True
-    
-    def _apply_dict_to_settings(self, data: Dict[str, Any], 
-                                settings: AppSettings):
-        """
-        Recursively apply dictionary to settings object.
-        
-        Args:
-            data: Settings dictionary
-            settings: Settings object to modify
-        """
-        for key, value in data.items():
+
+    @classmethod
+    def _deep_merge_settings_dict(cls, base: Dict[str, Any], override: Dict[str, Any]) -> Dict[str, Any]:
+        """Deep merge override into base while preserving nested mappings."""
+        merged = copy.deepcopy(base)
+        for key, value in (override or {}).items():
             key_str = str(key)
             resolved_key = _LEGACY_SETTINGS_KEY_ALIASES.get(key_str, key_str)
-            if hasattr(settings, resolved_key):
-                attr = getattr(settings, resolved_key)
-                if isinstance(value, dict) and hasattr(attr, '__dataclass_fields__'):
-                    # Nested dataclass
-                    for sub_key, sub_value in value.items():
-                        if hasattr(attr, sub_key):
-                            setattr(attr, sub_key, sub_value)
-                else:
-                    setattr(settings, resolved_key, value)
+            if (
+                resolved_key in merged
+                and isinstance(merged[resolved_key], dict)
+                and isinstance(value, dict)
+            ):
+                merged[resolved_key] = cls._deep_merge_settings_dict(
+                    merged[resolved_key], value
+                )
+            else:
+                merged[resolved_key] = copy.deepcopy(value)
+        return merged
     
     def export_profile(self, name: str, export_path: str) -> bool:
         """

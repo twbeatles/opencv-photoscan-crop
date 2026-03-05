@@ -36,6 +36,10 @@
 - **메타데이터 보존(best-effort)**: EXIF/ICC 복사 실패 시 경고만 남기고 저장 자체는 성공 처리
 - **멀티포토 하위 폴더 저장**: `separate_output_folders=true` 시 `<원본파일명>_photos/` 구조로 저장
 - **멀티포토 dedup 민감도 연동**: `merge_distance`가 중복 억제 단계에 반영
+- **로컬 처리 이력 인덱스 도입**: 출력 폴더의 `.photocropper/processed_index.json`로 `skip_processed` 판정 재현성 강화
+- **분류 폴더명 사용자 설정**: 기본 한글 폴더(`인물/풍경/문서/흑백/기타`) 유지 + 설정 패널에서 카테고리별 커스터마이즈 지원
+- **Watch 준비/재시도 공정성 개선**: not-ready 파일 재큐잉을 공정 큐 정책으로 조정하고 timeout/read 실패 상태코드 정합성 강화
+- **스케줄러 런타임 연결**: UI의 scheduler 설정이 앱 실행 중 실제 자동 배치 트리거로 동작
 
 ### 🔥 v8.5 핵심 기능
 - **다중 사진 자동 감지**: 한 스캔에서 여러 사진을 자동으로 분리
@@ -188,19 +192,19 @@ python -m photo_cropper.cli --help
 - **그레이스케일/노이즈 제거/선명도 향상**
 - **자동 분류 저장(선택)**: 분류 신뢰도 조건 충족 시 카테고리 하위 폴더에 저장
 
-> 참고: 파일명 규칙/타임스탬프를 사용하는 경우 `skip processed` 판별은 출력 파일명 기준입니다.
-> 파일명에 시간이 포함되면 이전 처리본을 완전히 탐지하지 못할 수 있습니다.
-> 자동 분류 하위 폴더(`인물/풍경/문서/흑백/기타`)는 `skip processed` 탐지 대상에 포함됩니다.
-> 멀티포토 하위 폴더(`*_photos`) 사용 시에도 `skip processed` 탐지가 동작합니다.
-> 다만 파일명 규칙/타임스탬프 조합에서는 중복 판별 한계가 남을 수 있으므로 대량 재처리 전 샘플 검증을 권장합니다.
+> 참고: `skip processed`는 출력 폴더 로컬 인덱스(`.photocropper/processed_index.json`)를 우선 사용합니다.
+> 인덱스 키는 `source_path + size + mtime_ns + pipeline_signature`이며, 멀티포토는 `outputs[]`로 다중 결과를 기록합니다.
+> 인덱스가 비활성/오류일 때만 파일명 기반 fallback 탐지와 제한 경고가 적용됩니다.
+> 자동 분류 하위 폴더(기본 `인물/풍경/문서/흑백/기타`, 사용자 지정 가능)와 멀티포토 하위 폴더(`*_photos`)도 탐지 대상에 포함됩니다.
 
 ## 🧪 안정성 체크 포인트
 
 - **문법 검증**: `python -m compileall -q photo_cropper`
 - **CLI 스모크 테스트**: `python -m photo_cropper.cli -i ./scans -o ./cropped --multi-photo --multi-photo-separate-folders --preserve-metadata --no-perspective-correct --skip-processed`
 - **워치 모드 검증**: GUI에서 Watch Mode 시작 후 신규 파일 투입 시 배치와 동일한 출력(워터마크/리사이즈/분류 폴더) 확인
+- **스케줄러 검증**: `watch_mode.scheduler_enabled=true` 상태에서 예약 시각 도달 시 자동 배치 시작/중복 실행 skip 확인
 - **유니코드 경로 검증**: 한글 경로의 워터마크 이미지 파일을 지정해 저장 성공 여부 확인
-- **취소 검증**: 멀티스레드 배치 실행 중 중단 요청 시 진행률 및 로그가 빠르게 취소 상태로 전환되는지 확인
+- **취소 검증**: 멀티스레드 배치 실행 중 중단 요청 시 통계/상태 정합성 확인 및 CLI 종료코드 `130` 확인
 
 ## 📁 프로젝트 구조
 
@@ -217,6 +221,7 @@ photo_cropper/
 │   ├── resize_processor.py      # 리사이즈 (v8.5)
 │   ├── folder_watcher.py        # 폴더 감시 (v8.5)
 │   ├── scheduler.py             # 스케줄러 (v8.5)
+│   ├── processed_index.py       # skip_processed 로컬 인덱스 (v9.0)
 │   └── history_manager.py       # 히스토리 관리 (v8.5)
 ├── ui/
 │   ├── main/window.py
@@ -265,6 +270,16 @@ pyinstaller photo_cropper.spec --clean
 | UPX 압축 | 실행 파일 압축 (~40% 크기 감소) |
 
 ## 📋 변경 이력
+
+### v9.0 통합 개선 업데이트 (2026-03-05)
+- ✨ `skip_processed` 로컬 인덱스(`.photocropper/processed_index.json`) 추가 및 Batch/Watch/수동 추출 공통 적용
+- ✨ 분류 폴더명 사용자 설정(`ClassificationSettings.category_folders`) 추가, 기본 한글 폴더 호환 유지
+- ✨ 스케줄러 UI 설정과 런타임 자동 배치 트리거 연결(앱 실행 중)
+- 🛡️ Watch 준비/재시도 정책 개선(stat/read 실패 만료 처리, 공정 큐 재시도, retry_count 로그)
+- 🛡️ 멀티스레드 취소 시 완료 future drain + 미실행 작업 `CANCELLED` 반영으로 통계 정합성 강화
+- 🛡️ Watch 완료 토스트 중복 제거(`processing_completed_detailed` 중심)
+- 🛡️ CLI 취소 종료코드 `130`, 실패 `1`, 정상 `0`으로 정렬
+- 🛡️ 프로파일 적용 경로를 `to_dict + deep-merge + AppSettings.from_dict`로 일원화
 
 ### v9.0 수동 경계 보정 업데이트 (2026-03)
 - ✨ 메인 화면에 폴더 일괄 편집/이전/다음/편집 저장 추출 흐름 추가

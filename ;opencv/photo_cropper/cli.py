@@ -424,6 +424,7 @@ def process_batch(args: argparse.Namespace) -> int:
         print("ERROR: Failed to start batch processing", file=sys.stderr)
         return 2
 
+    cancelled = False
     try:
         while processor.is_running:
             time.sleep(0.1)
@@ -431,8 +432,11 @@ def process_batch(args: argparse.Namespace) -> int:
         print("Cancellation requested...")
         processor.request_stop()
         processor.wait_for_completion(timeout=10.0)
+        cancelled = True
 
     progress = processor.progress
+    if progress.is_cancelled:
+        cancelled = True
     print(
         "Summary: "
         f"processed={progress.processed}, "
@@ -441,6 +445,8 @@ def process_batch(args: argparse.Namespace) -> int:
         f"skipped={progress.skipped}"
     )
 
+    if cancelled:
+        return 130
     if progress.failed > 0:
         return 1
     return 0
