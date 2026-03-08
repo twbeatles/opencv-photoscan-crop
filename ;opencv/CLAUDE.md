@@ -193,3 +193,30 @@ pyinstaller photo_cropper.spec --clean
 - Watch 완료 알림은 `processing_completed_detailed` 중심으로 사용자 토스트 중복 제거
 - CLI 취소 종료코드 표준화: cancel `130`, failed `1`, success `0`
 - 프로파일 적용 경로를 `to_dict + deep-merge + AppSettings.from_dict`로 일원화
+
+## 2026-03-08 Precision Update Notes
+
+- Implemented all 10 precision recommendations from the 2026-03-08 review plan.
+- Detection core:
+  - `accurate` mode now aggregates Stage 1~6 candidates and globally re-ranks.
+  - `fast`/`balanced` retain early-exit behavior.
+  - Edge-support scoring now uses a dedicated reference edge map.
+  - Area/aspect/Hough scoring logic was upgraded for rotated/skewed cases.
+- Multi-photo:
+  - Added `DetectedPhoto.quad`.
+  - Crop path is perspective-first (`warpPerspective`) with bbox fallback.
+  - `merge_distance` now affects dedup (`IoU + center distance + edge gap`).
+- EXIF / face:
+  - EXIF orientation normalization added on image load (`ImageOps.exif_transpose` when available).
+  - Face auto-rotation angle now uses `primary_face`.
+- UI/CLI:
+  - Added precision tuning controls/options:
+    - `min_area_ratio`, `max_area_ratio`
+    - `bg_mask_delta`
+    - `adaptive_block_size`, `adaptive_c`
+- Benchmark:
+  - Added executable harness: `python -m photo_cropper.benchmark`
+  - Added label format doc/template:
+    - `BENCHMARK_LABEL_FORMAT.md`
+    - `benchmark/labels.template.json`
+  - Real-image benchmark datasets are intentionally excluded from the repository.

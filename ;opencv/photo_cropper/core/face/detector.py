@@ -355,9 +355,10 @@ class FaceDetector:
             image_size=(w, h)
         )
         
-        # Calculate rotation angle from eyes
-        if faces and faces[0].eyes:
-            result.rotation_angle = self._calculate_rotation_angle(faces[0].eyes)
+        # Calculate rotation angle from the primary face for stability.
+        primary = result.primary_face
+        if primary is not None and primary.eyes:
+            result.rotation_angle = self._calculate_rotation_angle(primary.eyes)
         
         # Suggest crop if requested
         if suggest_crop and faces:

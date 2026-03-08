@@ -20,7 +20,7 @@ import traceback
 import json
 import time
 import math
-from typing import Optional, Tuple, List
+from typing import Optional, Tuple, List, Dict, Any
 from dataclasses import dataclass
 from enum import Enum
 
@@ -205,7 +205,21 @@ class ImageProcessor:
             Loaded image array or None if failed
         """
         try:
-            # Handle Unicode paths (Korean, Japanese, etc.)
+            # Prefer Pillow path for EXIF orientation normalization.
+            try:
+                from PIL import Image, ImageOps
+
+                with Image.open(image_path) as pil_image:
+                    pil_image = ImageOps.exif_transpose(pil_image)
+                    if pil_image.mode != "RGB":
+                        pil_image = pil_image.convert("RGB")
+                    rgb = np.array(pil_image)
+                    if rgb.ndim == 3 and rgb.shape[2] == 3:
+                        return cv2.cvtColor(rgb, cv2.COLOR_RGB2BGR)
+            except Exception as pil_err:
+                logger.debug("Pillow load fallback for '%s': %s", image_path, pil_err)
+
+            # Fallback: Unicode-safe OpenCV loading.
             img_array = np.fromfile(image_path, np.uint8)
             image = cv2.imdecode(img_array, cv2.IMREAD_COLOR)
             return image
@@ -304,6 +318,56 @@ class ImageProcessor:
             d.append(float(np.linalg.norm(p1 - p2)))
         return min(d) if d else 0.0
 
+    def _quad_aspect_ratio(self, quad: np.ndarray) -> float:
+        """Estimate aspect ratio from quad side lengths (orientation invariant)."""
+        q = self.order_points(quad.reshape((4, 2)).astype(np.float32))
+        w_top = float(np.linalg.norm(q[1] - q[0]))
+        w_bottom = float(np.linalg.norm(q[2] - q[3]))
+        h_left = float(np.linalg.norm(q[3] - q[0]))
+        h_right = float(np.linalg.norm(q[2] - q[1]))
+        width = max(1e-6, (w_top + w_bottom) * 0.5)
+        height = max(1e-6, (h_left + h_right) * 0.5)
+        return float(width / height)
+
+    @staticmethod
+    def _angle_diff_deg(a: float, b: float) -> float:
+        """Smallest difference between two undirected angles in degrees (0..90)."""
+        d = abs((a - b) % 180.0)
+        return float(d if d <= 90.0 else 180.0 - d)
+
+    def _area_score(self, area_ratio: float, min_ratio: float, max_ratio: float) -> float:
+        """
+        Area prior with a central plateau and smooth edge falloff.
+        Returns 0..1.
+        """
+        if area_ratio < min_ratio or area_ratio > max_ratio:
+            return 0.0
+
+        span = max(1e-6, max_ratio - min_ratio)
+        plateau_margin = span * 0.20
+        plateau_low = min_ratio + plateau_margin
+        plateau_high = max_ratio - plateau_margin
+
+        # Very narrow span fallback: symmetric center score.
+        if plateau_high <= plateau_low:
+            mid = (min_ratio + max_ratio) * 0.5
+            half = max(1e-6, span * 0.5)
+            return float(max(0.0, 1.0 - abs(area_ratio - mid) / half))
+
+        if plateau_low <= area_ratio <= plateau_high:
+            return 1.0
+
+        if area_ratio < plateau_low:
+            dist = plateau_low - area_ratio
+            denom = max(1e-6, plateau_low - min_ratio)
+        else:
+            dist = area_ratio - plateau_high
+            denom = max(1e-6, max_ratio - plateau_high)
+
+        linear = max(0.0, 1.0 - dist / denom)
+        # Gentle decay near bounds.
+        return float(linear**0.6)
+
     def _angle_score(self, quad: np.ndarray) -> float:
         """
         Score how close the quad's corner angles are to 90 degrees.
@@ -391,6 +455,7 @@ class ImageProcessor:
         quad: np.ndarray,
         image_area: int,
         edge_image: Optional[np.ndarray] = None,
+        image_shape: Optional[Tuple[int, int]] = None,
     ) -> float:
         """
         Score a quad (4 points) based on geometry + edge support.
@@ -416,23 +481,28 @@ class ImageProcessor:
         max_ratio = float(self.algo.max_area_ratio)
         if not (min_ratio <= area_ratio <= max_ratio):
             return 0.0
-        mid = (min_ratio + max_ratio) / 2.0
-        half = max(1e-6, (max_ratio - min_ratio) / 2.0)
-        area_score = max(0.0, 1.0 - abs(area_ratio - mid) / half)
+        area_score = self._area_score(area_ratio, min_ratio, max_ratio)
 
-        # Aspect ratio (axis-aligned bbox) – broad preference for photo-like ratios.
-        x, y, w, h = cv2.boundingRect(quad.reshape((-1, 1, 2)).astype(np.float32))
-        aspect = (w / h) if h > 0 else 0.0
-        if 0.5 <= aspect <= 2.0:
-            aspect_score = 1.0 - abs(1.0 - aspect) * 0.5
-        elif 0.3 <= aspect <= 3.0:
-            aspect_score = 0.5
+        # Aspect score from ordered side lengths (less sensitive to perspective tilt).
+        aspect = self._quad_aspect_ratio(quad)
+        if 0.45 <= aspect <= 2.2:
+            aspect_score = 1.0 - min(
+                1.0, abs(math.log(max(aspect, 1e-6))) / math.log(2.2)
+            ) * 0.45
+        elif 0.30 <= aspect <= 3.2:
+            aspect_score = 0.55
         else:
-            aspect_score = 0.2
+            aspect_score = 0.18
 
         angle_score = self._angle_score(quad)
         edge_support = self._edge_support_score(quad, edge_image)
-        border_penalty = self._border_penalty(quad, edge_image.shape[:2] if edge_image is not None else (1, 1))
+        if image_shape is not None:
+            border_shape = image_shape
+        elif edge_image is not None:
+            border_shape = edge_image.shape[:2]
+        else:
+            border_shape = (1, 1)
+        border_penalty = self._border_penalty(quad, border_shape)
 
         # Penalize tiny quads.
         min_side = self._quad_min_side(quad)
@@ -510,6 +580,7 @@ class ImageProcessor:
         image_area: int,
         min_area_ratio: Optional[float] = None,
         max_area_ratio: Optional[float] = None,
+        score_edge_map: Optional[np.ndarray] = None,
     ) -> Tuple[Optional[np.ndarray], float, List[dict]]:
         """
         Find the best quad candidate from a binary edge/mask image.
@@ -541,13 +612,20 @@ class ImageProcessor:
         if max_area_ratio is not None:
             self.algo.max_area_ratio = float(max_area_ratio)
 
+        score_map = score_edge_map if score_edge_map is not None else edge_image
+
         for contour in contours:
             # Skip tiny contours quickly.
             if cv2.contourArea(contour) < self.MIN_CONTOUR_AREA:
                 continue
 
             for quad in self._contour_to_quad_candidates(contour):
-                score = self._score_quad(quad, image_area, edge_image=edge_image)
+                score = self._score_quad(
+                    quad,
+                    image_area,
+                    edge_image=score_map,
+                    image_shape=edge_image.shape[:2],
+                )
                 if score <= 0:
                     continue
                 scored_candidates.append({"quad": quad, "score": float(score)})
@@ -612,6 +690,55 @@ class ImageProcessor:
     def _accept_stage_candidate(self, stage: DetectionStage, score: float) -> bool:
         """Check whether a candidate score passes stage-specific gate."""
         return float(score) >= self._min_accept_score_for_stage(stage)
+
+    def _stage_rank(self, stage: DetectionStage) -> int:
+        """Stable rank used for tie-breaking during global stage re-ranking."""
+        rank_map = {
+            DetectionStage.CANNY: 0,
+            DetectionStage.MULTI_SCALE_CANNY: 0,
+            DetectionStage.BACKGROUND_MASK: 1,
+            DetectionStage.ADAPTIVE_THRESHOLD: 2,
+            DetectionStage.GRADIENT_SOBEL: 3,
+            DetectionStage.CORNER_HARRIS: 4,
+            DetectionStage.HOUGH_RECT: 5,
+        }
+        return int(rank_map.get(stage, 9))
+
+    def _select_best_stage_candidate(
+        self, stage_candidates: List[Dict[str, Any]], image_area: int
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Select best candidate across stages.
+
+        Priority:
+          1) score (desc)
+          2) stage_rank (asc)
+          3) area stability (distance from allowed area mid, asc)
+        """
+        if not stage_candidates:
+            return None
+
+        min_ratio = float(self.algo.min_area_ratio)
+        max_ratio = float(self.algo.max_area_ratio)
+        mid = (min_ratio + max_ratio) * 0.5
+
+        def area_stability(candidate: Dict[str, Any]) -> float:
+            quad = candidate.get("quad")
+            if quad is None or image_area <= 0:
+                return float("inf")
+            area = self._quad_area(np.array(quad, dtype=np.float32))
+            ratio = area / float(image_area)
+            return abs(ratio - mid)
+
+        ordered = sorted(
+            stage_candidates,
+            key=lambda c: (
+                -float(c.get("score", 0.0)),
+                int(c.get("stage_rank", 9)),
+                area_stability(c),
+            ),
+        )
+        return ordered[0] if ordered else None
 
     def _debug_enabled(self, debug_dir: Optional[str]) -> bool:
         return bool(self.debug.enabled and debug_dir is not None)
@@ -774,6 +901,60 @@ class ImageProcessor:
         y = (a1 * c2 - a2 * c1) / det
         return float(x), float(y)
 
+    def _build_hough_quad_from_groups(
+        self,
+        group_a: List[Dict[str, Any]],
+        group_b: List[Dict[str, Any]],
+        h: int,
+        w: int,
+        theta_a: float,
+        theta_b: float,
+    ) -> Optional[np.ndarray]:
+        """Build quad from two near-orthogonal Hough line groups."""
+
+        def _line_position(line: Dict[str, Any], theta_deg: float) -> float:
+            rad = math.radians(theta_deg)
+            nx = -math.sin(rad)
+            ny = math.cos(rad)
+            x1, y1, x2, y2 = line["segment"]
+            mx = (x1 + x2) * 0.5
+            my = (y1 + y2) * 0.5
+            return float(mx * nx + my * ny)
+
+        if len(group_a) < 2 or len(group_b) < 2:
+            return None
+
+        group_a = sorted(group_a, key=lambda ln: ln["length"], reverse=True)[:80]
+        group_b = sorted(group_b, key=lambda ln: ln["length"], reverse=True)[:80]
+
+        pos_a = [(float(_line_position(ln, theta_a)), ln) for ln in group_a]
+        pos_b = [(float(_line_position(ln, theta_b)), ln) for ln in group_b]
+        if len(pos_a) < 2 or len(pos_b) < 2:
+            return None
+
+        top = min(pos_a, key=lambda t: t[0])
+        bottom = max(pos_a, key=lambda t: t[0])
+        left = min(pos_b, key=lambda t: t[0])
+        right = max(pos_b, key=lambda t: t[0])
+
+        # Reject degenerate selections.
+        if abs(top[0] - bottom[0]) < min(h, w) * 0.18:
+            return None
+        if abs(left[0] - right[0]) < min(h, w) * 0.18:
+            return None
+
+        lt = self._intersect(left[1]["abc"], top[1]["abc"])
+        rt = self._intersect(right[1]["abc"], top[1]["abc"])
+        rb = self._intersect(right[1]["abc"], bottom[1]["abc"])
+        lb = self._intersect(left[1]["abc"], bottom[1]["abc"])
+        if not all([lt, rt, rb, lb]):
+            return None
+
+        quad = np.array([lt, rt, rb, lb], dtype=np.float32)
+        if np.any(np.isnan(quad)):
+            return None
+        return quad
+
     def _detect_rectangle_by_hough(self, edges: np.ndarray) -> Optional[np.ndarray]:
         """
         Detect a rectangle using Hough lines as a fallback when contours are broken.
@@ -794,8 +975,7 @@ class ImageProcessor:
         if lines is None or len(lines) == 0:
             return None
 
-        horizontals = []
-        verticals = []
+        parsed: List[Dict[str, Any]] = []
         for l in lines[:500]:
             x1, y1, x2, y2 = l[0]
             dx = x2 - x1
@@ -803,47 +983,49 @@ class ImageProcessor:
             length = math.hypot(dx, dy)
             if length < 30:
                 continue
-            ang = abs(math.degrees(math.atan2(dy, dx)))
-            if ang < 15 or ang > 165:
-                y_mid = (y1 + y2) / 2.0
-                horizontals.append((length, y_mid, (x1, y1, x2, y2)))
-            elif 75 < ang < 105:
-                x_mid = (x1 + x2) / 2.0
-                verticals.append((length, x_mid, (x1, y1, x2, y2)))
+            ang = math.degrees(math.atan2(dy, dx))
+            if ang < 0:
+                ang += 180.0
+            parsed.append(
+                {
+                    "segment": (x1, y1, x2, y2),
+                    "length": float(length),
+                    "angle": float(ang),
+                    "abc": self._line_abc(x1, y1, x2, y2),
+                }
+            )
 
-        if len(horizontals) < 2 or len(verticals) < 2:
+        if len(parsed) < 4:
             return None
 
-        horizontals.sort(key=lambda t: t[0], reverse=True)
-        verticals.sort(key=lambda t: t[0], reverse=True)
+        bin_size = 10.0
+        bin_count = int(180 / bin_size)
+        bins = [0.0] * bin_count
+        for ln in parsed:
+            idx = int(ln["angle"] // bin_size) % bin_count
+            bins[idx] += float(ln["length"])
 
-        # Take top candidates by length, then select extreme positions.
-        h_cand = horizontals[:30]
-        v_cand = verticals[:30]
+        ranked_bins = sorted(range(bin_count), key=lambda i: bins[i], reverse=True)
+        for idx in ranked_bins[:4]:
+            if bins[idx] <= 0:
+                continue
 
-        top = min(h_cand, key=lambda t: t[1])
-        bottom = max(h_cand, key=lambda t: t[1])
-        left = min(v_cand, key=lambda t: t[1])
-        right = max(v_cand, key=lambda t: t[1])
+            theta_a = (idx + 0.5) * bin_size
+            theta_b = (theta_a + 90.0) % 180.0
+            group_a = [
+                ln for ln in parsed if self._angle_diff_deg(float(ln["angle"]), theta_a) <= 18.0
+            ]
+            group_b = [
+                ln for ln in parsed if self._angle_diff_deg(float(ln["angle"]), theta_b) <= 18.0
+            ]
 
-        # Reject degenerate selections (too close).
-        if abs(top[1] - bottom[1]) < h * 0.2:
-            return None
-        if abs(left[1] - right[1]) < w * 0.2:
-            return None
+            quad = self._build_hough_quad_from_groups(
+                group_a, group_b, h, w, theta_a, theta_b
+            )
+            if quad is not None:
+                return quad
 
-        lt = self._intersect(self._line_abc(*left[2]), self._line_abc(*top[2]))
-        rt = self._intersect(self._line_abc(*right[2]), self._line_abc(*top[2]))
-        rb = self._intersect(self._line_abc(*right[2]), self._line_abc(*bottom[2]))
-        lb = self._intersect(self._line_abc(*left[2]), self._line_abc(*bottom[2]))
-        if not all([lt, rt, rb, lb]):
-            return None
-
-        quad = np.array([lt, rt, rb, lb], dtype=np.float32)
-        # Basic bounds check (allow slight out-of-bounds).
-        if np.any(np.isnan(quad)):
-            return None
-        return quad
+        return None
 
     def detect_edges_multiscale(self, gray: np.ndarray) -> np.ndarray:
         """
@@ -974,19 +1156,55 @@ class ImageProcessor:
             best_candidates: List[dict] = []
             detection_stage: Optional[DetectionStage] = None
 
+            # Shared edge reference for scoring (independent from stage masks).
+            score_edges_reference = cv2.Canny(
+                gray, int(self.algo.canny_min), int(self.algo.canny_max)
+            )
+            score_edges_reference = cv2.dilate(
+                score_edges_reference, self._kernel_3x3, iterations=1
+            )
+
+            accurate_full_pass = self.algo.detection_mode == "accurate"
+            stage_candidates: List[Dict[str, Any]] = []
+
+            def _register_stage_candidate(
+                stage: DetectionStage,
+                quad: Optional[np.ndarray],
+                score: float,
+                candidates: Optional[List[dict]] = None,
+            ) -> None:
+                nonlocal best_quad, best_score, best_candidates, detection_stage
+
+                if quad is None or not self._accept_stage_candidate(stage, score):
+                    return
+
+                entry = {
+                    "stage": stage,
+                    "quad": np.array(quad, dtype=np.float32),
+                    "score": float(score),
+                    "stage_rank": self._stage_rank(stage),
+                    "candidates": candidates or [{"quad": quad, "score": float(score)}],
+                }
+                stage_candidates.append(entry)
+                if not accurate_full_pass and best_quad is None:
+                    best_quad = entry["quad"]
+                    best_score = entry["score"]
+                    best_candidates = entry["candidates"]
+                    detection_stage = stage
+
             # ==========================================
             # Stage 1: Multi-scale Canny Edge Detection
             # ==========================================
             edges = self.detect_edges_multiscale(gray)
-            quad, score, candidates = self.find_best_contour(edges, image_area)
+            quad, score, candidates = self.find_best_contour(
+                edges, image_area, score_edge_map=score_edges_reference
+            )
             stage_1 = (
                 DetectionStage.MULTI_SCALE_CANNY
                 if self.algo.multi_scale_edge
                 else DetectionStage.CANNY
             )
-            if quad is not None and self._accept_stage_candidate(stage_1, score):
-                best_quad, best_score, best_candidates = quad, score, candidates
-                detection_stage = stage_1
+            _register_stage_candidate(stage_1, quad, score, candidates)
 
             if debug_enabled and debug_run_dir and self.debug.save_detection_stages:
                 self._save_debug_image(
@@ -996,14 +1214,12 @@ class ImageProcessor:
             # ==========================================
             # Stage 2: Background Mask (balanced/accurate)
             # ==========================================
-            if best_quad is None and self.algo.detection_mode in ("balanced", "accurate"):
+            if (best_quad is None or accurate_full_pass) and self.algo.detection_mode in ("balanced", "accurate"):
                 bgmask = self._create_background_mask(gray)
-                quad, score, candidates = self.find_best_contour(bgmask, image_area)
-                if quad is not None and self._accept_stage_candidate(
-                    DetectionStage.BACKGROUND_MASK, score
-                ):
-                    best_quad, best_score, best_candidates = quad, score, candidates
-                    detection_stage = DetectionStage.BACKGROUND_MASK
+                quad, score, candidates = self.find_best_contour(
+                    bgmask, image_area, score_edge_map=score_edges_reference
+                )
+                _register_stage_candidate(DetectionStage.BACKGROUND_MASK, quad, score, candidates)
 
                 if debug_enabled and debug_run_dir and self.debug.save_detection_stages:
                     self._save_debug_image(
@@ -1013,7 +1229,7 @@ class ImageProcessor:
             # ==========================================
             # Stage 3: Adaptive Threshold
             # ==========================================
-            if best_quad is None:
+            if best_quad is None or accurate_full_pass:
                 blurred_bilateral = cv2.bilateralFilter(gray, 9, 75, 75)
                 adaptive_block_size = int(
                     getattr(self.algo, "adaptive_block_size", 15)
@@ -1035,12 +1251,10 @@ class ImageProcessor:
                     adaptive_block_size,
                     adaptive_c,
                 )
-                quad, score, candidates = self.find_best_contour(thresh, image_area)
-                if quad is not None and self._accept_stage_candidate(
-                    DetectionStage.ADAPTIVE_THRESHOLD, score
-                ):
-                    best_quad, best_score, best_candidates = quad, score, candidates
-                    detection_stage = DetectionStage.ADAPTIVE_THRESHOLD
+                quad, score, candidates = self.find_best_contour(
+                    thresh, image_area, score_edge_map=score_edges_reference
+                )
+                _register_stage_candidate(DetectionStage.ADAPTIVE_THRESHOLD, quad, score, candidates)
 
                 if debug_enabled and debug_run_dir and self.debug.save_detection_stages:
                     self._save_debug_image(
@@ -1050,7 +1264,7 @@ class ImageProcessor:
             # ==========================================
             # Stage 4: Gradient Analysis (Sobel)
             # ==========================================
-            if best_quad is None:
+            if best_quad is None or accurate_full_pass:
                 blurred = cv2.GaussianBlur(gray, (5, 5), 0)
                 grad_x = cv2.Sobel(blurred, ddepth=cv2.CV_32F, dx=1, dy=0, ksize=-1)
                 grad_y = cv2.Sobel(blurred, ddepth=cv2.CV_32F, dx=0, dy=1, ksize=-1)
@@ -1066,12 +1280,10 @@ class ImageProcessor:
                 closed = cv2.erode(closed, self._kernel_3x3, iterations=4)
                 closed = cv2.dilate(closed, self._kernel_3x3, iterations=4)
 
-                quad, score, candidates = self.find_best_contour(closed, image_area)
-                if quad is not None and self._accept_stage_candidate(
-                    DetectionStage.GRADIENT_SOBEL, score
-                ):
-                    best_quad, best_score, best_candidates = quad, score, candidates
-                    detection_stage = DetectionStage.GRADIENT_SOBEL
+                quad, score, candidates = self.find_best_contour(
+                    closed, image_area, score_edge_map=score_edges_reference
+                )
+                _register_stage_candidate(DetectionStage.GRADIENT_SOBEL, quad, score, candidates)
 
                 if debug_enabled and debug_run_dir and self.debug.save_detection_stages:
                     self._save_debug_image(
@@ -1085,7 +1297,7 @@ class ImageProcessor:
                 self.algo.use_corner_detection
                 or self.algo.detection_mode == "accurate"
             )
-            if best_quad is None and should_use_corner:
+            if (best_quad is None or accurate_full_pass) and should_use_corner:
                 corners = cv2.cornerHarris(
                     gray, self.algo.corner_block_size, 3, self.algo.corner_k
                 )
@@ -1094,12 +1306,10 @@ class ImageProcessor:
                 corner_mask = np.zeros_like(gray)
                 corner_mask[corners > threshold] = 255
 
-                quad, score, candidates = self.find_best_contour(corner_mask, image_area)
-                if quad is not None and self._accept_stage_candidate(
-                    DetectionStage.CORNER_HARRIS, score
-                ):
-                    best_quad, best_score, best_candidates = quad, score, candidates
-                    detection_stage = DetectionStage.CORNER_HARRIS
+                quad, score, candidates = self.find_best_contour(
+                    corner_mask, image_area, score_edge_map=score_edges_reference
+                )
+                _register_stage_candidate(DetectionStage.CORNER_HARRIS, quad, score, candidates)
 
                 if debug_enabled and debug_run_dir and self.debug.save_detection_stages:
                     self._save_debug_image(
@@ -1109,17 +1319,30 @@ class ImageProcessor:
             # ==========================================
             # Stage 6: Hough Rectangle (accurate, or final fallback in balanced)
             # ==========================================
-            if best_quad is None and self.algo.detection_mode in ("balanced", "accurate"):
+            if (best_quad is None or accurate_full_pass) and self.algo.detection_mode in ("balanced", "accurate"):
                 hquad = self._detect_rectangle_by_hough(edges)
                 if hquad is not None:
-                    hscore = self._score_quad(hquad, image_area, edge_image=edges)
-                    if hscore > 0 and self._accept_stage_candidate(
-                        DetectionStage.HOUGH_RECT, hscore
-                    ):
-                        best_quad, best_score = hquad, float(hscore)
-                        best_candidates = [{"quad": hquad, "score": float(hscore)}]
-                        detection_stage = DetectionStage.HOUGH_RECT
+                    hscore = self._score_quad(
+                        hquad,
+                        image_area,
+                        edge_image=score_edges_reference,
+                        image_shape=edges.shape[:2],
+                    )
+                    if hscore > 0:
+                        _register_stage_candidate(
+                            DetectionStage.HOUGH_RECT,
+                            hquad,
+                            hscore,
+                            [{"quad": hquad, "score": float(hscore)}],
+                        )
 
+            if accurate_full_pass and stage_candidates:
+                selected = self._select_best_stage_candidate(stage_candidates, image_area)
+                if selected is not None:
+                    best_quad = np.array(selected["quad"], dtype=np.float32)
+                    best_score = float(selected["score"])
+                    best_candidates = list(selected.get("candidates", []))
+                    detection_stage = selected.get("stage")
             if best_quad is None:
                 return CropResult(
                     False,
@@ -1250,6 +1473,18 @@ class ImageProcessor:
                         "candidates": [
                             {"score": float(c.get("score", 0.0))}
                             for c in (best_candidates or [])
+                        ],
+                        "stage_candidates": [
+                            {
+                                "stage": (
+                                    str(sc.get("stage").value)
+                                    if sc.get("stage") is not None
+                                    else None
+                                ),
+                                "score": float(sc.get("score", 0.0)),
+                                "stage_rank": int(sc.get("stage_rank", 9)),
+                            }
+                            for sc in (stage_candidates or [])
                         ],
                         "algo": {
                             "canny_min": int(self.algo.canny_min),

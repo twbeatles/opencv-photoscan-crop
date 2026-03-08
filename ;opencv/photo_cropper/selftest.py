@@ -247,6 +247,16 @@ def _test_cli_settings_merge_priority() -> None:
                 config_path,
                 "--canny-min",
                 "33",
+                "--min-area-ratio",
+                "0.12",
+                "--max-area-ratio",
+                "0.91",
+                "--bg-mask-delta",
+                "41",
+                "--adaptive-block-size",
+                "21",
+                "--adaptive-c",
+                "3.5",
                 "--classify-model",
                 "custom",
             ]
@@ -261,6 +271,11 @@ def _test_cli_settings_merge_priority() -> None:
 
         assert merged.algorithm.canny_min == 33  # CLI overrides config/preset
         assert merged.algorithm.canny_max == 44  # config overrides preset
+        assert abs(float(merged.algorithm.min_area_ratio) - 0.12) < 1e-6
+        assert abs(float(merged.algorithm.max_area_ratio) - 0.91) < 1e-6
+        assert abs(float(merged.algorithm.bg_mask_delta) - 41.0) < 1e-6
+        assert int(merged.algorithm.adaptive_block_size) == 21
+        assert abs(float(merged.algorithm.adaptive_c) - 3.5) < 1e-6
         assert merged.output.jpg_quality == 88  # preset applied
         assert merged.classification.model == "custom"  # CLI overrides config
         assert abs(merged.classification.min_confidence - 0.65) < 1e-6
@@ -1440,6 +1455,301 @@ def _test_cli_cancel_exit_code_130() -> None:
         cli_mod.time.sleep = original_sleep
 
 
+def _test_multi_photo_merge_distance_effect() -> None:
+    import numpy as np
+
+    from .core.multi_photo_detector import DetectedPhoto, MultiPhotoDetector
+
+    contour = np.array([[[0, 0]], [[10, 0]], [[10, 10]], [[0, 10]]], dtype=np.int32)
+    a = DetectedPhoto((0, 0, 200, 200), contour, 0.80, 40000, 1.0)
+    b = DetectedPhoto((90, 0, 200, 200), contour, 0.79, 40000, 1.0)
+
+    d_low = MultiPhotoDetector(merge_distance=20)
+    d_high = MultiPhotoDetector(merge_distance=160)
+
+    kept_low = d_low._merge_overlapping([a, b])
+    kept_high = d_high._merge_overlapping([a, b])
+
+    assert len(kept_low) == 2, f"Expected 2 with low merge distance, got {len(kept_low)}"
+    assert len(kept_high) == 1, f"Expected 1 with high merge distance, got {len(kept_high)}"
+
+
+def _test_multi_photo_perspective_crop_path() -> None:
+    import cv2
+    import numpy as np
+
+    from .core.multi_photo_detector import DetectedPhoto, MultiPhotoDetector
+
+    img = np.full((700, 900, 3), 20, dtype=np.uint8)
+    center = (450, 350)
+    rect = ((center[0], center[1]), (420, 260), -18.0)
+    box = cv2.boxPoints(rect).astype(np.float32)
+    cv2.fillPoly(img, [box.astype(np.int32)], (220, 220, 220))
+    cv2.polylines(img, [box.astype(np.int32)], True, (15, 15, 15), 6)
+
+    x, y, w, h = cv2.boundingRect(box.astype(np.int32))
+    contour = box.astype(np.int32).reshape((-1, 1, 2))
+    photo = DetectedPhoto(
+        bounding_box=(x, y, w, h),
+        contour=contour,
+        confidence=0.95,
+        area=int(w * h),
+        aspect_ratio=float(w / max(1, h)),
+        quad=box,
+    )
+
+    detector = MultiPhotoDetector()
+    crops = detector.crop_photos(img, [photo], padding=0)
+    assert len(crops) == 1
+    crop = crops[0][0]
+    assert crop is not None
+
+    exp_w, exp_h = detector._quad_dimensions(box)
+    assert abs(crop.shape[1] - int(round(exp_w))) <= 40
+    assert abs(crop.shape[0] - int(round(exp_h))) <= 40
+
+
+def _test_accurate_mode_global_rerank_prefers_best_stage() -> None:
+    import numpy as np
+
+    from .core.image import ImageProcessor, DetectionStage
+    from .core.settings_model import AlgorithmSettings, ProcessingSettings
+
+    algo = AlgorithmSettings(detection_mode="accurate", use_clahe=False)
+    proc = ProcessingSettings(auto_contrast=False)
+    ip = ImageProcessor(algo, proc)
+
+    img = np.full((300, 420, 3), 180, dtype=np.uint8)
+    quad = np.array([[40, 40], [380, 50], [370, 250], [45, 260]], dtype=np.float32)
+
+    stage_scores = [0.80, 0.83, 0.85, 0.86, 0.95]
+    call_state = {"idx": 0}
+
+    ip._accept_stage_candidate = lambda stage, score: True
+    ip.detect_edges_multiscale = lambda gray: np.zeros_like(gray)
+
+    def _find_best_contour(*_args, **_kwargs):
+        i = call_state["idx"]
+        call_state["idx"] += 1
+        if i < len(stage_scores):
+            score = stage_scores[i]
+            return quad.copy(), score, [{"quad": quad.copy(), "score": score}]
+        return None, 0.0, []
+
+    ip.find_best_contour = _find_best_contour
+    ip._detect_rectangle_by_hough = lambda _edges: quad.copy()
+    ip._score_quad = lambda *_args, **_kwargs: 0.90
+    ip._apply_post_processing = lambda image: image
+
+    result = ip._process_loaded_image(img, "synthetic.png")
+    assert result.success
+    assert result.detection_stage == DetectionStage.CORNER_HARRIS
+
+
+def _test_find_best_contour_uses_score_edge_map() -> None:
+    import cv2
+    import numpy as np
+
+    from .core.image import ImageProcessor
+    from .core.settings_model import AlgorithmSettings
+
+    ip = ImageProcessor(AlgorithmSettings(use_clahe=False))
+    mask = np.zeros((220, 220), dtype=np.uint8)
+    cv2.rectangle(mask, (30, 30), (190, 190), 255, -1)
+    score_map = np.zeros_like(mask)
+
+    captured = {"edge": None}
+    original_score = ip._score_quad
+
+    def _spy_score(quad, image_area, edge_image=None, image_shape=None):
+        captured["edge"] = edge_image
+        return original_score(quad, image_area, edge_image=edge_image, image_shape=image_shape)
+
+    ip._score_quad = _spy_score
+    _, score_default, _ = ip.find_best_contour(mask, mask.size)
+    _, score_ref, _ = ip.find_best_contour(mask, mask.size, score_edge_map=score_map)
+    assert captured["edge"] is score_map, "Expected dedicated score edge map to be used"
+    assert score_ref < score_default, (
+        "Expected lower score when edge support comes from empty reference edge map"
+    )
+
+
+def _test_exif_orientation_normalization() -> None:
+    import os
+    import tempfile
+
+    import cv2
+    import numpy as np
+
+    try:
+        from PIL import Image
+    except Exception as e:
+        print(f"WARN: Pillow unavailable for EXIF orientation test: {e}")
+        return
+
+    from .core.image import ImageProcessor
+
+    # EXIF tag: 274 (Orientation), value 6 = rotate 90 CW for display.
+    exif_orientation_tag = 274
+
+    rgb = np.full((30, 60, 3), 255, dtype=np.uint8)
+    rgb[:, :30] = (255, 0, 0)
+    pil = Image.fromarray(rgb, mode="RGB")
+    exif = pil.getexif()
+    exif[exif_orientation_tag] = 6
+
+    with tempfile.TemporaryDirectory(prefix="photocropper_exif_") as td:
+        path = os.path.join(td, "exif_oriented.jpg")
+        pil.save(path, exif=exif)
+        loaded = ImageProcessor.load_image(path)
+        assert loaded is not None
+        assert loaded.shape[0] > loaded.shape[1], f"Expected portrait after EXIF transpose: {loaded.shape}"
+
+
+def _test_face_rotation_uses_primary_face() -> None:
+    import numpy as np
+
+    from .core.face.detector import FaceDetector, FaceRect, EyeRect
+
+    detector = FaceDetector(use_dnn=False)
+    detector._detect_faces_cascade = lambda _img: [
+        FaceRect(x=10, y=10, width=40, height=40),
+        FaceRect(x=120, y=80, width=120, height=120),
+    ]
+
+    def _fake_eyes(_gray, face):
+        if face.width < 100:
+            # angled eyes for the small (non-primary) face
+            return [EyeRect(15, 15, 8, 8), EyeRect(30, 28, 8, 8)]
+        # almost horizontal eyes for primary face
+        return [EyeRect(140, 120, 10, 10), EyeRect(200, 121, 10, 10)]
+
+    detector._detect_eyes = _fake_eyes
+    img = np.full((280, 320, 3), 180, dtype=np.uint8)
+    result = detector.detect(img, detect_eyes=True, suggest_crop=False)
+    assert result.has_faces
+    assert abs(float(result.rotation_angle)) < 2.0, result.rotation_angle
+
+
+def _test_settings_panel_algorithm_tuning_roundtrip() -> None:
+    import os
+
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    try:
+        from PyQt6.QtWidgets import QApplication
+    except Exception as e:
+        print(f"WARN: PyQt6 unavailable for algorithm tuning roundtrip test: {e}")
+        return
+
+    from .core.settings_model import AppSettings
+    from .ui.widgets.settings import SettingsPanel
+
+    app = QApplication.instance()
+    owned_app = False
+    if app is None:
+        app = QApplication([])
+        owned_app = True
+
+    s = AppSettings()
+    s.algorithm.min_area_ratio = 0.14
+    s.algorithm.max_area_ratio = 0.92
+    s.algorithm.bg_mask_delta = 44.0
+    s.algorithm.adaptive_block_size = 19
+    s.algorithm.adaptive_c = 2.5
+
+    panel = SettingsPanel(s)
+    panel._load_settings(s)
+    out = panel._build_settings()
+
+    assert abs(float(out.algorithm.min_area_ratio) - 0.14) < 1e-6
+    assert abs(float(out.algorithm.max_area_ratio) - 0.92) < 1e-6
+    assert abs(float(out.algorithm.bg_mask_delta) - 44.0) < 1e-6
+    assert int(out.algorithm.adaptive_block_size) == 19
+    assert abs(float(out.algorithm.adaptive_c) - 2.5) < 1e-6
+
+    panel.deleteLater()
+    if owned_app:
+        app.quit()
+
+
+def _test_benchmark_harness_report_contract() -> None:
+    import json
+    import os
+    import tempfile
+
+    import cv2
+    import numpy as np
+
+    from .benchmark import run_benchmark
+    from .core.image import CropResult, DetectionStage
+
+    class FakeProcessor:
+        def __init__(self):
+            self._calls = 0
+
+        def load_image(self, image_path):
+            arr = np.fromfile(image_path, np.uint8)
+            return cv2.imdecode(arr, cv2.IMREAD_COLOR)
+
+        def process_image(self, _image_path):
+            self._calls += 1
+            if self._calls == 1:
+                quad = np.array([[20, 20], [180, 20], [180, 180], [20, 180]], dtype=np.float32)
+                return CropResult(
+                    success=True,
+                    contour_points=quad,
+                    detection_stage=DetectionStage.CANNY,
+                    confidence=0.9,
+                )
+            return CropResult(
+                success=False,
+                contour_points=None,
+                detection_stage=None,
+                confidence=0.0,
+            )
+
+    with tempfile.TemporaryDirectory(prefix="photocropper_bench_") as td:
+        img_dir = os.path.join(td, "images")
+        os.makedirs(img_dir, exist_ok=True)
+        for name in ("a.jpg", "b.jpg"):
+            img = np.full((220, 220, 3), 150, dtype=np.uint8)
+            ok, buf = cv2.imencode(".jpg", img)
+            assert ok
+            buf.tofile(os.path.join(img_dir, name))
+
+        labels = {
+            "version": 1,
+            "items": [
+                {"file": "a.jpg", "has_photo": True, "quad": [[20, 20], [180, 20], [180, 180], [20, 180]]},
+                {"file": "b.jpg", "has_photo": False},
+            ],
+        }
+        labels_path = os.path.join(td, "labels.json")
+        with open(labels_path, "w", encoding="utf-8") as f:
+            json.dump(labels, f, ensure_ascii=False, indent=2)
+
+        report_path = os.path.join(td, "report.json")
+        report = run_benchmark(
+            img_dir,
+            labels_path,
+            report_path=report_path,
+            processor_factory=lambda: FakeProcessor(),
+        )
+
+        assert os.path.exists(report_path)
+        assert "metrics" in report
+        metrics = report["metrics"]
+        for key in (
+            "success_rate",
+            "mean_iou",
+            "median_iou",
+            "p90_iou",
+            "false_positive_rate",
+            "stage_distribution",
+        ):
+            assert key in metrics
+
+
 def main() -> int:
     try:
         _test_crop_editor_import_smoke()
@@ -1475,10 +1785,18 @@ def main() -> int:
         _test_crop_accuracy_synthetic()
         _test_no_photo_false_positive_regression()
         _test_multi_photo_close_gap_split()
+        _test_multi_photo_merge_distance_effect()
+        _test_multi_photo_perspective_crop_path()
         _test_grayscale_image_watermark_regression()
         _test_max_image_size_limit_applied()
         _test_face_dnn_fallback_when_download_fails()
+        _test_face_rotation_uses_primary_face()
+        _test_find_best_contour_uses_score_edge_map()
+        _test_accurate_mode_global_rerank_prefers_best_stage()
+        _test_exif_orientation_normalization()
         _test_settings_panel_ai_roundtrip()
+        _test_settings_panel_algorithm_tuning_roundtrip()
+        _test_benchmark_harness_report_contract()
     except Exception as e:
         print(f"SELFTEST FAILED: {e}")
         return 1

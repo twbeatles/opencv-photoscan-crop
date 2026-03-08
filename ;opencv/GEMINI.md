@@ -297,3 +297,28 @@ pyinstaller photo_cropper.spec --clean
 - Improved watch readiness fairness and timeout handling (`stat failed`/`read failed` paths)
 - Connected runtime scheduler execution path in `MainWindow` with busy-conflict skip policy
 - CLI cancel exit code aligned to `130`
+
+## 2026-03-08 Precision Update Notes
+
+- Implemented the full precision improvement plan (10 items, P0+P1+P2).
+- Detection core:
+  - `accurate` mode now collects Stage 1~6 candidates and performs global re-ranking.
+  - `fast`/`balanced` keep early-exit flow.
+  - Edge-support scoring uses a dedicated reference edge map, not stage binary masks.
+  - Area/aspect/Hough scoring paths were upgraded for rotated/skewed inputs.
+- Multi-photo:
+  - Added `DetectedPhoto.quad` contract.
+  - `crop_photos()` now uses perspective-first crop (`warpPerspective`) with bbox fallback.
+  - Dedup now combines IoU + center distance + edge gap, with `merge_distance` applied.
+- EXIF/Face:
+  - EXIF orientation normalization on load (`ImageOps.exif_transpose` when Pillow is available).
+  - Face rotation angle now uses `primary_face` instead of `faces[0]`.
+- Tuning exposure:
+  - Added UI + CLI controls for:
+    - `min_area_ratio`, `max_area_ratio`
+    - `bg_mask_delta`
+    - `adaptive_block_size`, `adaptive_c`
+- Benchmark:
+  - Added `photo_cropper.benchmark` runnable harness + JSON report metrics.
+  - Added `BENCHMARK_LABEL_FORMAT.md` and `benchmark/labels.template.json`.
+  - Real-image datasets are intentionally excluded from the repository.

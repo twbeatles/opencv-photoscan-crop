@@ -232,6 +232,25 @@ def _apply_cli_overrides(settings_data: Dict[str, Any], args: argparse.Namespace
     if args.canny_max is not None:
         _set_nested(settings_data, "algorithm.canny_max", int(args.canny_max))
 
+    if args.min_area_ratio is not None:
+        _set_nested(settings_data, "algorithm.min_area_ratio", float(args.min_area_ratio))
+
+    if args.max_area_ratio is not None:
+        _set_nested(settings_data, "algorithm.max_area_ratio", float(args.max_area_ratio))
+
+    if args.bg_mask_delta is not None:
+        _set_nested(settings_data, "algorithm.bg_mask_delta", float(args.bg_mask_delta))
+
+    if args.adaptive_block_size is not None:
+        _set_nested(
+            settings_data,
+            "algorithm.adaptive_block_size",
+            int(args.adaptive_block_size),
+        )
+
+    if args.adaptive_c is not None:
+        _set_nested(settings_data, "algorithm.adaptive_c", float(args.adaptive_c))
+
     if args.debug_detect:
         _set_nested(settings_data, "debug.enabled", True)
 
@@ -487,6 +506,31 @@ def create_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--canny-min", type=_int_in_range(0, 255), help="Canny minimum threshold")
     parser.add_argument("--canny-max", type=_int_in_range(1, 255), help="Canny maximum threshold")
+    parser.add_argument(
+        "--min-area-ratio",
+        type=_float_in_range(0.01, 0.9),
+        help="Minimum detected area ratio",
+    )
+    parser.add_argument(
+        "--max-area-ratio",
+        type=_float_in_range(0.1, 1.0),
+        help="Maximum detected area ratio",
+    )
+    parser.add_argument(
+        "--bg-mask-delta",
+        type=_float_in_range(5.0, 80.0),
+        help="Background-mask threshold delta",
+    )
+    parser.add_argument(
+        "--adaptive-block-size",
+        type=_int_in_range(3, 61),
+        help="Adaptive threshold block size (odd values recommended)",
+    )
+    parser.add_argument(
+        "--adaptive-c",
+        type=_float_in_range(-20.0, 20.0),
+        help="Adaptive threshold C offset",
+    )
     parser.add_argument("--debug-detect", action="store_true", help="Enable detection debug outputs")
 
     # Output / post

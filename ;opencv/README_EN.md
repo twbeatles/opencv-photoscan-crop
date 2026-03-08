@@ -77,9 +77,14 @@ A Python application that automatically detects and accurately crops scanned pho
 | Stage | Algorithm | Description |
 |-------|-----------|-------------|
 | Stage 1 | Multi-Scale Canny Edge | Multi-scale edge detection |
-| Stage 2 | Adaptive Threshold | Adaptive binarization |
-| Stage 3 | Gradient Analysis (Sobel) | Gradient analysis |
-| Stage 4 | Harris Corner Detection | Corner detection (optional) |
+| Stage 2 | Background Mask | Background/foreground candidate extraction |
+| Stage 3 | Adaptive Threshold | Adaptive binarization |
+| Stage 4 | Gradient Analysis (Sobel) | Gradient analysis |
+| Stage 5 | Harris Corner Detection | Corner detection (optional) |
+| Stage 6 | Hough Rectangle Fallback | Line-cluster based rectangle inference |
+
+- `fast` and `balanced` keep early-exit behavior for speed.
+- `accurate` evaluates all stages and performs global re-ranking across stage candidates.
 
 ## 📦 Installation
 
@@ -109,6 +114,11 @@ python -m photo_cropper.cli --input ./scans --output ./cropped
 
 # Accuracy-first + debug artifacts
 python -m photo_cropper.cli -i ./scans -o ./cropped --detect-mode accurate --debug-detect
+
+# Precision tuning overrides (CLI)
+python -m photo_cropper.cli -i ./scans -o ./cropped --detect-mode accurate \
+  --min-area-ratio 0.08 --max-area-ratio 0.97 \
+  --bg-mask-delta 34 --adaptive-block-size 19 --adaptive-c 3.0
 
 # With watermark
 python -m photo_cropper.cli -i ./scans -o ./cropped --watermark "© 2026"
@@ -172,6 +182,10 @@ python -m photo_cropper.cli --help
 - **Multi-scale**: Detect photos of various sizes
 - **Corner Detection**: Additional accuracy improvement
 - **Detection Mode (fast/balanced/accurate)**: Presets to trade speed vs accuracy (enables stronger fallbacks in accurate mode)
+- **Precision Tuning (UI + CLI)**:
+  - `min_area_ratio`, `max_area_ratio`
+  - `bg_mask_delta`
+  - `adaptive_block_size`, `adaptive_c`
 - **Detection Debug Save**: Save stage images/overlays/`meta.json` under `_debug` for failure analysis
 - **Perspective default**: ON by default, OFF switches to axis-aligned bbox crop
 
@@ -195,6 +209,9 @@ python -m photo_cropper.cli --help
 - **Scheduler check**: with `watch_mode.scheduler_enabled=true`, confirm auto-batch starts at scheduled time and overlapping triggers are skipped
 - **Unicode path test**: use a watermark image in a non-ASCII path and verify output succeeds
 - **Cancel semantics**: in multithreaded batch, request stop and verify final stats consistency and CLI exit code `130`
+- **Benchmark harness validation**:
+  - `python -m photo_cropper.benchmark --images ./benchmark/images --labels ./benchmark/labels.json --report ./benchmark/report.json --detect-mode accurate`
+  - Label format reference: `BENCHMARK_LABEL_FORMAT.md` (real-image datasets are intentionally not bundled in the repo)
 
 ## 📁 Project Structure
 
@@ -270,6 +287,16 @@ Install [UPX](https://github.com/upx/upx/releases) to reduce executable size by 
 - 🛡️ Removed duplicate watch toasts by making detailed completion the user-facing notification path
 - 🛡️ Standardized CLI exit codes: cancel `130`, failure `1`, success `0`
 - 🛡️ Unified profile application through `to_dict + deep-merge + AppSettings.from_dict`
+
+### v9.0 Precision Patch (2026-03-08)
+- 🎯 Added global candidate re-ranking in `accurate` mode (collect Stage 1~6 then select by score/tie-breakers)
+- 🎯 Separated edge-support scoring input from stage masks to a dedicated edge reference map
+- 🎯 Improved area prior (plateau), aspect scoring (ordered-quad side lengths), and Hough fallback (angle-bin clusters)
+- 🎯 Extended multi-photo contract with `DetectedPhoto.quad` and perspective-first crop (bbox fallback retained)
+- 🎯 Wired `merge_distance` into dedup with combined `IoU + center distance + edge gap`
+- 🎯 Added EXIF orientation normalization (Pillow-first, OpenCV fallback) and primary-face-based auto-rotation angle
+- 🎯 Exposed 5 precision tuning parameters in UI and CLI
+- 🎯 Added executable benchmark harness (`photo_cropper.benchmark`) with label template/docs
 
 ### v9.0 Manual Boundary Workflow Update (2026-03)
 - ✨ Added main-screen flow for folder batch editing (`Load Batch`, `Prev/Next`, `Save Edited Extract`)

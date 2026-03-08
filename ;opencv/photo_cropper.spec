@@ -96,6 +96,7 @@ a = Analysis(
         'cv2',
         'numpy',
         'PIL',
+        'PIL.ImageOps',
         'photo_cropper.core.settings_model',
         'photo_cropper.core.batch_profile_manager',
         'photo_cropper.core.folder_watcher',
@@ -246,4 +247,9 @@ Tips for further size reduction:
     - Added hidden imports for `core.processed_index` and `core.scheduler` to
       keep frozen builds stable after skip-processed index persistence and
       runtime scheduler wiring.
+
+2026-03-08 note:
+    - EXIF-orientation normalization path (`ImageOps.exif_transpose`) was added
+      in image loading.
+    - Added explicit `PIL.ImageOps` hidden import to keep frozen runtime stable.
 """

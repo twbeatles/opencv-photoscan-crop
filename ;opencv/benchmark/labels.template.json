@@ -1,0 +1,15 @@
+{
+  "version": 1,
+  "items": [
+    {
+      "file": "photos/sample_001.jpg",
+      "has_photo": true,
+      "quad": [[100, 120], [860, 110], [870, 620], [90, 630]]
+    },
+    {
+      "file": "photos/sample_002.jpg",
+      "has_photo": false
+    }
+  ]
+}
+

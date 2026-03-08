@@ -9,6 +9,7 @@ Detects and separates multiple photos from a single scanned image.
 import cv2
 import numpy as np
 import logging
+import math
 from typing import List, Tuple, Optional
 from dataclasses import dataclass
 
@@ -23,6 +24,7 @@ class DetectedPhoto:
     confidence: float
     area: float
     aspect_ratio: float
+    quad: Optional[np.ndarray] = None
 
 
 @dataclass
@@ -71,6 +73,75 @@ class MultiPhotoDetector:
         self.merge_distance = merge_distance
         self.min_aspect_ratio = min_aspect_ratio
         self.max_aspect_ratio = max_aspect_ratio
+
+    @staticmethod
+    def _order_points(pts: np.ndarray) -> np.ndarray:
+        """Order points as TL, TR, BR, BL."""
+        rect = np.zeros((4, 2), dtype=np.float32)
+        s = pts.sum(axis=1)
+        rect[0] = pts[np.argmin(s)]
+        rect[2] = pts[np.argmax(s)]
+        diff = np.diff(pts, axis=1)
+        rect[1] = pts[np.argmin(diff)]
+        rect[3] = pts[np.argmax(diff)]
+        return rect
+
+    def _quad_from_contour(self, contour: np.ndarray) -> Optional[np.ndarray]:
+        """Convert contour into a best-effort quad candidate."""
+        if contour is None or len(contour) < 3:
+            return None
+
+        hull = cv2.convexHull(contour)
+        peri = cv2.arcLength(hull, True)
+        if peri <= 0:
+            return None
+
+        for eps_factor in (0.01, 0.015, 0.02, 0.03, 0.04):
+            approx = cv2.approxPolyDP(hull, eps_factor * peri, True)
+            if approx is not None and len(approx) == 4:
+                return self._order_points(approx.reshape((4, 2)).astype(np.float32))
+
+        try:
+            rect = cv2.minAreaRect(hull)
+            box = cv2.boxPoints(rect)
+            if box is not None and len(box) == 4:
+                return self._order_points(np.array(box, dtype=np.float32))
+        except Exception:
+            pass
+
+        return None
+
+    @staticmethod
+    def _quad_dimensions(quad: np.ndarray) -> Tuple[float, float]:
+        q = quad.reshape((4, 2)).astype(np.float32)
+        w_top = float(np.linalg.norm(q[1] - q[0]))
+        w_bottom = float(np.linalg.norm(q[2] - q[3]))
+        h_left = float(np.linalg.norm(q[3] - q[0]))
+        h_right = float(np.linalg.norm(q[2] - q[1]))
+        width = max(1.0, (w_top + w_bottom) * 0.5)
+        height = max(1.0, (h_left + h_right) * 0.5)
+        return width, height
+
+    @staticmethod
+    def _bbox_gap(a: Tuple[int, int, int, int], b: Tuple[int, int, int, int]) -> float:
+        ax, ay, aw, ah = a
+        bx, by, bw, bh = b
+        ax2, ay2 = ax + aw, ay + ah
+        bx2, by2 = bx + bw, by + bh
+
+        gap_x = max(0.0, max(ax, bx) - min(ax2, bx2))
+        gap_y = max(0.0, max(ay, by) - min(ay2, by2))
+        return float(math.hypot(gap_x, gap_y))
+
+    @staticmethod
+    def _bbox_center_distance(
+        a: Tuple[int, int, int, int], b: Tuple[int, int, int, int]
+    ) -> float:
+        ax, ay, aw, ah = a
+        bx, by, bw, bh = b
+        acx, acy = ax + aw * 0.5, ay + ah * 0.5
+        bcx, bcy = bx + bw * 0.5, by + bh * 0.5
+        return float(math.hypot(acx - bcx, acy - bcy))
     
     def detect(self, image: np.ndarray) -> MultiPhotoResult:
         """
@@ -132,7 +203,13 @@ class MultiPhotoDetector:
                     continue
                 
                 x, y, w, h = cv2.boundingRect(contour)
-                aspect_ratio = w / h if h > 0 else 0
+                quad = self._quad_from_contour(contour)
+                if quad is not None:
+                    q_width, q_height = self._quad_dimensions(quad)
+                    aspect_ratio = q_width / q_height if q_height > 0 else 0.0
+                    area = float(q_width * q_height)
+                else:
+                    aspect_ratio = w / h if h > 0 else 0.0
                 
                 if aspect_ratio < self.min_aspect_ratio or aspect_ratio > self.max_aspect_ratio:
                     continue
@@ -155,8 +232,9 @@ class MultiPhotoDetector:
                     bounding_box=(x, y, w, h),
                     contour=contour,
                     confidence=confidence,
-                    area=area,
-                    aspect_ratio=aspect_ratio
+                    area=int(area),
+                    aspect_ratio=float(aspect_ratio),
+                    quad=quad,
                 ))
             
             # Remove duplicates and near-identical regions (IoU-based)
@@ -388,8 +466,29 @@ class MultiPhotoDetector:
             replace_index = -1
             for idx, existing in enumerate(kept):
                 iou = self._bbox_iou(photo.bounding_box, existing.bounding_box)
+                center_dist = self._bbox_center_distance(
+                    photo.bounding_box, existing.bounding_box
+                )
+                edge_gap = self._bbox_gap(photo.bounding_box, existing.bounding_box)
+
                 if iou >= 0.55:
                     # Keep the higher-confidence one for near-duplicate regions.
+                    drop = True
+                    if (
+                        photo.confidence > existing.confidence + 0.03
+                        or (
+                            abs(photo.confidence - existing.confidence) <= 0.03
+                            and photo.area > existing.area
+                        )
+                    ):
+                        replace_index = idx
+                    break
+
+                near_duplicate = (
+                    center_dist <= float(max(1, self.merge_distance)) * 0.65
+                    and edge_gap <= float(max(3, int(self.merge_distance * 0.25)))
+                )
+                if near_duplicate:
                     drop = True
                     if (
                         photo.confidence > existing.confidence + 0.03
@@ -463,15 +562,47 @@ class MultiPhotoDetector:
         results = []
         
         for photo in photos:
-            x, y, w, h = photo.bounding_box
-            
-            # Apply padding
-            x1 = max(0, x - padding)
-            y1 = max(0, y - padding)
-            x2 = min(width, x + w + padding)
-            y2 = min(height, y + h + padding)
-            
-            cropped = image[y1:y2, x1:x2].copy()
+            cropped = None
+            quad = photo.quad
+
+            # Perspective crop first when quad is available.
+            if quad is not None and np.array(quad).size >= 8:
+                try:
+                    q = self._order_points(np.array(quad, dtype=np.float32))
+
+                    # Optional outward expansion for padding.
+                    if padding > 0:
+                        center = np.mean(q, axis=0)
+                        vectors = q - center
+                        lengths = np.linalg.norm(vectors, axis=1, keepdims=True)
+                        scale = (lengths + float(padding)) / np.maximum(lengths, 1e-6)
+                        q = center + vectors * scale
+                        q[:, 0] = np.clip(q[:, 0], 0, width - 1)
+                        q[:, 1] = np.clip(q[:, 1], 0, height - 1)
+
+                    q_width, q_height = self._quad_dimensions(q)
+                    out_w = max(1, int(round(q_width)))
+                    out_h = max(1, int(round(q_height)))
+
+                    if out_w >= 20 and out_h >= 20:
+                        dst = np.array(
+                            [[0, 0], [out_w - 1, 0], [out_w - 1, out_h - 1], [0, out_h - 1]],
+                            dtype=np.float32,
+                        )
+                        matrix = cv2.getPerspectiveTransform(q, dst)
+                        cropped = cv2.warpPerspective(image, matrix, (out_w, out_h))
+                except Exception:
+                    cropped = None
+
+            # Fallback: axis-aligned bounding-box crop.
+            if cropped is None:
+                x, y, w, h = photo.bounding_box
+                x1 = max(0, x - padding)
+                y1 = max(0, y - padding)
+                x2 = min(width, x + w + padding)
+                y2 = min(height, y + h + padding)
+                cropped = image[y1:y2, x1:x2].copy()
+
             results.append((cropped, photo))
         
         return results
@@ -513,6 +644,11 @@ class MultiPhotoDetector:
             
             # Draw contour
             cv2.drawContours(result, [photo.contour], -1, color, 2)
+            if photo.quad is not None and np.array(photo.quad).size >= 8:
+                q = self._order_points(np.array(photo.quad, dtype=np.float32)).astype(
+                    np.int32
+                )
+                cv2.polylines(result, [q.reshape((-1, 1, 2))], True, color, 2)
             
             if show_labels:
                 # Draw label

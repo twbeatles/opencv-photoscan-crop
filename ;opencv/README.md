@@ -73,9 +73,14 @@
 | 단계 | 알고리즘 | 설명 |
 |------|----------|------|
 | 1단계 | Multi-Scale Canny Edge | 다중 스케일 에지 검출 |
-| 2단계 | Adaptive Threshold | 적응형 이진화 |
-| 3단계 | Gradient Analysis (Sobel) | 그래디언트 분석 |
-| 4단계 | Harris Corner Detection | 코너 검출 (선택적) |
+| 2단계 | Background Mask | 배경-전경 분리 기반 후보 생성 |
+| 3단계 | Adaptive Threshold | 적응형 이진화 |
+| 4단계 | Gradient Analysis (Sobel) | 그래디언트 분석 |
+| 5단계 | Harris Corner Detection | 코너 검출 (선택적) |
+| 6단계 | Hough Rectangle Fallback | 직선 클러스터 기반 사각형 추정 |
+
+- `fast`/`balanced` 모드는 기존 조기 종료 동작을 유지합니다.
+- `accurate` 모드는 1~6단계 후보를 모두 수집한 뒤 전역 재랭킹으로 최종 후보를 선택합니다.
 
 ## 📦 설치
 
@@ -105,6 +110,11 @@ python -m photo_cropper.cli --input ./scans --output ./cropped
 
 # 정확도 우선 + 디버그 저장
 python -m photo_cropper.cli -i ./scans -o ./cropped --detect-mode accurate --debug-detect
+
+# 정밀 튜닝 파라미터 지정 (CLI override)
+python -m photo_cropper.cli -i ./scans -o ./cropped --detect-mode accurate \
+  --min-area-ratio 0.08 --max-area-ratio 0.97 \
+  --bg-mask-delta 34 --adaptive-block-size 19 --adaptive-c 3.0
 
 # 워터마크 추가
 python -m photo_cropper.cli -i ./scans -o ./cropped --watermark "© 2026"
@@ -182,6 +192,10 @@ python -m photo_cropper.cli --help
 - **다중 스케일**: 다양한 크기의 사진 감지
 - **코너 검출**: 추가적인 정확도 향상
 - **검출 모드 (fast/balanced/accurate)**: 속도/정확도 트레이드오프 프리셋
+- **정밀 튜닝 (UI + CLI)**:
+  - `min_area_ratio`, `max_area_ratio`
+  - `bg_mask_delta`
+  - `adaptive_block_size`, `adaptive_c`
 - **검출 디버그 저장**: `_debug` 폴더에 엣지/마스크/후보 오버레이/`meta.json` 저장 (실패 원인 분석용)
 - **원근 보정 기본값**: 기본 ON, OFF 시 원근 warp 대신 축정렬 bbox 크롭
 
@@ -205,6 +219,9 @@ python -m photo_cropper.cli --help
 - **스케줄러 검증**: `watch_mode.scheduler_enabled=true` 상태에서 예약 시각 도달 시 자동 배치 시작/중복 실행 skip 확인
 - **유니코드 경로 검증**: 한글 경로의 워터마크 이미지 파일을 지정해 저장 성공 여부 확인
 - **취소 검증**: 멀티스레드 배치 실행 중 중단 요청 시 통계/상태 정합성 확인 및 CLI 종료코드 `130` 확인
+- **벤치마크 하네스 검증**:
+  - `python -m photo_cropper.benchmark --images ./benchmark/images --labels ./benchmark/labels.json --report ./benchmark/report.json --detect-mode accurate`
+  - 라벨 포맷: `BENCHMARK_LABEL_FORMAT.md` 참조 (실사진 데이터셋은 저장소 미포함)
 
 ## 📁 프로젝트 구조
 
@@ -280,6 +297,16 @@ pyinstaller photo_cropper.spec --clean
 - 🛡️ Watch 완료 토스트 중복 제거(`processing_completed_detailed` 중심)
 - 🛡️ CLI 취소 종료코드 `130`, 실패 `1`, 정상 `0`으로 정렬
 - 🛡️ 프로파일 적용 경로를 `to_dict + deep-merge + AppSettings.from_dict`로 일원화
+
+### v9.0 정밀도 개선 패치 (2026-03-08)
+- 🎯 `accurate` 모드 전용 전역 재랭킹(1~6단계 후보 수집 후 점수 기반 선택) 추가
+- 🎯 edge-support 점수 입력을 스테이지 마스크와 분리해 별도 기준 edge map으로 고정
+- 🎯 면적 점수(plateau), 종횡비 점수(quad 변 길이 기반), Hough 각도 bin 클러스터링 개선
+- 🎯 멀티포토 `DetectedPhoto.quad` 추가 및 perspective crop 우선 처리(유효하지 않으면 bbox fallback)
+- 🎯 `merge_distance` 실반영 + `IoU + center distance + edge gap` 복합 dedup
+- 🎯 EXIF orientation 정규화(Pillow 우선, OpenCV fallback) 및 얼굴 회전각 `primary_face` 기준화
+- 🎯 정밀 튜닝 파라미터 5종 UI/CLI 노출
+- 🎯 실사진 벤치마크 하네스(`photo_cropper.benchmark`) 및 라벨 템플릿/문서 추가
 
 ### v9.0 수동 경계 보정 업데이트 (2026-03)
 - ✨ 메인 화면에 폴더 일괄 편집/이전/다음/편집 저장 추출 흐름 추가

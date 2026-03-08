@@ -4,6 +4,14 @@
 build/
 dist/
 
+# Local debug / benchmark artifacts
+;opencv/_debug/
+;opencv/benchmark/images/
+;opencv/benchmark/reports/
+;opencv/benchmark/labels.json
+;opencv/benchmark/report.json
+;opencv/benchmark/report-*.json
+
 # PyInstaller cache
 *.spec.bak
 

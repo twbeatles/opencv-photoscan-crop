@@ -369,6 +369,51 @@ class SettingsPanel(QWidget):
 
         layout.addWidget(contour_group)
 
+        # Precision tuning (advanced algorithm parameters)
+        tuning_group = QGroupBox("Precision Tuning")
+        tuning_layout = QFormLayout(tuning_group)
+
+        self.min_area_ratio_spin = NoScrollDoubleSpinBox()
+        self.min_area_ratio_spin.setRange(0.01, 0.9)
+        self.min_area_ratio_spin.setSingleStep(0.01)
+        self.min_area_ratio_spin.setDecimals(3)
+        self.min_area_ratio_spin.setValue(0.10)
+        self.min_area_ratio_spin.valueChanged.connect(self._on_setting_changed)
+        tuning_layout.addRow("Min area ratio:", self.min_area_ratio_spin)
+
+        self.max_area_ratio_spin = NoScrollDoubleSpinBox()
+        self.max_area_ratio_spin.setRange(0.1, 1.0)
+        self.max_area_ratio_spin.setSingleStep(0.01)
+        self.max_area_ratio_spin.setDecimals(3)
+        self.max_area_ratio_spin.setValue(0.95)
+        self.max_area_ratio_spin.valueChanged.connect(self._on_setting_changed)
+        tuning_layout.addRow("Max area ratio:", self.max_area_ratio_spin)
+
+        self.bg_mask_delta_spin = NoScrollDoubleSpinBox()
+        self.bg_mask_delta_spin.setRange(5.0, 80.0)
+        self.bg_mask_delta_spin.setSingleStep(1.0)
+        self.bg_mask_delta_spin.setDecimals(1)
+        self.bg_mask_delta_spin.setValue(30.0)
+        self.bg_mask_delta_spin.valueChanged.connect(self._on_setting_changed)
+        tuning_layout.addRow("Background mask delta:", self.bg_mask_delta_spin)
+
+        self.adaptive_block_size_spin = NoScrollSpinBox()
+        self.adaptive_block_size_spin.setRange(3, 61)
+        self.adaptive_block_size_spin.setSingleStep(2)
+        self.adaptive_block_size_spin.setValue(15)
+        self.adaptive_block_size_spin.valueChanged.connect(self._on_setting_changed)
+        tuning_layout.addRow("Adaptive block size:", self.adaptive_block_size_spin)
+
+        self.adaptive_c_spin = NoScrollDoubleSpinBox()
+        self.adaptive_c_spin.setRange(-20.0, 20.0)
+        self.adaptive_c_spin.setSingleStep(0.5)
+        self.adaptive_c_spin.setDecimals(2)
+        self.adaptive_c_spin.setValue(4.0)
+        self.adaptive_c_spin.valueChanged.connect(self._on_setting_changed)
+        tuning_layout.addRow("Adaptive C:", self.adaptive_c_spin)
+
+        layout.addWidget(tuning_group)
+
         # Detection mode + debug (v9.x crop accuracy)
         mode_group = QGroupBox("검출 모드 / 디버그")
         mode_layout = QFormLayout(mode_group)
@@ -917,7 +962,6 @@ class SettingsPanel(QWidget):
 
     def _build_settings(self) -> AppSettings:
         """Build AppSettings from current UI state."""
-        prev_algo = getattr(self._settings, "algorithm", AlgorithmSettings())
         algorithm = AlgorithmSettings(
             detection_mode=getattr(self, "detect_mode_combo", None)
             and self.detect_mode_combo.currentText()
@@ -930,11 +974,11 @@ class SettingsPanel(QWidget):
             multi_scale_edge=self.multi_scale_check.isChecked(),
             use_corner_detection=self.corner_detection_check.isChecked(),
             contour_scoring=self.scoring_combo.currentText(),
-            min_area_ratio=float(getattr(prev_algo, "min_area_ratio", 0.1)),
-            max_area_ratio=float(getattr(prev_algo, "max_area_ratio", 0.95)),
-            bg_mask_delta=float(getattr(prev_algo, "bg_mask_delta", 30.0)),
-            adaptive_block_size=int(getattr(prev_algo, "adaptive_block_size", 15)),
-            adaptive_c=float(getattr(prev_algo, "adaptive_c", 4.0)),
+            min_area_ratio=self.min_area_ratio_spin.value(),
+            max_area_ratio=self.max_area_ratio_spin.value(),
+            bg_mask_delta=self.bg_mask_delta_spin.value(),
+            adaptive_block_size=self.adaptive_block_size_spin.value(),
+            adaptive_c=self.adaptive_c_spin.value(),
         )
 
         processing = ProcessingSettings(
@@ -1219,6 +1263,22 @@ class SettingsPanel(QWidget):
         index = self.scoring_combo.findText(settings.algorithm.contour_scoring)
         if index >= 0:
             self.scoring_combo.setCurrentIndex(index)
+        if hasattr(self, "min_area_ratio_spin"):
+            self.min_area_ratio_spin.setValue(float(settings.algorithm.min_area_ratio))
+        if hasattr(self, "max_area_ratio_spin"):
+            self.max_area_ratio_spin.setValue(float(settings.algorithm.max_area_ratio))
+        if hasattr(self, "bg_mask_delta_spin"):
+            self.bg_mask_delta_spin.setValue(
+                float(getattr(settings.algorithm, "bg_mask_delta", 30.0))
+            )
+        if hasattr(self, "adaptive_block_size_spin"):
+            self.adaptive_block_size_spin.setValue(
+                int(getattr(settings.algorithm, "adaptive_block_size", 15))
+            )
+        if hasattr(self, "adaptive_c_spin"):
+            self.adaptive_c_spin.setValue(
+                float(getattr(settings.algorithm, "adaptive_c", 4.0))
+            )
 
         if hasattr(self, "detect_mode_combo"):
             idx = self.detect_mode_combo.findText(getattr(settings.algorithm, "detection_mode", "balanced"))
