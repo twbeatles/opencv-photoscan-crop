@@ -1,3 +1,3 @@
-from .window import MainWindow
+from .actions.settings import SettingsActions
 
-__all__ = ['MainWindow']
+__all__ = ["SettingsActions"]

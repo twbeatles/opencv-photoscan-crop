@@ -256,6 +256,9 @@ python -m photo_cropper.cli --help
     │   └── history_manager.py
     ├── ui/
     │   ├── main/window.py
+    │   ├── main/models.py
+    │   ├── main/actions/
+    │   ├── main/builders/
     │   └── widgets/settings/panel.py
     ├── i18n/catalog/manager.py
     └── utils/file_helpers.py
@@ -397,3 +400,10 @@ MIT License
 - `pyright --project pyrightconfig.json` 기준 0 errors / 0 warnings를 확인했습니다.
 - `QWidget` 오버라이드 이벤트 시그니처(`dragEnterEvent`, `dropEvent`, `keyPressEvent`)를 PyQt6 스텁과 일치하도록 `Optional[...]`로 정렬했습니다.
 - PyInstaller spec hidden import에 `watch_mode`, `manual_extract`, `session_service`, `save_io`, `dialog_actions`를 명시해 패키징 안정성을 보강했습니다.
+
+## 2026-03-09 UI/MainWindow 정합성 메모
+
+- `ui/main/window.py`는 composition root로 축소되었고, 실제 동작은 `ui/main/actions/` 계층이 담당합니다.
+- 위젯 생성은 `ui/main/builders/`로 분리되었고, shared context는 `ui/main/models.py`에 정리되었습니다.
+- `photo_cropper.spec` hidden import는 새 canonical 경로(`ui.main.actions.*`, `ui.main.builders.*`, `ui.main.models`)와 호환용 shim 경로를 함께 포함하도록 갱신했습니다.
+- `ui.main.batch_actions` 등 기존 평면 import 경로는 호환용 re-export shim으로 유지됩니다.

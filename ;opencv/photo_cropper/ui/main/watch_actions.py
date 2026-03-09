@@ -1,3 +1,3 @@
-from .window import MainWindow
+from .actions.watch import WatchActions
 
-__all__ = ['MainWindow']
+__all__ = ["WatchActions"]

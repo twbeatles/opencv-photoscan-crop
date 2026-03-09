@@ -36,7 +36,10 @@ photo_cropper/
 │   └── history_manager.py
 ├── ui/
 │   ├── main/window.py
-│   ├── main/*.py            # actions/coordinator 분리
+│   ├── main/actions/        # UI action 계층
+│   ├── main/builders/       # menu/toolbar/central/statusbar/fab 빌더
+│   ├── main/models.py       # window state/refs/services/signals
+│   ├── main/*.py            # 호환용 re-export shim
 │   ├── styles/
 │   └── widgets/
 ├── i18n/
@@ -65,16 +68,12 @@ photo_cropper/
 
 ### 3) MainWindow (`ui/main/window.py`)
 
-UI 진입 오케스트레이터입니다.
+UI composition root입니다.
 
-- 파일/폴더 입력, 미리보기, 배치 처리 시작/중단
-- 최근 리팩토링으로 액션 클래스로 분리:
-  - `batch_actions.py`
-  - `preview_actions.py`
-  - `feature_actions.py`
-  - `navigation_actions.py`
-  - `dialog_actions.py`
-  - `watch_mode`는 `core/watch_mode/coordinator.py`로 분리
+- `window.py`는 객체 생성, signal wiring, Qt 이벤트 위임만 담당합니다.
+- 실제 동작은 `ui/main/actions/` 하위 클래스로 분리되었습니다.
+- 위젯 생성은 `ui/main/builders/` 하위 함수로 분리되었습니다.
+- 기존 `batch_actions.py` 등 평면 모듈은 호환용 shim으로 유지됩니다.
 
 ### 4) Settings (`core/settings_model/app_settings.py`)
 
@@ -89,13 +88,13 @@ UI 진입 오케스트레이터입니다.
 ## 주요 처리 흐름
 
 1. **단일 미리보기**
-   - `MainWindow._request_preview()` -> `PreviewWorker.process_preview()` -> UI 반영
+   - `Input/Toolbar/Menu` -> `PreviewActions.request_preview()` -> `PreviewWorker.process_preview()` -> UI 반영
 
 2. **배치 처리**
-   - `MainWindow._start_processing()` -> `BatchActions.start_processing()` -> `BatchProcessor.start_async()`
+   - `Toolbar/FAB/Menu` -> `BatchActions.start_processing()` -> `BatchProcessor.start_async()`
 
 3. **Watch Mode**
-   - `MainWindow._start_watch_mode()` -> `WatchModeCoordinator.start()` -> `AutoProcessor` -> `BatchProcessor.process_single()`
+   - `WatchActions.start_watch_mode()` -> `WatchModeCoordinator.start()` -> `AutoProcessor` -> `BatchProcessor.process_single()`
 
 4. **설정 저장/로드**
    - `SettingsManager.load()` / `SettingsManager.save()`
@@ -103,7 +102,7 @@ UI 진입 오케스트레이터입니다.
    - macOS/Linux: `~/.photo_cropper/photo_cropper_settings.json`
 
 5. **스케줄러 자동 배치**
-   - `MainWindow._reconfigure_scheduler()`에서 `watch_mode.scheduler_*`를 런타임 스케줄에 반영
+   - `WatchActions.reconfigure_scheduler()`에서 `watch_mode.scheduler_*`를 런타임 스케줄에 반영
    - 앱 실행 중 예약 시각 도달 시 `BatchActions.start_processing()` 경로로 전체 배치 트리거
    - 배치/수동/워치 실행 중에는 스케줄 트리거를 skip 처리
 

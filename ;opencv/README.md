@@ -242,6 +242,9 @@ photo_cropper/
 │   └── history_manager.py       # 히스토리 관리 (v8.5)
 ├── ui/
 │   ├── main/window.py
+│   ├── main/models.py
+│   ├── main/actions/
+│   ├── main/builders/
 │   └── widgets/
 │       ├── settings/panel.py
 │       ├── preview_widget.py
@@ -394,8 +397,16 @@ MIT License
 - Updated internal imports and packaging metadata (`photo_cropper.spec`) for the new package layout.
 - Runtime behavior target remains unchanged: CLI options, settings schema, output rules, watch/batch contracts.
 
+## 2026-03-09 UI MainWindow Refactor Notes
+
+- `ui/main/window.py`를 composition root로 축소하고, 실제 동작은 `ui/main/actions/`로 이동했습니다.
+- 메뉴/툴바/중앙 레이아웃/상태바/FAB 생성은 `ui/main/builders/`로 이동했습니다.
+- `ui/main/models.py`에 window runtime state / refs / services / signals 표준 타입을 추가했습니다.
+- 기존 `ui.main.batch_actions` 등 평면 경로는 호환용 re-export shim으로 유지됩니다.
+
 ## 2026-03-04 정합성 점검 메모
 
 - `pyright --project pyrightconfig.json` 기준 0 errors / 0 warnings를 확인했습니다.
 - `QWidget` 오버라이드 이벤트 시그니처(`dragEnterEvent`, `dropEvent`, `keyPressEvent`)를 PyQt6 스텁과 일치하도록 `Optional[...]`로 정렬했습니다.
 - PyInstaller spec hidden import에 `watch_mode`, `manual_extract`, `session_service`, `save_io`, `dialog_actions`를 명시해 패키징 안정성을 보강했습니다.
+- 2026-03-09 기준 `photo_cropper.spec`는 `ui.main.actions.*`, `ui.main.builders.*`, `ui.main.models`와 호환용 shim 경로를 함께 hidden import에 포함합니다.

@@ -246,6 +246,9 @@ python -m photo_cropper.cli --help
     │   └── history_manager.py
     ├── ui/
     │   ├── main/window.py
+    │   ├── main/models.py
+    │   ├── main/actions/
+    │   ├── main/builders/
     │   └── widgets/settings/panel.py
     ├── i18n/catalog/manager.py
     └── utils/file_helpers.py
@@ -372,3 +375,10 @@ Please report bugs or feature suggestions in Issues.
 - Aligned `QWidget` override event signatures (`dragEnterEvent`, `dropEvent`, `keyPressEvent`) to PyQt6 stubs using `Optional[...]`.
 - Strengthened PyInstaller hidden imports for split modules:
   `watch_mode`, `manual_extract`, `session_service`, `save_io`, `dialog_actions`.
+
+## 2026-03-09 UI/MainWindow Consistency Notes
+
+- `ui/main/window.py` is now a composition root, with runtime behavior moved into `ui/main/actions/`.
+- Widget construction was split into `ui/main/builders/`, and shared window context types live in `ui/main/models.py`.
+- `photo_cropper.spec` hidden imports were updated to include the canonical package paths (`ui.main.actions.*`, `ui.main.builders.*`, `ui.main.models`) plus the compatibility shim modules.
+- Legacy flat imports such as `ui.main.batch_actions` are still available as re-export shims.

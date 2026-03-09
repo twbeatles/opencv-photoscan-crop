@@ -112,7 +112,32 @@ a = Analysis(
         'photo_cropper.core.batch.session_service',
         'photo_cropper.core.image.save_io',
         'photo_cropper.ui.main',
+        'photo_cropper.ui.main.models',
+        'photo_cropper.ui.main.actions',
+        'photo_cropper.ui.main.actions.batch',
+        'photo_cropper.ui.main.actions.dialog',
+        'photo_cropper.ui.main.actions.feature',
+        'photo_cropper.ui.main.actions.input',
+        'photo_cropper.ui.main.actions.lifecycle',
+        'photo_cropper.ui.main.actions.navigation',
+        'photo_cropper.ui.main.actions.preview',
+        'photo_cropper.ui.main.actions.settings',
+        'photo_cropper.ui.main.actions.tools',
+        'photo_cropper.ui.main.actions.watch',
+        'photo_cropper.ui.main.builders',
+        'photo_cropper.ui.main.builders.central',
+        'photo_cropper.ui.main.builders.fab',
+        'photo_cropper.ui.main.builders.menu',
+        'photo_cropper.ui.main.builders.statusbar',
+        'photo_cropper.ui.main.builders.toolbar',
+        'photo_cropper.ui.main.batch_actions',
         'photo_cropper.ui.main.dialog_actions',
+        'photo_cropper.ui.main.feature_actions',
+        'photo_cropper.ui.main.io_actions',
+        'photo_cropper.ui.main.navigation_actions',
+        'photo_cropper.ui.main.preview_actions',
+        'photo_cropper.ui.main.settings_actions',
+        'photo_cropper.ui.main.watch_actions',
         'photo_cropper.ui.widgets.settings',
         'photo_cropper.i18n.catalog',
         'PyQt6.QtCore',
@@ -252,4 +277,10 @@ Tips for further size reduction:
     - EXIF-orientation normalization path (`ImageOps.exif_transpose`) was added
       in image loading.
     - Added explicit `PIL.ImageOps` hidden import to keep frozen runtime stable.
+
+2026-03-09 note:
+    - `ui/main/window.py` was reduced to a composition root and the UI layer was
+      split into `ui/main/actions`, `ui/main/builders`, and `ui/main/models.py`.
+    - Hidden imports now explicitly include both canonical package paths and the
+      compatibility shim modules kept under `ui/main/*.py`.
 """

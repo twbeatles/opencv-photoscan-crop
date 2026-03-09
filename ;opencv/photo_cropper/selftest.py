@@ -38,6 +38,9 @@ def _test_ui_action_modules_import_smoke() -> None:
         from .ui.main.feature_actions import FeatureActions
         from .ui.main.navigation_actions import NavigationActions
         from .ui.main.dialog_actions import DialogActions
+        from .ui.main.io_actions import InputActions
+        from .ui.main.settings_actions import SettingsActions
+        from .ui.main.watch_actions import WatchActions
     except Exception as e:
         raise AssertionError(f"UI action modules import failed: {e}")
 
@@ -46,6 +49,66 @@ def _test_ui_action_modules_import_smoke() -> None:
     assert FeatureActions is not None
     assert NavigationActions is not None
     assert DialogActions is not None
+    assert InputActions is not None
+    assert SettingsActions is not None
+    assert WatchActions is not None
+
+
+def _test_ui_canonical_package_import_smoke() -> None:
+    try:
+        from .ui.main.actions import (
+            BatchActions,
+            DialogActions,
+            FeatureActions,
+            InputActions,
+            LifecycleActions,
+            NavigationActions,
+            PreviewActions,
+            PreviewWorkerHost,
+            SettingsActions,
+            ToolActions,
+            WatchActions,
+        )
+        from .ui.main.builders import (
+            build_central_widget,
+            build_fab,
+            build_menu,
+            build_statusbar,
+            build_toolbar,
+        )
+        from .ui.main.models import WindowRefs, WindowServices, WindowSignals, WindowState
+    except Exception as e:
+        raise AssertionError(f"UI canonical package import failed: {e}")
+
+    assert BatchActions is not None
+    assert DialogActions is not None
+    assert FeatureActions is not None
+    assert InputActions is not None
+    assert LifecycleActions is not None
+    assert NavigationActions is not None
+    assert PreviewActions is not None
+    assert PreviewWorkerHost is not None
+    assert SettingsActions is not None
+    assert ToolActions is not None
+    assert WatchActions is not None
+    assert build_central_widget is not None
+    assert build_fab is not None
+    assert build_menu is not None
+    assert build_statusbar is not None
+    assert build_toolbar is not None
+    assert WindowRefs is not None
+    assert WindowServices is not None
+    assert WindowSignals is not None
+    assert WindowState is not None
+
+
+def _test_main_window_import_smoke() -> None:
+    try:
+        from .ui.main import MainWindow
+    except Exception as e:
+        raise AssertionError(f"MainWindow import failed: {e}")
+
+    assert MainWindow is not None
 
 
 def _test_manual_extract_service_import_smoke() -> None:
@@ -1076,8 +1139,15 @@ def _test_perspective_toggle_warp_vs_axis_crop() -> None:
         dtype=np.float32,
     )
 
-    def fake_find_best_contour(_edge, _area, min_area_ratio=None, max_area_ratio=None):
-        del min_area_ratio, max_area_ratio
+    def fake_find_best_contour(
+        _edge,
+        _area,
+        min_area_ratio=None,
+        max_area_ratio=None,
+        score_edge_map=None,
+        **_kwargs,
+    ):
+        del min_area_ratio, max_area_ratio, score_edge_map, _kwargs
         return quad.copy(), 0.99, [{"quad": quad.copy(), "score": 0.99}]
 
     algo = AlgorithmSettings(
@@ -1755,6 +1825,8 @@ def main() -> int:
         _test_crop_editor_import_smoke()
         _test_preview_worker_import_smoke()
         _test_ui_action_modules_import_smoke()
+        _test_ui_canonical_package_import_smoke()
+        _test_main_window_import_smoke()
         _test_manual_extract_service_import_smoke()
         _test_batch_session_service_smoke()
         _test_manual_extract_session_runner_empty()

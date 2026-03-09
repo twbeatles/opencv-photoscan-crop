@@ -232,6 +232,9 @@ photo_cropper/
 │   └── history_manager.py       # History management (v8.5)
 ├── ui/
 │   ├── main/window.py
+│   ├── main/models.py
+│   ├── main/actions/
+│   ├── main/builders/
 │   └── widgets/
 │       ├── settings/panel.py
 │       ├── preview_widget.py
@@ -379,3 +382,9 @@ Please report bugs or feature suggestions in Issues.
 - Aligned `QWidget` override event signatures (`dragEnterEvent`, `dropEvent`, `keyPressEvent`) to PyQt6 stubs using `Optional[...]`.
 - Strengthened PyInstaller hidden imports for split modules:
   `watch_mode`, `manual_extract`, `session_service`, `save_io`, `dialog_actions`.
+
+## 2026-03-09 UI/MainWindow Consistency Notes
+
+- `ui/main/window.py` is now a composition root, with runtime behavior moved into `ui/main/actions/`.
+- Widget construction now lives in `ui/main/builders/`, and shared context types are defined in `ui/main/models.py`.
+- `photo_cropper.spec` hidden imports now cover the canonical package paths (`ui.main.actions.*`, `ui.main.builders.*`, `ui.main.models`) plus the compatibility shim modules.
