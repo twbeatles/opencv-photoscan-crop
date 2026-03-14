@@ -110,6 +110,12 @@ class WatchModeCoordinator(QObject):
         return WatchStartResult(success=True, output_path=normalized_output)
 
     def stop(self) -> None:
+        if self._batch_processor is not None:
+            try:
+                self._batch_processor.request_stop()
+            except Exception:
+                logger.debug("Failed to request watch batch stop", exc_info=True)
+
         if self._auto_processor is not None:
             self._auto_processor.stop()
             self._auto_processor.deleteLater()
@@ -136,9 +142,10 @@ class WatchModeCoordinator(QObject):
         self._ensure_batch_processor()
 
         try:
-            assert self._batch_processor is not None
-            self._batch_processor.update_settings(self._settings)
-            result = self._batch_processor.process_single(input_path, output_path)
+            processor = self._batch_processor
+            assert processor is not None
+            processor.update_settings(self._settings)
+            result = processor.process_single(input_path, output_path)
             raw_status = ""
             if hasattr(result, "status") and result.status is not None:
                 raw_status = (
@@ -146,7 +153,7 @@ class WatchModeCoordinator(QObject):
                     or str(getattr(result.status, "name", "") or "").strip().lower()
                 )
             status = (raw_status or "failed").lower()
-            success = status in {"success", "skipped"}
+            success = status in {"success", "skipped", "partial_success"}
             return {
                 "success": success,
                 "status": status,

@@ -165,6 +165,34 @@ def _test_batch_session_service_smoke() -> None:
     service.cleanup()
 
 
+def _test_batch_session_service_reentry_guard() -> None:
+    from .core.batch import BatchSessionService
+    from .core.settings_model import AppSettings
+
+    class DummyProcessor:
+        def __init__(self) -> None:
+            self.is_running = True
+            self.cleaned = False
+
+        def cleanup(self) -> None:
+            self.cleaned = True
+
+    service = BatchSessionService()
+    dummy = DummyProcessor()
+    service._processor = dummy
+
+    try:
+        service.create_processor(AppSettings())
+    except RuntimeError as exc:
+        assert "already running" in str(exc)
+    else:
+        raise AssertionError("Expected batch session reentry guard to raise RuntimeError")
+
+    assert service.processor is dummy
+    assert dummy.cleaned is False
+    service._processor = None
+
+
 def _test_manual_extract_session_runner_empty() -> None:
     import tempfile
     from threading import Event
@@ -439,6 +467,157 @@ def _test_watch_max_wait_roundtrip() -> None:
     auto.deleteLater()
     if owned_app:
         app.quit()
+
+
+def _test_watch_callback_runs_on_background_worker() -> None:
+    import os
+    import tempfile
+    import threading
+    import time
+
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    try:
+        from PyQt6.QtWidgets import QApplication
+    except Exception as e:
+        print(f"WARN: PyQt6 unavailable for watch worker thread test: {e}")
+        return
+
+    from .core.folder_watcher import AutoProcessor
+
+    app = QApplication.instance()
+    owned_app = False
+    if app is None:
+        app = QApplication([])
+        owned_app = True
+
+    auto = None
+    try:
+        main_thread_id = threading.get_ident()
+        state = {"done": False, "callback_thread": None}
+
+        with tempfile.TemporaryDirectory(prefix="photocropper_watch_worker_") as td:
+            watch_root = os.path.join(td, "watch")
+            output_root = os.path.join(td, "out")
+            os.makedirs(watch_root, exist_ok=True)
+            os.makedirs(output_root, exist_ok=True)
+
+            sample = os.path.join(watch_root, "sample.jpg")
+            with open(sample, "wb") as f:
+                f.write(b"watch-worker")
+
+            def callback(input_path: str, output_path: str):
+                assert os.path.exists(input_path)
+                assert os.path.isdir(output_path)
+                state["callback_thread"] = threading.get_ident()
+                return {"success": True, "status": "success", "message": "ok"}
+
+            auto = AutoProcessor(
+                watch_path=watch_root,
+                output_path=output_root,
+                debounce_ms=10,
+                process_callback=callback,
+            )
+            auto._stable_window_s = 0.0
+            auto._retry_interval_ms = 10
+            auto.processing_completed_detailed.connect(
+                lambda *_args: state.__setitem__("done", True)
+            )
+
+            assert auto.start()
+            auto._on_new_file(sample)
+
+            deadline = time.time() + 3.0
+            while time.time() < deadline and not state["done"]:
+                app.processEvents()
+                time.sleep(0.01)
+
+            assert state["done"], "Expected watch callback to finish"
+            assert state["callback_thread"] is not None
+            assert state["callback_thread"] != main_thread_id
+    finally:
+        if auto is not None:
+            auto.stop()
+            auto.deleteLater()
+        if owned_app:
+            app.quit()
+
+
+def _test_watch_readiness_is_owned_by_auto_processor() -> None:
+    import os
+    import tempfile
+    import time
+
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    try:
+        from PyQt6.QtWidgets import QApplication
+    except Exception as e:
+        print(f"WARN: PyQt6 unavailable for watch readiness ownership test: {e}")
+        return
+
+    from .core.folder_watcher import AutoProcessor
+
+    app = QApplication.instance()
+    owned_app = False
+    if app is None:
+        app = QApplication([])
+        owned_app = True
+
+    auto = None
+    try:
+        state = {"done": False, "callback_calls": 0, "readiness_checks": 0}
+
+        with tempfile.TemporaryDirectory(prefix="photocropper_watch_ready_") as td:
+            watch_root = os.path.join(td, "watch")
+            output_root = os.path.join(td, "out")
+            os.makedirs(watch_root, exist_ok=True)
+            os.makedirs(output_root, exist_ok=True)
+
+            sample = os.path.join(watch_root, "sample.jpg")
+            with open(sample, "wb") as f:
+                f.write(b"watch-ready")
+
+            def callback(_input_path: str, _output_path: str):
+                state["callback_calls"] += 1
+                return {"success": True, "status": "success", "message": "ok"}
+
+            auto = AutoProcessor(
+                watch_path=watch_root,
+                output_path=output_root,
+                debounce_ms=10,
+                process_callback=callback,
+            )
+            auto._stable_window_s = 0.0
+            auto._retry_interval_ms = 10
+
+            def fake_check(filepath: str):
+                assert os.path.abspath(filepath) == os.path.abspath(sample)
+                state["readiness_checks"] += 1
+                if state["readiness_checks"] < 3:
+                    return False, False, "not yet stable"
+                return True, False, "ready"
+
+            auto._check_file_ready = fake_check
+            auto.processing_completed_detailed.connect(
+                lambda *_args: state.__setitem__("done", True)
+            )
+
+            assert auto.start()
+            auto._on_new_file(sample)
+
+            deadline = time.time() + 3.0
+            while time.time() < deadline and not state["done"]:
+                app.processEvents()
+                time.sleep(0.01)
+
+            assert state["done"], "Expected watch processing to complete"
+            assert state["callback_calls"] == 1
+            assert state["readiness_checks"] >= 3
+    finally:
+        if auto is not None:
+            auto.stop()
+            auto.deleteLater()
+        if owned_app:
+            app.quit()
 
 
 def _test_settings_forward_compat() -> None:
@@ -1228,6 +1407,7 @@ def _test_save_image_fallback_and_metadata_best_effort() -> None:
         src_img = Image.fromarray(rgb)
         exif = Image.Exif()
         exif[0x010F] = "PhotoCropperSelfTest"  # Make
+        exif[0x0112] = 6  # Orientation
         src_img.save(source_path, format="JPEG", exif=exif.tobytes())
 
         ok, msg, _ = ImageProcessor.save_image(
@@ -1242,6 +1422,7 @@ def _test_save_image_fallback_and_metadata_best_effort() -> None:
             out_exif = out_img.getexif()
             assert out_exif is not None and len(out_exif) > 0
             assert out_exif.get(0x010F) == "PhotoCropperSelfTest"
+            assert out_exif.get(0x0112) == 1
 
 
 def _test_resize_fill_no_upscale_boundary() -> None:
@@ -1331,6 +1512,175 @@ def _test_multi_photo_merge_distance_and_separate_folders() -> None:
         )
         assert found is not None
         assert os.path.abspath(found) == os.path.abspath(output_path)
+
+
+def _test_multi_photo_uses_shared_loader() -> None:
+    import os
+    import tempfile
+    from types import SimpleNamespace
+
+    import numpy as np
+
+    from .core.batch import BatchProcessor, ProcessStatus
+    from .core.settings_model import AppSettings
+
+    settings = AppSettings()
+    settings.multi_photo.enabled = True
+    batch = BatchProcessor(settings)
+    calls = {"load_paths": []}
+
+    class FakeProcessor:
+        def load_image(self, path):
+            calls["load_paths"].append(path)
+            return np.full((24, 36, 3), 180, dtype=np.uint8)
+
+        def process_image(self, *_args, **_kwargs):
+            raise AssertionError("Fallback single-photo path should not be used")
+
+        @staticmethod
+        def save_image(
+            image,
+            output_path,
+            output_format="JPG",
+            jpg_quality=95,
+            png_compression=6,
+            webp_quality=90,
+            source_path=None,
+            preserve_metadata=False,
+        ):
+            del image
+            del output_format, jpg_quality, png_compression, webp_quality
+            del source_path, preserve_metadata
+            os.makedirs(os.path.dirname(output_path), exist_ok=True)
+            with open(output_path, "wb") as f:
+                f.write(b"multi-photo-shared-loader")
+            return True, "ok", 1.0
+
+    class FakeDetector:
+        def detect(self, image):
+            assert image is not None
+            return SimpleNamespace(success=True, total_found=1, photos=[object()])
+
+        def crop_photos(self, image, photos, padding=10):
+            del padding
+            return [(image.copy(), photos[0])]
+
+    batch._get_worker_processor = lambda: FakeProcessor()
+    batch._get_multi_photo_detector = lambda: FakeDetector()
+
+    with tempfile.TemporaryDirectory(prefix="photocropper_mp_loader_") as td:
+        src = os.path.join(td, "scan.jpg")
+        out_dir = os.path.join(td, "out")
+        os.makedirs(out_dir, exist_ok=True)
+        with open(src, "wb") as f:
+            f.write(b"scan")
+
+        result = batch.process_single(src, out_dir)
+        assert result.status == ProcessStatus.SUCCESS, result.message
+        assert calls["load_paths"] == [src]
+
+
+def _test_multi_photo_status_variants_and_partial_index_behavior() -> None:
+    import os
+    import tempfile
+    from types import SimpleNamespace
+    from typing import Optional
+
+    import numpy as np
+
+    from .core.batch import BatchProcessor, ProcessStatus
+    from .core.settings_model import AppSettings
+
+    def run_case(save_plan, *, stop_on_check: Optional[int] = None):
+        settings = AppSettings()
+        settings.multi_photo.enabled = True
+        settings.filter.skip_processed = True
+        batch = BatchProcessor(settings)
+        state = {"save_calls": 0, "stop_checks": 0}
+
+        class FakeProcessor:
+            def load_image(self, _path):
+                return np.full((20, 20, 3), 160, dtype=np.uint8)
+
+            def process_image(self, *_args, **_kwargs):
+                raise AssertionError("Fallback single-photo path should not be used")
+
+            @staticmethod
+            def save_image(
+                image,
+                output_path,
+                output_format="JPG",
+                jpg_quality=95,
+                png_compression=6,
+                webp_quality=90,
+                source_path=None,
+                preserve_metadata=False,
+            ):
+                del image
+                del output_format, jpg_quality, png_compression, webp_quality
+                del source_path, preserve_metadata
+                plan_index = state["save_calls"]
+                state["save_calls"] += 1
+                should_succeed = (
+                    save_plan[plan_index] if plan_index < len(save_plan) else False
+                )
+                if not should_succeed:
+                    return False, "save failed", 0.0
+                os.makedirs(os.path.dirname(output_path), exist_ok=True)
+                with open(output_path, "wb") as f:
+                    f.write(f"saved-{plan_index}".encode("ascii"))
+                return True, "ok", 1.0
+
+        class FakeDetector:
+            def detect(self, image):
+                assert image is not None
+                return SimpleNamespace(success=True, total_found=2, photos=[object(), object()])
+
+            def crop_photos(self, image, photos, padding=10):
+                del padding
+                return [(image.copy(), photos[0]), (image.copy(), photos[1])]
+
+        batch._get_worker_processor = lambda: FakeProcessor()
+        batch._get_multi_photo_detector = lambda: FakeDetector()
+
+        if stop_on_check is not None:
+            def fake_stop_requested():
+                state["stop_checks"] += 1
+                return state["stop_checks"] >= stop_on_check
+
+            batch._is_stop_requested = fake_stop_requested
+
+        with tempfile.TemporaryDirectory(prefix="photocropper_mp_status_") as td:
+            src = os.path.join(td, "scan.jpg")
+            out_dir = os.path.join(td, "out")
+            os.makedirs(out_dir, exist_ok=True)
+            with open(src, "wb") as f:
+                f.write(b"scan")
+
+            result = batch.process_single(src, out_dir)
+            matched, usable = batch.lookup_processed_outputs_from_index(src, out_dir)
+            return result, matched, usable
+
+    success_result, success_outputs, success_usable = run_case([True, True])
+    assert success_result.status == ProcessStatus.SUCCESS, success_result.message
+    assert success_usable is True
+    assert success_outputs is not None and len(success_outputs) == 2
+
+    partial_result, partial_outputs, partial_usable = run_case([True, False])
+    assert partial_result.status == ProcessStatus.PARTIAL_SUCCESS, partial_result.message
+    assert partial_usable is True
+    assert partial_outputs is None
+
+    failed_result, failed_outputs, _failed_usable = run_case([False, False])
+    assert failed_result.status == ProcessStatus.FAILED, failed_result.message
+    assert failed_outputs is None
+
+    cancelled_result, cancelled_outputs, _cancelled_usable = run_case(
+        [True, True],
+        stop_on_check=2,
+    )
+    assert cancelled_result.status == ProcessStatus.CANCELLED, cancelled_result.message
+    assert cancelled_outputs is None
 
 
 def _test_cli_new_crop_options() -> None:
@@ -1676,6 +2026,30 @@ def _test_exif_orientation_normalization() -> None:
         assert loaded.shape[0] > loaded.shape[1], f"Expected portrait after EXIF transpose: {loaded.shape}"
 
 
+def _test_processing_logger_partial_summary() -> None:
+    import tempfile
+
+    from .utils.processing_log import ProcessingLogger
+
+    with tempfile.TemporaryDirectory(prefix="photocropper_log_partial_") as td:
+        logger = ProcessingLogger(log_directory=td)
+        logger.start_session("input", "output", 1)
+        logger.log_partial(
+            input_file="input/sample.jpg",
+            output_file="output/sample_photo01.jpg",
+            detail_message="partial save",
+            processing_time_ms=12.5,
+            file_size_before_kb=10.0,
+            file_size_after_kb=5.0,
+        )
+        summary = logger.get_summary()
+        assert summary["partial_success"] == 1
+        assert summary["success_rate"] == 100.0
+        session = logger.end_session()
+        assert session is not None
+        assert session.partial_count == 1
+
+
 def _test_face_rotation_uses_primary_face() -> None:
     import numpy as np
 
@@ -1829,6 +2203,7 @@ def main() -> int:
         _test_main_window_import_smoke()
         _test_manual_extract_service_import_smoke()
         _test_batch_session_service_smoke()
+        _test_batch_session_service_reentry_guard()
         _test_manual_extract_session_runner_empty()
         _test_image_save_io_module_smoke()
         _test_watch_mode_coordinator_import_smoke()
@@ -1843,12 +2218,16 @@ def main() -> int:
         _test_settings_panel_performance_roundtrip()
         _test_recursive_watch_new_subdir_initial_scan()
         _test_watch_max_wait_roundtrip()
+        _test_watch_callback_runs_on_background_worker()
+        _test_watch_readiness_is_owned_by_auto_processor()
         _test_batch_post_pipeline_order()
         _test_skip_processed_with_classification_subfolder()
         _test_perspective_toggle_warp_vs_axis_crop()
         _test_save_image_fallback_and_metadata_best_effort()
         _test_resize_fill_no_upscale_boundary()
         _test_multi_photo_merge_distance_and_separate_folders()
+        _test_multi_photo_uses_shared_loader()
+        _test_multi_photo_status_variants_and_partial_index_behavior()
         _test_cli_new_crop_options()
         _test_processed_index_roundtrip_and_source_change()
         _test_profile_apply_rebuild_validation()
@@ -1866,6 +2245,7 @@ def main() -> int:
         _test_find_best_contour_uses_score_edge_map()
         _test_accurate_mode_global_rerank_prefers_best_stage()
         _test_exif_orientation_normalization()
+        _test_processing_logger_partial_summary()
         _test_settings_panel_ai_roundtrip()
         _test_settings_panel_algorithm_tuning_roundtrip()
         _test_benchmark_harness_report_contract()

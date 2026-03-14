@@ -9,6 +9,7 @@ from __future__ import annotations
 import logging
 import os
 import time
+from concurrent.futures import Future, ThreadPoolExecutor
 from collections import deque
 from dataclasses import dataclass
 from typing import Any, Callable, Deque, Dict, List, Optional, Set, Tuple
@@ -251,32 +252,11 @@ class FolderWatcher(QObject):
             if not os.path.exists(filepath):
                 continue
 
-            try:
-                with open(filepath, "rb") as handle:
-                    handle.seek(0, os.SEEK_END)
-
-                self.new_file_detected.emit(filepath)
-                if self._on_new_file_callback is not None:
-                    self._on_new_file_callback(filepath)
-            except (IOError, OSError):
-                logger.debug("File not ready yet: %s", filepath)
-                QTimer.singleShot(1000, lambda f=filepath: self._retry_file(f))
-
-        self._pending_files.clear()
-
-    def _retry_file(self, filepath: str) -> None:
-        if not os.path.exists(filepath):
-            return
-
-        try:
-            with open(filepath, "rb") as handle:
-                handle.seek(0, os.SEEK_END)
-
             self.new_file_detected.emit(filepath)
             if self._on_new_file_callback is not None:
                 self._on_new_file_callback(filepath)
-        except (IOError, OSError):
-            logger.warning("File still not ready after retry: %s", filepath)
+
+        self._pending_files.clear()
 
     def get_watched_directories(self) -> List[str]:
         return self._watcher.directories()
@@ -298,6 +278,7 @@ class AutoProcessor(QObject):
     processing_completed_detailed = pyqtSignal(str, bool, str, str, int)
     queue_updated = pyqtSignal(int)
     queue_metrics_updated = pyqtSignal(int, int)
+    worker_result_ready = pyqtSignal(str, bool, str, str, int)
 
     def __init__(
         self,
@@ -340,6 +321,16 @@ class AutoProcessor(QObject):
         self._process_timer = QTimer(self)
         self._process_timer.setSingleShot(True)
         self._process_timer.timeout.connect(self._process_next)
+        self._executor: Optional[ThreadPoolExecutor] = None
+        self._active_future: Optional[Future] = None
+        self.worker_result_ready.connect(self._handle_worker_result)
+
+    def _ensure_executor(self) -> None:
+        if self._executor is None:
+            self._executor = ThreadPoolExecutor(
+                max_workers=1,
+                thread_name_prefix="photocropper-watch",
+            )
 
     def start(
         self,
@@ -383,6 +374,8 @@ class AutoProcessor(QObject):
         self._enqueue_times.clear()
         self._wait_samples_ms.clear()
         self._is_processing = False
+        self._active_future = None
+        self._ensure_executor()
         self._emit_queue_metrics()
 
         return self._watcher.start(self._watch_path)
@@ -397,6 +390,15 @@ class AutoProcessor(QObject):
         self._file_states.clear()
         self._wait_samples_ms.clear()
         self._is_processing = False
+        if self._active_future is not None:
+            self._active_future.cancel()
+            self._active_future = None
+        if self._executor is not None:
+            try:
+                self._executor.shutdown(wait=False, cancel_futures=True)
+            except TypeError:
+                self._executor.shutdown(wait=False)
+            self._executor = None
         self._emit_queue_metrics()
 
     def set_process_callback(self, callback: Callable[[str, str], Any]) -> None:
@@ -482,7 +484,7 @@ class AutoProcessor(QObject):
             raw_status = status_value or status_name
             normalized = raw_status.lower()
             if normalized:
-                success = normalized in {"success", "skipped", "ok"}
+                success = normalized in {"success", "skipped", "ok", "partial_success"}
                 return WatchProcessResult(success=success, status=normalized, message=message)
 
         if hasattr(result, "success"):
@@ -561,48 +563,40 @@ class AutoProcessor(QObject):
 
         self.processing_started.emit(filepath)
 
-        result = WatchProcessResult(success=False, status="failed", message="")
-        try:
-            if self._process_callback is None or not self._output_path:
-                result = WatchProcessResult(
-                    success=False,
-                    status="process_exception",
-                    message="Process callback/output path is not set",
-                )
-            else:
-                callback_result = self._process_callback(filepath, self._output_path)
-                result = self._parse_callback_result(callback_result)
-                if not result.status:
-                    result.status = "success" if result.success else "failed"
-        except Exception as exc:
-            logger.error("Processing failed for %s: %s", filepath, exc)
-            result = WatchProcessResult(
-                success=False,
-                status="process_exception",
-                message=str(exc),
+        self._ensure_executor()
+        if self._executor is None or self._process_callback is None or not self._output_path:
+            self.worker_result_ready.emit(
+                filepath,
+                False,
+                "process_exception",
+                "Process callback/output path is not set",
+                wait_ms,
             )
+            return
 
-        self.processing_completed.emit(filepath, bool(result.success))
-        self.processing_completed_detailed.emit(
-            filepath,
-            bool(result.success),
-            str(result.status),
-            str(result.message or ""),
-            wait_ms,
-        )
-        self._wait_samples_ms.append(wait_ms)
-        if len(self._wait_samples_ms) > 200:
-            self._wait_samples_ms = self._wait_samples_ms[-200:]
-
-        self._file_states.pop(filepath, None)
-        self._enqueue_times.pop(filepath, None)
-
-        if self._queue:
-            self._process_timer.start(100)
-        else:
-            self._is_processing = False
-
-        self._emit_queue_metrics()
+        try:
+            future = self._executor.submit(
+                self._run_process_callback,
+                filepath,
+                self._output_path,
+            )
+            self._active_future = future
+            future.add_done_callback(
+                lambda done, path=filepath, waited=wait_ms: self._emit_worker_result(
+                    path,
+                    waited,
+                    done,
+                )
+            )
+        except Exception as exc:
+            logger.error("Failed to submit watch processing for %s: %s", filepath, exc)
+            self.worker_result_ready.emit(
+                filepath,
+                False,
+                "process_exception",
+                str(exc),
+                wait_ms,
+            )
 
     def _check_file_ready(self, filepath: str) -> Tuple[bool, bool, str]:
         now = time.monotonic()
@@ -661,3 +655,87 @@ class AutoProcessor(QObject):
             return False, False, f"read failed: {exc}"
 
         return True, False, "ready"
+
+    def _run_process_callback(
+        self,
+        filepath: str,
+        output_path: str,
+    ) -> WatchProcessResult:
+        try:
+            callback_result = self._process_callback(filepath, output_path)
+            result = self._parse_callback_result(callback_result)
+            if not result.status:
+                result.status = "success" if result.success else "failed"
+            return result
+        except Exception as exc:
+            logger.error("Processing failed for %s: %s", filepath, exc)
+            return WatchProcessResult(
+                success=False,
+                status="process_exception",
+                message=str(exc),
+            )
+
+    def _emit_worker_result(self, filepath: str, wait_ms: int, future: Future) -> None:
+        if future.cancelled():
+            result = WatchProcessResult(
+                success=False,
+                status="cancelled",
+                message="Processing cancelled",
+            )
+        else:
+            try:
+                result = future.result()
+            except Exception as exc:
+                logger.error("Watch worker future failed for %s: %s", filepath, exc)
+                result = WatchProcessResult(
+                    success=False,
+                    status="process_exception",
+                    message=str(exc),
+                )
+
+        self.worker_result_ready.emit(
+            filepath,
+            bool(result.success),
+            str(result.status or ("success" if result.success else "failed")),
+            str(result.message or ""),
+            wait_ms,
+        )
+
+    def _handle_worker_result(
+        self,
+        filepath: str,
+        success: bool,
+        status: str,
+        message: str,
+        wait_ms: int,
+    ) -> None:
+        self._active_future = None
+
+        if self._halted:
+            self._file_states.pop(filepath, None)
+            self._enqueue_times.pop(filepath, None)
+            self._is_processing = False
+            self._emit_queue_metrics()
+            return
+
+        self.processing_completed.emit(filepath, bool(success))
+        self.processing_completed_detailed.emit(
+            filepath,
+            bool(success),
+            str(status),
+            str(message or ""),
+            wait_ms,
+        )
+        self._wait_samples_ms.append(wait_ms)
+        if len(self._wait_samples_ms) > 200:
+            self._wait_samples_ms = self._wait_samples_ms[-200:]
+
+        self._file_states.pop(filepath, None)
+        self._enqueue_times.pop(filepath, None)
+
+        if self._queue:
+            self._process_timer.start(100)
+        else:
+            self._is_processing = False
+
+        self._emit_queue_metrics()

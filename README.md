@@ -42,6 +42,11 @@
 - **분류 폴더명 사용자 설정**: 기본 한글 폴더(`인물/풍경/문서/흑백/기타`) 유지 + 설정 패널에서 카테고리별 커스터마이즈 지원
 - **Watch 준비/재시도 공정성 개선**: not-ready 파일 재큐잉을 공정 큐 정책으로 조정하고 timeout/read 실패 상태코드 정합성 강화
 - **스케줄러 런타임 연결**: UI의 scheduler 설정이 앱 실행 중 실제 자동 배치 트리거로 동작
+- **Watch background worker 전환**: Watch Mode 처리 콜백이 `AutoProcessor`의 단일 background worker에서 순차 실행되고, readiness timeout/retry도 `AutoProcessor`가 전담
+- **EXIF Orientation 재기록**: `preserve_metadata` 저장 시 EXIF/ICC는 유지하되 Orientation은 항상 `1`로 다시 써서 이중 회전을 방지
+- **멀티포토 partial_success 도입**: 일부 출력만 저장된 경우 `partial_success`로 구분되고, 배치 완료/Watch 토스트/processing log summary에 별도 집계
+- **멀티포토 공통 로더 통일**: 멀티포토 입력도 `ImageProcessor.load_image()`를 사용해 EXIF orientation 정규화 동작을 단일 사진/수동 저장 경로와 일치
+- **배치 재진입 차단**: 실행 중인 batch session은 새 session으로 덮어쓰지 않으며 `start_processing()`/`retry_failed_files()`가 중복 시작을 막음
 
 ### 🔥 v8.5 핵심 기능
 - **다중 사진 자동 감지**: 한 스캔에서 여러 사진을 자동으로 분리

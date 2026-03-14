@@ -23,6 +23,7 @@ class ProcessingStatus(Enum):
     PENDING = "pending"
     PROCESSING = "processing"
     SUCCESS = "success"
+    PARTIAL_SUCCESS = "partial_success"
     FAILED = "failed"
     SKIPPED = "skipped"
     CANCELLED = "cancelled"
@@ -87,6 +88,7 @@ class ProcessingSession:
     total_files: int = 0
     processed_files: int = 0
     success_count: int = 0
+    partial_count: int = 0
     failed_count: int = 0
     skipped_count: int = 0
     entries: List[ProcessingLogEntry] = field(default_factory=list)
@@ -102,6 +104,7 @@ class ProcessingSession:
             'total_files': self.total_files,
             'processed_files': self.processed_files,
             'success_count': self.success_count,
+            'partial_count': self.partial_count,
             'failed_count': self.failed_count,
             'skipped_count': self.skipped_count,
             'entries': [e.to_dict() for e in self.entries]
@@ -171,6 +174,8 @@ class ProcessingLogger:
         for entry in self._current_session.entries:
             if entry.status == ProcessingStatus.SUCCESS.value:
                 self._current_session.success_count += 1
+            elif entry.status == ProcessingStatus.PARTIAL_SUCCESS.value:
+                self._current_session.partial_count += 1
             elif entry.status == ProcessingStatus.FAILED.value:
                 self._current_session.failed_count += 1
             elif entry.status == ProcessingStatus.SKIPPED.value:
@@ -231,7 +236,29 @@ class ProcessingLogger:
             processing_time_ms=processing_time_ms
         )
         self.log_entry(entry)
-    
+
+    def log_partial(
+        self,
+        input_file: str,
+        output_file: str,
+        detail_message: str,
+        processing_time_ms: float = 0.0,
+        file_size_before_kb: float = 0.0,
+        file_size_after_kb: float = 0.0,
+    ):
+        """Convenience method to log partially successful processing."""
+        entry = ProcessingLogEntry(
+            timestamp=datetime.now(),
+            input_file=input_file,
+            output_file=output_file,
+            status=ProcessingStatus.PARTIAL_SUCCESS.value,
+            error_message=detail_message,
+            processing_time_ms=processing_time_ms,
+            file_size_before_kb=file_size_before_kb,
+            file_size_after_kb=file_size_after_kb,
+        )
+        self.log_entry(entry)
+
     def log_skipped(self, input_file: str, reason: str):
         """Convenience method to log skipped file."""
         entry = ProcessingLogEntry(
@@ -261,6 +288,9 @@ class ProcessingLogger:
         entries = session.entries
         
         success_entries = [e for e in entries if e.status == ProcessingStatus.SUCCESS.value]
+        partial_entries = [
+            e for e in entries if e.status == ProcessingStatus.PARTIAL_SUCCESS.value
+        ]
         failed_entries = [e for e in entries if e.status == ProcessingStatus.FAILED.value]
         
         # Calculate statistics
@@ -281,9 +311,14 @@ class ProcessingLogger:
             'total_files': session.total_files,
             'processed': len(entries),
             'success': len(success_entries),
+            'partial_success': len(partial_entries),
             'failed': len(failed_entries),
             'skipped': len([e for e in entries if e.status == ProcessingStatus.SKIPPED.value]),
-            'success_rate': len(success_entries) / len(entries) * 100 if entries else 0,
+            'success_rate': (
+                (len(success_entries) + len(partial_entries)) / len(entries) * 100
+                if entries
+                else 0
+            ),
             'total_processing_time_ms': total_time_ms,
             'average_processing_time_ms': avg_time_ms,
             'total_input_size_kb': total_input_kb,

@@ -16,6 +16,7 @@ import cv2
 import numpy as np
 
 logger = logging.getLogger(__name__)
+EXIF_ORIENTATION_TAG = 0x0112
 
 
 def resolve_save_codec(output_path: str, output_format: str) -> Tuple[str, str]:
@@ -54,8 +55,15 @@ def copy_metadata_best_effort(source_path: str, output_path: str) -> None:
     temp_path = f"{output_path}.meta_tmp"
     try:
         with Image.open(source_path) as src:
-            exif = src.info.get("exif")
+            exif_obj = src.getexif()
+            exif = exif_obj.tobytes() if exif_obj else None
             icc_profile = src.info.get("icc_profile")
+
+        if exif_obj:
+            # Pixel data is already orientation-normalized during load/save, so
+            # the copied metadata must not request another viewer rotation.
+            exif_obj[EXIF_ORIENTATION_TAG] = 1
+            exif = exif_obj.tobytes()
 
         if exif is None and icc_profile is None:
             return

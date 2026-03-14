@@ -42,6 +42,11 @@ A Python application that automatically detects and accurately crops scanned pho
 - **Custom classification folder names**: default Korean folders preserved, plus user-configurable per-category names in settings
 - **Watch readiness fairness improvements**: not-ready files are re-queued fairly with explicit timeout/read-fail statuses
 - **Scheduler runtime wiring**: scheduler settings in UI now trigger real automatic batch runs while app is running
+- **Watch background worker**: Watch Mode callbacks now run sequentially on `AutoProcessor`'s background worker, and readiness timeout/retry ownership also lives in `AutoProcessor`
+- **EXIF Orientation rewrite**: `preserve_metadata` keeps EXIF/ICC best-effort, but always rewrites Orientation to `1` to avoid double rotation
+- **Multi-photo `partial_success` status**: incomplete multi-photo saves are surfaced as `partial_success` in batch summaries, Watch toasts, and processing log summaries
+- **Shared multi-photo loader**: multi-photo input loading now reuses `ImageProcessor.load_image()` so EXIF orientation normalization matches single-photo and manual paths
+- **Batch re-entry guard**: running batch sessions are no longer replaced, and `start_processing()` / `retry_failed_files()` refuse overlapping starts
 
 ### 🌐 Multi-Language Support
 - Automatic system locale detection

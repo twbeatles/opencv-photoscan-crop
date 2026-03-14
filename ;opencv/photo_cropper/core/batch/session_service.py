@@ -34,6 +34,8 @@ class BatchSessionService:
         on_log: Optional[Callable[[str, str], None]] = None,
         on_complete: Optional[Callable[[BatchProgress, list], None]] = None,
     ) -> BatchProcessor:
+        if self._processor is not None and self._processor.is_running:
+            raise RuntimeError("Batch processing is already running")
         self.cleanup()
         processor = BatchProcessor(settings)
         processor.set_callbacks(

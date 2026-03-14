@@ -219,3 +219,12 @@ pyinstaller photo_cropper.spec --clean
     - `BENCHMARK_LABEL_FORMAT.md`
     - `benchmark/labels.template.json`
   - Real-image benchmark datasets are intentionally excluded from the repository.
+
+## 2026-03-14 Implementation Update
+
+- Watch Mode processing now runs through a sequential background worker in `AutoProcessor`, and file readiness retry/timeout ownership also lives in `AutoProcessor` instead of `FolderWatcher`.
+- Watch callbacks treat `partial_success` as success-like for the boolean completion signal, while `processing_completed_detailed` keeps the explicit `partial_success` status.
+- Metadata preservation keeps EXIF/ICC on a best-effort basis and always rewrites EXIF Orientation to `1` after normalized save.
+- Multi-photo input loading now reuses `ImageProcessor.load_image()` so EXIF orientation normalization matches single-photo and manual paths.
+- Multi-photo runs can return `ProcessStatus.PARTIAL_SUCCESS`; batch/watch summaries and processing logs expose that status separately.
+- `BatchSessionService.create_processor()` now rejects replacement of a running processor so UI batch actions cannot silently start overlapping sessions.

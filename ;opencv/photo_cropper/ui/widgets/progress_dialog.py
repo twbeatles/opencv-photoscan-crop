@@ -317,7 +317,7 @@ class ProgressDialog(QDialog):
         
         Args:
             message: Log message
-            level: Log level (info, success, error, warning, skip)
+            level: Log level (info, success, error, warning, skip, partial)
         """
         # Color and icon mapping - using new theme colors
         styles = {
@@ -325,6 +325,7 @@ class ProgressDialog(QDialog):
             "success": {"color": "#34d399", "icon": "✅"},  # Emerald
             "error": {"color": "#f87171", "icon": "❌"},    # Rose
             "warning": {"color": "#fbbf24", "icon": "⚠️"},  # Amber
+            "partial": {"color": "#f59e0b", "icon": "🟠"},
             "skip": {"color": "#6b7280", "icon": "⏭️"},
         }
         style = styles.get(level, styles["info"])

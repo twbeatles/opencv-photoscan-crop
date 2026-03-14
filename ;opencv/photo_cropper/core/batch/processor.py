@@ -61,6 +61,7 @@ class ProcessStatus(Enum):
     PENDING = "pending"
     PROCESSING = "processing"
     SUCCESS = "success"
+    PARTIAL_SUCCESS = "partial_success"
     FAILED = "failed"
     SKIPPED = "skipped"
     CANCELLED = "cancelled"
@@ -378,7 +379,7 @@ class BatchProcessor:
     def _log(self, message: str, level: str = "info"):
         """Send log message through callback."""
         # Validate log level
-        valid_levels = {"info", "error", "warning", "success", "skip"}
+        valid_levels = {"info", "error", "warning", "success", "skip", "partial"}
         level = level if level in valid_levels else "info"
 
         # v9.0: Thread-safe callback invocation
@@ -1038,7 +1039,7 @@ class BatchProcessor:
             self._progress.processed = processed_index
             self._progress.current_file = result.filename
 
-            if result.status == ProcessStatus.SUCCESS:
+            if result.status in (ProcessStatus.SUCCESS, ProcessStatus.PARTIAL_SUCCESS):
                 self._progress.success += 1
             elif result.status == ProcessStatus.FAILED:
                 self._progress.failed += 1
@@ -1062,6 +1063,15 @@ class BatchProcessor:
                         detection_stage=result.message.replace("탐지: ", "")
                         if "탐지" in result.message
                         else "Unknown",
+                        processing_time_ms=result.processing_time_ms,
+                        file_size_before_kb=0.0,
+                        file_size_after_kb=result.file_size_kb,
+                    )
+                elif result.status == ProcessStatus.PARTIAL_SUCCESS:
+                    self._processing_logger.log_partial(
+                        input_file=input_file_path,
+                        output_file=result.output_path,
+                        detail_message=result.message,
                         processing_time_ms=result.processing_time_ms,
                         file_size_before_kb=0.0,
                         file_size_after_kb=result.file_size_kb,
@@ -1527,6 +1537,9 @@ class BatchProcessor:
 
             # Completion
             self._log("=" * 50, "info")
+            partial_count = len(
+                [r for r in self._results if r.status == ProcessStatus.PARTIAL_SUCCESS]
+            )
             if self._is_stop_requested():
                 self._log("작업이 중단되었습니다", "warning")
             else:
@@ -1539,6 +1552,9 @@ class BatchProcessor:
                 f"실패: {progress.failed}, 건너뜀: {progress.skipped}",
                 "info",
             )
+
+            if partial_count > 0:
+                self._log(f"Partial success files: {partial_count}", "partial")
 
             if self._failed_files:
                 self._log(f"실패한 파일: {len(self._failed_files)}개", "warning")
@@ -1819,14 +1835,11 @@ class BatchProcessor:
         Process a single file with multi-photo detection.
         Detects multiple photos in a single scan and saves each separately.
         """
-        import cv2
-        import numpy as np
-
         detector = self._get_multi_photo_detector()
 
-        # Load image with Unicode support
-        img_array = np.fromfile(input_path, np.uint8)
-        image = cv2.imdecode(img_array, cv2.IMREAD_COLOR)
+        # Reuse the shared loader so EXIF orientation normalization stays
+        # consistent across single-photo, multi-photo, and manual paths.
+        image = processor.load_image(input_path)
 
         if image is None:
             return FileResult(
@@ -1875,11 +1888,15 @@ class BatchProcessor:
         )
 
         saved_count = 0
+        failed_count = 0
         saved_outputs: List[str] = []
         multi_output_root = self._resolve_multi_photo_output_dir(input_path, output_dir)
+        target_total = max(int(detection_result.total_found or 0), len(cropped_photos))
+        cancelled_midway = False
 
         for idx, (cropped_img, photo_info) in enumerate(cropped_photos, 1):
             if self._is_stop_requested():
+                cancelled_midway = True
                 break
 
             processed_img, resolved_output_dir = self._run_post_pipeline(
@@ -1910,6 +1927,9 @@ class BatchProcessor:
                 self._log(
                     f"    ✓ 사진 {idx}: {os.path.basename(output_path)}", "success"
                 )
+            else:
+                failed_count += 1
+                self._log(f"    Multi-photo save {idx} failed: {msg}", "warning")
 
         processing_time = (time.time() - start_time) * 1000
 
@@ -1921,22 +1941,51 @@ class BatchProcessor:
                 processing_time_ms=processing_time,
             )
 
-        if saved_count > 0:
+        if target_total <= 0:
+            target_total = len(cropped_photos)
+
+        total_size_kb = sum(
+            (os.path.getsize(path) / 1024.0)
+            for path in saved_outputs
+            if os.path.exists(path)
+        )
+
+        if (
+            saved_count > 0
+            and failed_count == 0
+            and not cancelled_midway
+            and saved_count >= target_total
+        ):
             return FileResult(
                 filename=filename,
                 status=ProcessStatus.SUCCESS,
                 message=f"멀티포토: {saved_count}/{detection_result.total_found}개 저장",
                 output_path=saved_outputs[0] if saved_outputs else "",
                 output_paths=saved_outputs,
+                file_size_kb=total_size_kb,
                 processing_time_ms=processing_time,
             )
-        else:
+        if saved_count > 0:
+            partial_reason = "cancelled" if cancelled_midway else "incomplete"
             return FileResult(
                 filename=filename,
-                status=ProcessStatus.FAILED,
-                message="멀티포토 저장 실패",
+                status=ProcessStatus.PARTIAL_SUCCESS,
+                message=(
+                    f"Multi-photo partial success: {saved_count}/{target_total} saved "
+                    f"(failed={failed_count}, status={partial_reason})"
+                ),
+                output_path=saved_outputs[0] if saved_outputs else "",
+                output_paths=saved_outputs,
+                file_size_kb=total_size_kb,
                 processing_time_ms=processing_time,
             )
+
+        return FileResult(
+            filename=filename,
+            status=ProcessStatus.FAILED,
+            message="멀티포토 저장 실패",
+            processing_time_ms=processing_time,
+        )
 
     def _save_single_result(
         self,

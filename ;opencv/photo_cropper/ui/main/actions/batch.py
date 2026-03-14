@@ -12,7 +12,7 @@ from typing import Callable, Optional
 import numpy as np
 from PyQt6.QtWidgets import QMessageBox
 
-from ....core.batch import BatchProgress
+from ....core.batch import BatchProgress, ProcessStatus
 from ....core.manual_extract import (
     ManualExtractSessionRunner,
     collect_boundary_failed_files,
@@ -69,6 +69,25 @@ class BatchActions:
         processor = self.services.batch_session.processor
         if processor is not None:
             processor.update_settings(self.state.settings)
+
+    @staticmethod
+    def _partial_result_count(results: list) -> int:
+        return sum(
+            1
+            for result in (results or [])
+            if getattr(result, "status", None) == ProcessStatus.PARTIAL_SUCCESS
+        )
+
+    def _is_batch_running(self) -> bool:
+        processor = self.batch_processor
+        return bool(processor and processor.is_running)
+
+    def _show_batch_running_warning(self) -> None:
+        QMessageBox.warning(
+            self.services.host_window,
+            "경고",
+            "배치 처리가 이미 진행 중입니다. 현재 작업이 끝나거나 취소된 뒤 다시 시도하세요.",
+        )
 
     def update_batch_edit_controls(self) -> None:
         total = len(self.state.image_list) if self.state.image_list else 0
@@ -130,6 +149,10 @@ class BatchActions:
             )
             return
 
+        if self._is_batch_running():
+            self._show_batch_running_warning()
+            return
+
         input_edit = self.refs.input_path_edit
         output_edit = self.refs.output_path_edit
         if input_edit is None or output_edit is None:
@@ -158,12 +181,16 @@ class BatchActions:
             )
             return
 
-        self.services.batch_session.create_processor(
-            settings=self.state.settings,
-            on_progress=self.signals.batch_progress_received.emit,
-            on_log=self.signals.batch_log_received.emit,
-            on_complete=self.signals.batch_complete_received.emit,
-        )
+        try:
+            self.services.batch_session.create_processor(
+                settings=self.state.settings,
+                on_progress=self.signals.batch_progress_received.emit,
+                on_log=self.signals.batch_log_received.emit,
+                on_complete=self.signals.batch_complete_received.emit,
+            )
+        except RuntimeError as exc:
+            QMessageBox.warning(self.services.host_window, "경고", str(exc))
+            return
         self._create_progress_dialog(output_path)
         processor = self.batch_processor
         assert processor is not None
@@ -211,28 +238,36 @@ class BatchActions:
         )
 
     def on_batch_complete(self, progress: BatchProgress, results: list) -> None:
+        partial_count = self._partial_result_count(results)
+        full_success_count = max(int(progress.success) - partial_count, 0)
+        summary_message = (
+            f"처리 완료: 정상 성공 {full_success_count}개, 부분 성공 {partial_count}개, "
+            f"실패 {progress.failed}개, 건너뜀 {progress.skipped}개"
+        )
+        summary_level = (
+            "warning" if progress.failed > 0 else "partial" if partial_count > 0 else "success"
+        )
+
         if self.refs.progress_dialog is not None and self.refs.progress_dialog.isVisible():
             self.refs.progress_dialog.update_progress(progress)
             self.refs.progress_dialog.log_message(
-                f"처리 완료: {progress.success}개 성공, {progress.failed}개 실패, {progress.skipped}개 건너뜀",
-                "success" if progress.failed == 0 else "warning",
+                summary_message,
+                summary_level,
             )
 
         if self.refs.status_label is not None:
             if progress.is_cancelled:
                 self.refs.status_label.setText(
-                    f"작업 취소됨: {progress.success}개 성공, {progress.failed}개 실패"
+                    f"작업 취소됨: 정상 성공 {full_success_count}개, 부분 성공 {partial_count}개, 실패 {progress.failed}개"
                 )
                 ToastManager.info("⏹️ 작업이 취소되었습니다")
             else:
-                self.refs.status_label.setText(
-                    f"완료: {progress.success}개 성공, {progress.failed}개 실패"
-                )
-                if progress.failed == 0:
-                    ToastManager.success(f"✅ {progress.success}개 파일 처리 완료!")
+                self.refs.status_label.setText(summary_message)
+                if progress.failed == 0 and partial_count == 0:
+                    ToastManager.success(f"✅ {full_success_count}개 파일 처리 완료!")
                 else:
                     ToastManager.warning(
-                        f"⚠️ {progress.success}개 성공, {progress.failed}개 실패"
+                        f"⚠️ 정상 성공 {full_success_count}개, 부분 성공 {partial_count}개, 실패 {progress.failed}개"
                     )
 
         self.state.failed_boundary_files = self.collect_boundary_failed_files(results)
@@ -260,16 +295,19 @@ class BatchActions:
                 )
 
                 notifier = get_system_notification()
-                if progress.failed == 0:
+                if progress.failed == 0 and partial_count == 0:
                     notifier.notify(
                         "배치 처리 완료",
-                        f"{progress.success}개 파일 처리 완료!",
+                        f"{full_success_count}개 파일 처리 완료!",
                         NotificationType.SUCCESS,
                     )
                 else:
                     notifier.notify(
                         "배치 처리 완료",
-                        f"{progress.success}개 성공, {progress.failed}개 실패",
+                        (
+                            f"정상 성공 {full_success_count}개, 부분 성공 {partial_count}개, "
+                            f"실패 {progress.failed}개"
+                        ),
                         NotificationType.WARNING,
                     )
             except Exception as exc:
@@ -283,6 +321,10 @@ class BatchActions:
         self.update_batch_edit_controls()
 
     def retry_failed_files(self) -> None:
+        if self._is_batch_running():
+            self._show_batch_running_warning()
+            return
+
         failed = self.services.batch_session.failed_files
         if not failed:
             QMessageBox.information(self.services.host_window, "알림", "재처리할 실패 파일이 없습니다.")
@@ -299,12 +341,16 @@ class BatchActions:
 
         input_path = self.refs.input_path_edit.text() if self.refs.input_path_edit else ""
         output_path = self.refs.output_path_edit.text() if self.refs.output_path_edit else ""
-        self.services.batch_session.create_processor(
-            settings=self.state.settings,
-            on_progress=self.signals.batch_progress_received.emit,
-            on_log=self.signals.batch_log_received.emit,
-            on_complete=self.signals.batch_complete_received.emit,
-        )
+        try:
+            self.services.batch_session.create_processor(
+                settings=self.state.settings,
+                on_progress=self.signals.batch_progress_received.emit,
+                on_log=self.signals.batch_log_received.emit,
+                on_complete=self.signals.batch_complete_received.emit,
+            )
+        except RuntimeError as exc:
+            QMessageBox.warning(self.services.host_window, "경고", str(exc))
+            return
         self._create_progress_dialog(output_path)
         processor = self.batch_processor
         assert processor is not None

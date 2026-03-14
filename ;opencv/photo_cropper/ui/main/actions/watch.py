@@ -256,6 +256,13 @@ class WatchActions:
                         f"👁️ 스킵: {filename} ({detail}, 대기 {wait_text})"
                     )
                 ToastManager.info(f"ℹ️ 자동 처리 스킵: {filename} ({detail})")
+            elif status_key == "partial_success":
+                detail = message or "partial success"
+                if self.refs.status_label is not None:
+                    self.refs.status_label.setText(
+                        f"👁️ 부분 완료: {filename} ({detail}, 대기 {wait_text})"
+                    )
+                ToastManager.warning(f"⚠️ 자동 처리 부분 완료: {filename} ({detail})")
             else:
                 if self.refs.status_label is not None:
                     self.refs.status_label.setText(f"👁️ 처리 완료: {filename} (대기 {wait_text})")
