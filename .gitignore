@@ -22,10 +22,13 @@ dist/
 **/*.pyd
 
 # Ruff cache
+.ruff_cache/
 ;opencv/.ruff_cache/
 
 # Local backups / ad-hoc reports
 backups/
+pyright_report.json
+pyright_report*.json
 ;opencv/pyright_report.json
 ;opencv/pyright_report*.json
 

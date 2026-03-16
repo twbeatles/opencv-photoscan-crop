@@ -65,7 +65,7 @@ EXCLUDES = [
 
 # Binary files to exclude
 EXCLUDE_BINARIES = [
-    # OpenCV DNN module (large, unused)
+    # Optional OpenCV / BLAS runtime binaries not required for current build
     'opencv_videoio_ffmpeg*.dll',
     'libopenblas*.dll',
     
@@ -113,6 +113,7 @@ a = Analysis(
         'photo_cropper.core.image.save_io',
         'photo_cropper.ui.main',
         'photo_cropper.ui.main.models',
+        'photo_cropper.ui.main.preview_worker',
         'photo_cropper.ui.main.actions',
         'photo_cropper.ui.main.actions.batch',
         'photo_cropper.ui.main.actions.dialog',
@@ -283,4 +284,12 @@ Tips for further size reduction:
       split into `ui/main/actions`, `ui/main/builders`, and `ui/main/models.py`.
     - Hidden imports now explicitly include both canonical package paths and the
       compatibility shim modules kept under `ui/main/*.py`.
+
+2026-03-16 note:
+    - Added explicit hidden import for `ui.main.preview_worker` to keep frozen
+      discovery stable after the main-window split.
+    - Repository-root type-check/editor config additions (`pyrightconfig.json`,
+      `.editorconfig`) do not introduce any new frozen-build dependencies.
+    - Recent false-positive filtering and multi-photo quad-dimension fixes are
+      code-only changes and do not require extra packaging hooks.
 """

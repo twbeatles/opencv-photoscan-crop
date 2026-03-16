@@ -219,11 +219,12 @@ python -m photo_cropper.cli --help
 ## 🧪 Stability Checklist
 
 - **Syntax validation**: `cd ";opencv" && python -m compileall -q photo_cropper`
+- **Type check**: `pyright --project .\\pyrightconfig.json`
+- **Full selftest**: `cd ";opencv" && python -m photo_cropper.selftest`
 - **CLI smoke test**: `cd ";opencv" && python -m photo_cropper.cli -i ./scans -o ./cropped --multi-photo --multi-photo-separate-folders --preserve-metadata --no-perspective-correct --skip-processed`
 - **Watch mode parity**: verify new files in Watch Mode go through same resize/watermark/classification behavior as batch mode
 - **Scheduler check**: with `watch_mode.scheduler_enabled=true`, confirm auto-batch starts at scheduled time and overlapping triggers are skipped
 - **Unicode path test**: use a watermark image in a non-ASCII path and verify output succeeds
-- **Cancel semantics**: in multithreaded batch, request stop and verify final stats consistency and CLI exit code `130`
 - **Cancel semantics**: in multithreaded batch, request stop and verify final stats consistency and CLI exit code `130`
 - **Benchmark harness validation**:
   - `cd ";opencv" && python -m photo_cropper.benchmark --images ./benchmark/images --labels ./benchmark/labels.json --report ./benchmark/report.json --detect-mode accurate`
@@ -287,7 +288,7 @@ Install [UPX](https://github.com/upx/upx/releases) to reduce executable size by 
 |------|-------------|
 | Single File | onefile mode creates single .exe |
 | Excluded Modules | matplotlib, scipy, pandas, tkinter, etc. |
-| OpenCV Optimization | Removed unused modules (dnn, ml, video, etc.) |
+| OpenCV/Qt Trimming | Excludes `cv2.gapi` plus unneeded Qt/OpenCV runtime binaries |
 | NumPy Optimization | Removed test/doc files |
 | UPX Compression | Compressed executable (~40% size reduction) |
 
@@ -374,10 +375,18 @@ Please report bugs or feature suggestions in Issues.
 
 > Note: full processing self-tests require OpenCV (cv2).
 
+## 2026-03-16 Consistency Check Notes
+
+- Added a repository-root `pyrightconfig.json` plus `.editorconfig` so root-level and app-level workflows now share the same type-check and UTF-8 text rules.
+- Verified both `pyright --project .\pyrightconfig.json` and `cd ";opencv" && pyright --project pyrightconfig.json` with 0 errors / 0 warnings.
+- Verified `cd ";opencv" && python -m photo_cropper.selftest` with `SELFTEST OK`.
+- Reduced no-photo false-positive regressions in `accurate` mode with stage-specific candidate filters, and normalized quad point ordering for multi-photo perspective-crop dimension calculations.
+- Added `ui.main.preview_worker` to `photo_cropper.spec` hidden imports; no new runtime third-party dependencies were introduced by this consistency pass.
+
 ## 2026-03-04 Consistency Check Notes
 
 - Verified `pyright --project pyrightconfig.json` with 0 errors / 0 warnings.
-- Aligned `QWidget` override event signatures (`dragEnterEvent`, `dropEvent`, `keyPressEvent`) to PyQt6 stubs using `Optional[...]`.
+- Aligned `QWidget` override event signatures to PyQt6 stubs by matching both event types and stub parameter names (`a0`), and promoted required window timers to non-optional services to remove Pylance warnings.
 - Strengthened PyInstaller hidden imports for split modules:
   `watch_mode`, `manual_extract`, `session_service`, `save_io`, `dialog_actions`.
 

@@ -229,11 +229,12 @@ python -m photo_cropper.cli --help
 ## 🧪 안정성 체크 포인트
 
 - **문법 검증**: `cd ";opencv" && python -m compileall -q photo_cropper`
+- **타입 검사**: `pyright --project .\\pyrightconfig.json`
+- **전체 selftest**: `cd ";opencv" && python -m photo_cropper.selftest`
 - **CLI 스모크 테스트**: `cd ";opencv" && python -m photo_cropper.cli -i ./scans -o ./cropped --multi-photo --multi-photo-separate-folders --preserve-metadata --no-perspective-correct --skip-processed`
 - **워치 모드 검증**: GUI에서 Watch Mode 시작 후 신규 파일 투입 시 배치와 동일한 출력(워터마크/리사이즈/분류 폴더) 확인
 - **스케줄러 검증**: `watch_mode.scheduler_enabled=true` 상태에서 예약 시각 도달 시 자동 배치 시작/중복 실행 skip 확인
 - **유니코드 경로 검증**: 한글 경로의 워터마크 이미지 파일을 지정해 저장 성공 여부 확인
-- **취소 검증**: 멀티스레드 배치 실행 중 중단 요청 시 통계/상태 정합성 확인 및 CLI 종료코드 `130` 확인
 - **취소 검증**: 멀티스레드 배치 실행 중 중단 요청 시 통계/상태 정합성 확인 및 CLI 종료코드 `130` 확인
 - **벤치마크 하네스 검증**:
   - `cd ";opencv" && python -m photo_cropper.benchmark --images ./benchmark/images --labels ./benchmark/labels.json --report ./benchmark/report.json --detect-mode accurate`
@@ -297,7 +298,7 @@ pyinstaller ".\\;opencv\\photo_cropper.spec" --clean
 |------|------|
 | 단일 파일 | onefile 모드로 단일 .exe 생성 |
 | 불필요 모듈 제외 | matplotlib, scipy, pandas, tkinter 등 |
-| OpenCV 경량화 | 미사용 모듈 제거 (dnn, ml, video 등) |
+| OpenCV/Qt 경량화 | `cv2.gapi` 제외 및 불필요한 Qt/OpenCV 런타임 바이너리 선별 제외 |
 | NumPy 경량화 | 테스트/문서 파일 제거 |
 | UPX 압축 | 실행 파일 압축 (~40% 크기 감소) |
 
@@ -400,10 +401,18 @@ MIT License
 
 > 참고: 전체 처리 selftest는 OpenCV(cv2) 설치가 필요합니다.
 
+## 2026-03-16 정합성 점검 메모
+
+- 저장소 루트 `pyrightconfig.json`과 `.editorconfig`를 추가해 루트/앱 폴더 어디서 실행해도 동일한 타입 검사와 UTF-8 규칙을 사용하도록 정렬했습니다.
+- `pyright --project .\pyrightconfig.json` 및 `cd ";opencv" && pyright --project pyrightconfig.json` 모두 0 errors / 0 warnings를 확인했습니다.
+- `cd ";opencv" && python -m photo_cropper.selftest` 기준 `SELFTEST OK`를 확인했습니다.
+- `accurate` 모드의 no-photo false positive 회귀를 줄이기 위해 stage-specific candidate filter를 추가했고, 멀티포토 perspective crop 크기 계산은 quad point order를 정규화하도록 수정했습니다.
+- `photo_cropper.spec` hidden import에 `ui.main.preview_worker`를 추가했고, 이번 정합성 수정으로 추가된 런타임 외부 의존성은 없습니다.
+
 ## 2026-03-04 정합성 점검 메모
 
 - `pyright --project pyrightconfig.json` 기준 0 errors / 0 warnings를 확인했습니다.
-- `QWidget` 오버라이드 이벤트 시그니처(`dragEnterEvent`, `dropEvent`, `keyPressEvent`)를 PyQt6 스텁과 일치하도록 `Optional[...]`로 정렬했습니다.
+- `QWidget` 오버라이드 이벤트 시그니처는 PyQt6 스텁 기준으로 이벤트 타입과 파라미터명(`a0`)을 정렬했고, window timer service는 non-optional로 승격해 Pylance 경고를 제거했습니다.
 - PyInstaller spec hidden import에 `watch_mode`, `manual_extract`, `session_service`, `save_io`, `dialog_actions`를 명시해 패키징 안정성을 보강했습니다.
 
 ## 2026-03-09 UI/MainWindow 정합성 메모

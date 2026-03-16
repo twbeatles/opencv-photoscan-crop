@@ -2131,11 +2131,11 @@ def _test_benchmark_harness_report_contract() -> None:
         def __init__(self):
             self._calls = 0
 
-        def load_image(self, image_path):
+        def load_image(self, image_path: str) -> np.ndarray | None:
             arr = np.fromfile(image_path, np.uint8)
             return cv2.imdecode(arr, cv2.IMREAD_COLOR)
 
-        def process_image(self, _image_path):
+        def process_image(self, _image_path: str) -> CropResult:
             self._calls += 1
             if self._calls == 1:
                 quad = np.array([[20, 20], [180, 20], [180, 180], [20, 180]], dtype=np.float32)

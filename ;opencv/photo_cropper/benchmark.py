@@ -19,13 +19,21 @@ import argparse
 import json
 import os
 import statistics
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional, Protocol, cast
 
 import cv2
 import numpy as np
 
 from .core.image import ImageProcessor
 from .core.settings_model import AppSettings
+
+
+class BenchmarkProcessor(Protocol):
+    """Minimal processor contract required by the benchmark harness."""
+
+    def load_image(self, image_path: str) -> Any: ...
+
+    def process_image(self, image_path: str) -> Any: ...
 
 
 def _coerce_quad(value: Any) -> Optional[np.ndarray]:
@@ -93,20 +101,24 @@ def run_benchmark(
     *,
     report_path: Optional[str] = None,
     settings: Optional[AppSettings] = None,
-    processor_factory: Optional[Callable[[], ImageProcessor]] = None,
+    processor_factory: Optional[Callable[[], Any]] = None,
 ) -> Dict[str, Any]:
     labels = load_labels(labels_path)
     settings = settings or AppSettings()
 
+    processor: BenchmarkProcessor
     if processor_factory is not None:
-        processor = processor_factory()
+        processor = cast(BenchmarkProcessor, processor_factory())
     else:
-        processor = ImageProcessor(
-            settings.algorithm,
-            settings.processing,
-            settings.advanced,
-            settings.performance,
-            settings.debug,
+        processor = cast(
+            BenchmarkProcessor,
+            ImageProcessor(
+                settings.algorithm,
+                settings.processing,
+                settings.advanced,
+                settings.performance,
+                settings.debug,
+            ),
         )
 
     total = len(labels)

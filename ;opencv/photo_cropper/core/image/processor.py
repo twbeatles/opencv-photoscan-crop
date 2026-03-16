@@ -620,18 +620,52 @@ class ImageProcessor:
                 continue
 
             for quad in self._contour_to_quad_candidates(contour):
+                quad_points = self.order_points(quad.reshape((4, 2)).astype(np.float32))
+                quad_area = self._quad_area(quad_points)
+                if quad_area <= 0:
+                    continue
+                contour_area = float(cv2.contourArea(contour))
+                hull = cv2.convexHull(contour)
+                hull_area = float(cv2.contourArea(hull)) if hull is not None else 0.0
+                xs = quad_points[:, 0]
+                ys = quad_points[:, 1]
+                span_x = (
+                    float(np.max(xs) - np.min(xs)) / float(edge_image.shape[1])
+                    if edge_image.shape[1] > 0
+                    else 0.0
+                )
+                span_y = (
+                    float(np.max(ys) - np.min(ys)) / float(edge_image.shape[0])
+                    if edge_image.shape[0] > 0
+                    else 0.0
+                )
+                area_ratio = float(quad_area / image_area) if image_area > 0 else 0.0
+                contour_fill_ratio = max(0.0, contour_area / quad_area)
+                hull_fill_ratio = max(0.0, hull_area / quad_area)
+                border_penalty = self._border_penalty(quad_points, edge_image.shape[:2])
                 score = self._score_quad(
-                    quad,
+                    quad_points,
                     image_area,
                     edge_image=score_map,
                     image_shape=edge_image.shape[:2],
                 )
                 if score <= 0:
                     continue
-                scored_candidates.append({"quad": quad, "score": float(score)})
+                scored_candidates.append(
+                    {
+                        "quad": quad_points,
+                        "score": float(score),
+                        "area_ratio": float(area_ratio),
+                        "border_penalty": float(border_penalty),
+                        "span_x": float(span_x),
+                        "span_y": float(span_y),
+                        "contour_fill_ratio": float(contour_fill_ratio),
+                        "hull_fill_ratio": float(hull_fill_ratio),
+                    }
+                )
                 if score > best_score:
                     best_score = score
-                    best_quad = quad
+                    best_quad = quad_points
 
         scored_candidates.sort(key=lambda x: x["score"], reverse=True)
         # Restore settings
@@ -690,6 +724,40 @@ class ImageProcessor:
     def _accept_stage_candidate(self, stage: DetectionStage, score: float) -> bool:
         """Check whether a candidate score passes stage-specific gate."""
         return float(score) >= self._min_accept_score_for_stage(stage)
+
+    def _candidate_passes_stage_filters(
+        self,
+        stage: DetectionStage,
+        candidate: Dict[str, Any],
+    ) -> bool:
+        """Reject stage candidates that match common false-positive patterns."""
+        area_ratio = float(candidate.get("area_ratio", 0.0) or 0.0)
+        border_penalty = float(candidate.get("border_penalty", 0.0) or 0.0)
+        span_x = float(candidate.get("span_x", 0.0) or 0.0)
+        span_y = float(candidate.get("span_y", 0.0) or 0.0)
+        contour_fill_ratio = float(candidate.get("contour_fill_ratio", 1.0) or 0.0)
+        hull_fill_ratio = float(candidate.get("hull_fill_ratio", 1.0) or 0.0)
+        max_span = max(span_x, span_y)
+
+        if stage in (DetectionStage.CANNY, DetectionStage.MULTI_SCALE_CANNY):
+            if max_span >= 0.88 and (area_ratio >= 0.60 or border_penalty >= 0.35):
+                return False
+
+        if stage in (
+            DetectionStage.BACKGROUND_MASK,
+            DetectionStage.ADAPTIVE_THRESHOLD,
+            DetectionStage.GRADIENT_SOBEL,
+        ):
+            if contour_fill_ratio < 0.18 and hull_fill_ratio < 0.82:
+                return False
+            if (
+                stage == DetectionStage.ADAPTIVE_THRESHOLD
+                and contour_fill_ratio < 0.25
+                and max_span >= 0.85
+            ):
+                return False
+
+        return True
 
     def _stage_rank(self, stage: DetectionStage) -> int:
         """Stable rank used for tie-breaking during global stage re-ranking."""
@@ -1177,10 +1245,28 @@ class ImageProcessor:
 
                 if quad is None or not self._accept_stage_candidate(stage, score):
                     return
+                ordered_quad = self.order_points(np.array(quad, dtype=np.float32))
+                candidate_info: Dict[str, Any] = {
+                    "quad": ordered_quad,
+                    "score": float(score),
+                }
+                for candidate in candidates or []:
+                    candidate_quad = candidate.get("quad")
+                    if candidate_quad is None:
+                        continue
+                    if np.allclose(
+                        self.order_points(np.array(candidate_quad, dtype=np.float32)),
+                        ordered_quad,
+                        atol=1.5,
+                    ):
+                        candidate_info = candidate
+                        break
+                if not self._candidate_passes_stage_filters(stage, candidate_info):
+                    return
 
                 entry = {
                     "stage": stage,
-                    "quad": np.array(quad, dtype=np.float32),
+                    "quad": ordered_quad,
                     "score": float(score),
                     "stage_rank": self._stage_rank(stage),
                     "candidates": candidates or [{"quad": quad, "score": float(score)}],
@@ -1461,6 +1547,23 @@ class ImageProcessor:
                             final_overlay,
                         )
 
+                    stage_candidate_meta: List[Dict[str, Any]] = []
+                    for sc in stage_candidates or []:
+                        stage_obj = sc.get("stage")
+                        if isinstance(stage_obj, DetectionStage):
+                            stage_name: Optional[str] = stage_obj.value
+                        elif stage_obj is None:
+                            stage_name = None
+                        else:
+                            stage_name = str(stage_obj)
+                        stage_candidate_meta.append(
+                            {
+                                "stage": stage_name,
+                                "score": float(sc.get("score", 0.0)),
+                                "stage_rank": int(sc.get("stage_rank", 9)),
+                            }
+                        )
+
                     meta = {
                         "image": os.path.basename(image_path),
                         "debug_tag": debug_tag or "",
@@ -1474,18 +1577,7 @@ class ImageProcessor:
                             {"score": float(c.get("score", 0.0))}
                             for c in (best_candidates or [])
                         ],
-                        "stage_candidates": [
-                            {
-                                "stage": (
-                                    str(sc.get("stage").value)
-                                    if sc.get("stage") is not None
-                                    else None
-                                ),
-                                "score": float(sc.get("score", 0.0)),
-                                "stage_rank": int(sc.get("stage_rank", 9)),
-                            }
-                            for sc in (stage_candidates or [])
-                        ],
+                        "stage_candidates": stage_candidate_meta,
                         "algo": {
                             "canny_min": int(self.algo.canny_min),
                             "canny_max": int(self.algo.canny_max),

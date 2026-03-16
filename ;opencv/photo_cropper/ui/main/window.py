@@ -67,6 +67,10 @@ class MainWindow(QMainWindow):
             preview_settings_snapshot=settings.to_dict(),
         )
         refs = WindowRefs()
+        preview_timer = QTimer(self)
+        preview_timer.setSingleShot(True)
+        input_path_scan_timer = QTimer(self)
+        input_path_scan_timer.setSingleShot(True)
         services = WindowServices(
             host_window=self,
             settings_manager=settings_manager,
@@ -86,11 +90,9 @@ class MainWindow(QMainWindow):
             ),
             scheduler=Scheduler(parent=self),
             batch_session=BatchSessionService(),
+            preview_timer=preview_timer,
+            input_path_scan_timer=input_path_scan_timer,
         )
-        services.preview_timer = QTimer(self)
-        services.preview_timer.setSingleShot(True)
-        services.input_path_scan_timer = QTimer(self)
-        services.input_path_scan_timer.setSingleShot(True)
 
         self.state = state
         self.refs = refs
@@ -259,17 +261,17 @@ class MainWindow(QMainWindow):
                 (screen.height() - self.height()) // 2,
             )
 
-    def dragEnterEvent(self, event: Optional[QDragEnterEvent]) -> None:
-        self.input_actions.drag_enter_event(event)
+    def dragEnterEvent(self, a0: Optional[QDragEnterEvent]) -> None:
+        self.input_actions.drag_enter_event(a0)
 
-    def dropEvent(self, event: Optional[QDropEvent]) -> None:
-        self.input_actions.drop_event(event)
+    def dropEvent(self, a0: Optional[QDropEvent]) -> None:
+        self.input_actions.drop_event(a0)
 
-    def keyPressEvent(self, event: Optional[QKeyEvent]) -> None:
-        if self.input_actions.handle_key_press(event):
+    def keyPressEvent(self, a0: Optional[QKeyEvent]) -> None:
+        if self.input_actions.handle_key_press(a0):
             return
-        if event is not None:
-            super().keyPressEvent(event)
+        if a0 is not None:
+            super().keyPressEvent(a0)
 
-    def closeEvent(self, event: Optional[QCloseEvent]) -> None:
-        self.lifecycle_actions.close_event(event)
+    def closeEvent(self, a0: Optional[QCloseEvent]) -> None:
+        self.lifecycle_actions.close_event(a0)

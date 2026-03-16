@@ -113,7 +113,7 @@ class MultiPhotoDetector:
 
     @staticmethod
     def _quad_dimensions(quad: np.ndarray) -> Tuple[float, float]:
-        q = quad.reshape((4, 2)).astype(np.float32)
+        q = MultiPhotoDetector._order_points(quad.reshape((4, 2)).astype(np.float32))
         w_top = float(np.linalg.norm(q[1] - q[0]))
         w_bottom = float(np.linalg.norm(q[2] - q[3]))
         h_left = float(np.linalg.norm(q[3] - q[0]))
@@ -133,16 +133,6 @@ class MultiPhotoDetector:
         gap_y = max(0.0, max(ay, by) - min(ay2, by2))
         return float(math.hypot(gap_x, gap_y))
 
-    @staticmethod
-    def _bbox_center_distance(
-        a: Tuple[int, int, int, int], b: Tuple[int, int, int, int]
-    ) -> float:
-        ax, ay, aw, ah = a
-        bx, by, bw, bh = b
-        acx, acy = ax + aw * 0.5, ay + ah * 0.5
-        bcx, bcy = bx + bw * 0.5, by + bh * 0.5
-        return float(math.hypot(acx - bcx, acy - bcy))
-    
     def detect(self, image: np.ndarray) -> MultiPhotoResult:
         """
         Detect multiple photos in the image.

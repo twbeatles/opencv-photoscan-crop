@@ -180,8 +180,16 @@ pyinstaller photo_cropper.spec --clean
 ## 2026-03-04 Consistency Check Notes
 
 - `pyright --project pyrightconfig.json`: 0 errors / 0 warnings
-- QWidget 이벤트 오버라이드 타입 시그니처를 PyQt6 스텁 기준 `Optional[...]`로 정렬
+- QWidget 이벤트 오버라이드 시그니처를 PyQt6 스텁 기준 이벤트 타입 + 파라미터명(`a0`)까지 정렬하고, 필수 window timer service를 non-optional로 승격
 - `photo_cropper.spec` hidden imports에 `watch_mode`, `manual_extract`, `session_service`, `save_io`, `dialog_actions`를 명시
+
+## 2026-03-16 Consistency Check Notes
+
+- 저장소 루트 `pyrightconfig.json`과 `.editorconfig`를 추가해 루트/앱 폴더 워크플로의 타입 검사/UTF-8 규칙을 정렬
+- `python -m photo_cropper.selftest`: `SELFTEST OK`
+- `core/image/processor.py`에 stage-specific candidate filter를 추가해 accurate 모드 no-photo false positive 회귀를 완화
+- `core/multi_photo_detector.py::_quad_dimensions()`는 quad point order를 정규화한 뒤 perspective crop 크기를 계산
+- `photo_cropper.spec` hidden imports에 `ui.main.preview_worker`를 추가했고, 이번 변경으로 새로운 런타임 외부 의존성은 없음
 
 ## 2026-03-05 Integrated Improvement Notes
 

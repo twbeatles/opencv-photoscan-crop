@@ -108,9 +108,9 @@ class WindowServices:
     watch_mode_coordinator: WatchModeCoordinator
     scheduler: Scheduler
     batch_session: BatchSessionService
+    preview_timer: QTimer
+    input_path_scan_timer: QTimer
     preview_worker_host: Optional[Any] = None
-    preview_timer: Optional[QTimer] = None
-    input_path_scan_timer: Optional[QTimer] = None
     auto_save_timer: Optional[QTimer] = None
 
 

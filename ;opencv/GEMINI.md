@@ -292,9 +292,17 @@ pyinstaller photo_cropper.spec --clean
 ## 2026-03-04 Consistency Check Notes
 
 - Verified `pyright --project pyrightconfig.json` with 0 errors / 0 warnings.
-- Updated `QWidget` override event signatures (`dragEnterEvent`, `dropEvent`, `keyPressEvent`) to match PyQt6 stub types via `Optional[...]`.
+- Updated `QWidget` override event signatures to match PyQt6 stub event types and parameter names (`a0`), and promoted required window timers to non-optional services.
 - Added explicit PyInstaller hidden imports for split modules:
   `watch_mode`, `manual_extract`, `session_service`, `save_io`, `dialog_actions`.
+
+## 2026-03-16 Consistency Check Notes
+
+- Added repository-root `pyrightconfig.json` and `.editorconfig` so root/app workflows now share the same type-check and UTF-8 text rules.
+- Verified `python -m photo_cropper.selftest` with `SELFTEST OK`.
+- Added stage-specific candidate filters in `core/image/processor.py` to reduce no-photo false positives in `accurate` mode.
+- Normalized quad point ordering in `core/multi_photo_detector.py::_quad_dimensions()` before perspective-crop dimension calculation.
+- Added `ui.main.preview_worker` to `photo_cropper.spec` hidden imports; no extra runtime third-party dependencies were introduced.
 
 ## 2026-03-09 UI/MainWindow Consistency Notes
 

@@ -219,6 +219,8 @@ python -m photo_cropper.cli --help
 ## 🧪 안정성 체크 포인트
 
 - **문법 검증**: `python -m compileall -q photo_cropper`
+- **타입 검사**: `pyright --project pyrightconfig.json`
+- **전체 selftest**: `python -m photo_cropper.selftest`
 - **CLI 스모크 테스트**: `python -m photo_cropper.cli -i ./scans -o ./cropped --multi-photo --multi-photo-separate-folders --preserve-metadata --no-perspective-correct --skip-processed`
 - **워치 모드 검증**: GUI에서 Watch Mode 시작 후 신규 파일 투입 시 배치와 동일한 출력(워터마크/리사이즈/분류 폴더) 확인
 - **스케줄러 검증**: `watch_mode.scheduler_enabled=true` 상태에서 예약 시각 도달 시 자동 배치 시작/중복 실행 skip 확인
@@ -290,7 +292,7 @@ pyinstaller photo_cropper.spec --clean
 |------|------|
 | 단일 파일 | onefile 모드로 단일 .exe 생성 |
 | 불필요 모듈 제외 | matplotlib, scipy, pandas, tkinter 등 |
-| OpenCV 경량화 | 미사용 모듈 제거 (dnn, ml, video 등) |
+| OpenCV/Qt 경량화 | `cv2.gapi` 제외 및 불필요한 Qt/OpenCV 런타임 바이너리 선별 제외 |
 | NumPy 경량화 | 테스트/문서 파일 제거 |
 | UPX 압축 | 실행 파일 압축 (~40% 크기 감소) |
 
@@ -409,9 +411,17 @@ MIT License
 - `ui/main/models.py`에 window runtime state / refs / services / signals 표준 타입을 추가했습니다.
 - 기존 `ui.main.batch_actions` 등 평면 경로는 호환용 re-export shim으로 유지됩니다.
 
+## 2026-03-16 정합성 점검 메모
+
+- 저장소 루트 `../pyrightconfig.json`과 루트 `.editorconfig`를 추가해 루트/앱 폴더 어디서 실행해도 동일한 타입 검사와 UTF-8 규칙을 사용하도록 정렬했습니다.
+- `pyright --project pyrightconfig.json` 및 저장소 루트 기준 `pyright --project .\pyrightconfig.json` 모두 0 errors / 0 warnings를 확인했습니다.
+- `python -m photo_cropper.selftest` 기준 `SELFTEST OK`를 확인했습니다.
+- `accurate` 모드의 no-photo false positive 회귀를 줄이기 위해 stage-specific candidate filter를 추가했고, 멀티포토 perspective crop 크기 계산은 quad point order를 정규화하도록 수정했습니다.
+- `photo_cropper.spec` hidden import에 `ui.main.preview_worker`를 추가했고, 이번 정합성 수정으로 추가된 런타임 외부 의존성은 없습니다.
+
 ## 2026-03-04 정합성 점검 메모
 
 - `pyright --project pyrightconfig.json` 기준 0 errors / 0 warnings를 확인했습니다.
-- `QWidget` 오버라이드 이벤트 시그니처(`dragEnterEvent`, `dropEvent`, `keyPressEvent`)를 PyQt6 스텁과 일치하도록 `Optional[...]`로 정렬했습니다.
+- `QWidget` 오버라이드 이벤트 시그니처는 PyQt6 스텁 기준으로 이벤트 타입과 파라미터명(`a0`)을 정렬했고, window timer service는 non-optional로 승격해 Pylance 경고를 제거했습니다.
 - PyInstaller spec hidden import에 `watch_mode`, `manual_extract`, `session_service`, `save_io`, `dialog_actions`를 명시해 패키징 안정성을 보강했습니다.
 - 2026-03-09 기준 `photo_cropper.spec`는 `ui.main.actions.*`, `ui.main.builders.*`, `ui.main.models`와 호환용 shim 경로를 함께 hidden import에 포함합니다.

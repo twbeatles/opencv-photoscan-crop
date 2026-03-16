@@ -661,8 +661,15 @@ class AutoProcessor(QObject):
         filepath: str,
         output_path: str,
     ) -> WatchProcessResult:
+        callback = self._process_callback
+        if callback is None:
+            return WatchProcessResult(
+                success=False,
+                status="process_exception",
+                message="Process callback is not set",
+            )
         try:
-            callback_result = self._process_callback(filepath, output_path)
+            callback_result = callback(filepath, output_path)
             result = self._parse_callback_result(callback_result)
             if not result.status:
                 result.status = "success" if result.success else "failed"
