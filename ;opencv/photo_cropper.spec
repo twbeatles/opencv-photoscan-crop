@@ -212,7 +212,7 @@ exe = EXE(
     entitlements_file=None,
     
     # Windows specific - icon is optional
-    icon=None,  # Set to 'photo_cropper/resources/icon.ico' if you have an icon file
+    icon='icon.ico',  # Set to 'photo_cropper/resources/icon.ico' if you have an icon file
     version=None,
 )
 
