@@ -496,19 +496,19 @@ class ImagePreviewWidget(QWidget):
             if not self._manual_seed_points:
                 return
             seed_points = self._manual_seed_points
-        for i in range(len(seed_points) - 1):
-            p1 = seed_points[i]
-            p2 = seed_points[i + 1]
-            line = self.original_scene.addLine(
-                float(p1[0]),
+            for i in range(len(seed_points) - 1):
+                p1 = seed_points[i]
+                p2 = seed_points[i + 1]
+                line = self.original_scene.addLine(
+                    float(p1[0]),
                     float(p1[1]),
                     float(p2[0]),
-                float(p2[1]),
-                self._seed_line_pen,
-            )
-            if line is not None:
-                line.setZValue(45)
-                self._contour_lines.append(line)
+                    float(p2[1]),
+                    self._seed_line_pen,
+                )
+                if line is not None:
+                    line.setZValue(45)
+                    self._contour_lines.append(line)
 
             seed_radius = self._handle_radius * 0.7
             for p in seed_points:

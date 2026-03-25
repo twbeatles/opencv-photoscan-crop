@@ -31,6 +31,7 @@ pyright_report.json
 pyright_report*.json
 ;opencv/pyright_report.json
 ;opencv/pyright_report*.json
+;opencv/convert_icon.py
 
 # Runtime processed-index cache (skip_processed v2)
 **/.photocropper/

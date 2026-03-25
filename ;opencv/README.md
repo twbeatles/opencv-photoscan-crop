@@ -45,6 +45,12 @@
 - **멀티포토 partial_success 도입**: 일부 출력만 저장된 경우 `partial_success`로 구분되고, 배치 완료/Watch 토스트/processing log summary에 별도 집계
 - **멀티포토 공통 로더 통일**: 멀티포토 입력도 `ImageProcessor.load_image()`를 사용해 EXIF orientation 정규화 동작을 단일 사진/수동 저장 경로와 일치
 - **배치 재진입 차단**: 실행 중인 batch session은 새 session으로 덮어쓰지 않으며 `start_processing()`/`retry_failed_files()`가 중복 시작을 막음
+- **수동 편집 preview/save crop 일치**: 수동 contour 편집 직후 미리보기와 실제 저장이 동일한 crop 규칙을 공유
+- **재귀 Watch 출력 경로 가드**: 재귀 감시에서는 output 폴더가 input root 내부에 있으면 시작을 차단
+- **Watch 실패 분류 비활성화**: Watch 처리 시 `move_failed_files`는 런타임 snapshot에서 강제로 꺼져 `_failed` 재처리 루프를 방지
+- **Watch overwrite 재처리**: 같은 경로를 덮어쓴 경우에도 size/mtime signature가 바뀌면 `fileChanged` 경로로 다시 처리
+- **processed index v2 partial 정책**: 인덱스 레코드에 `status=success|partial`를 저장하고, `partial`은 경고만 남긴 뒤 재처리
+- **Retry Failed 경로 정규화**: 일반 배치와 동일하게 빈 output path를 `<input>/output_cropped`로 보정 후 검증
 
 ### 🔥 v8.5 핵심 기능
 - **다중 사진 자동 감지**: 한 스캔에서 여러 사진을 자동으로 분리
@@ -191,6 +197,8 @@ python -m photo_cropper.cli --help
 - **폴더 감시**: 새 파일 자동 처리
 - **스케줄러**: 예약 시간에 자동 배치 처리
 
+> 참고: 재귀 Watch Mode에서는 출력 폴더를 입력 폴더 내부에 둘 수 없습니다. 기본 출력값(`<input>/output_cropped`)을 그대로 쓰려면 재귀 감시를 끄거나, 출력 폴더를 입력 루트 밖으로 지정하세요.
+
 ### 알고리즘 설정
 - **Canny 임계값**: 에지 감지 민감도 조절 (0-255)
 - **CLAHE**: 저대비 이미지 향상
@@ -213,6 +221,7 @@ python -m photo_cropper.cli --help
 
 > 참고: `skip processed`는 출력 폴더 로컬 인덱스(`.photocropper/processed_index.json`)를 우선 사용합니다.
 > 인덱스 키는 `source_path + size + mtime_ns + pipeline_signature`이며, 멀티포토는 `outputs[]`로 다중 결과를 기록합니다.
+> `partial_success`는 인덱스에 `status=partial`로 남기되, 다음 실행에서 full skip하지 않고 경고 후 재처리합니다.
 > 인덱스가 비활성/오류일 때만 파일명 기반 fallback 탐지와 제한 경고가 적용됩니다.
 > 자동 분류 하위 폴더(기본 `인물/풍경/문서/흑백/기타`, 사용자 지정 가능)와 멀티포토 하위 폴더(`*_photos`)도 탐지 대상에 포함됩니다.
 
@@ -223,6 +232,9 @@ python -m photo_cropper.cli --help
 - **전체 selftest**: `python -m photo_cropper.selftest`
 - **CLI 스모크 테스트**: `python -m photo_cropper.cli -i ./scans -o ./cropped --multi-photo --multi-photo-separate-folders --preserve-metadata --no-perspective-correct --skip-processed`
 - **워치 모드 검증**: GUI에서 Watch Mode 시작 후 신규 파일 투입 시 배치와 동일한 출력(워터마크/리사이즈/분류 폴더) 확인
+- **재귀 Watch 안전성 검증**: recursive watch + output inside input 조합에서 시작이 차단되는지 확인
+- **Watch overwrite 검증**: 같은 경로 이미지를 덮어쓴 뒤 size/mtime이 바뀌면 재큐잉되고, 변동이 없으면 중복 처리되지 않는지 확인
+- **수동 preview/save parity 검증**: `advanced.perspective_correct=false`에서 수동 편집 직후 preview와 실제 저장 결과 shape이 일치하는지 확인
 - **스케줄러 검증**: `watch_mode.scheduler_enabled=true` 상태에서 예약 시각 도달 시 자동 배치 시작/중복 실행 skip 확인
 - **유니코드 경로 검증**: 한글 경로의 워터마크 이미지 파일을 지정해 저장 성공 여부 확인
 - **취소 검증**: 멀티스레드 배치 실행 중 중단 요청 시 통계/상태 정합성 확인 및 CLI 종료코드 `130` 확인
@@ -418,6 +430,16 @@ MIT License
 - `python -m photo_cropper.selftest` 기준 `SELFTEST OK`를 확인했습니다.
 - `accurate` 모드의 no-photo false positive 회귀를 줄이기 위해 stage-specific candidate filter를 추가했고, 멀티포토 perspective crop 크기 계산은 quad point order를 정규화하도록 수정했습니다.
 - `photo_cropper.spec` hidden import에 `ui.main.preview_worker`를 추가했고, 이번 정합성 수정으로 추가된 런타임 외부 의존성은 없습니다.
+
+## 2026-03-25 안정화 구현 메모
+
+- 수동 contour 편집 preview는 `core.manual_extract.crop_manual_contour()`를 공유하도록 정리되어, `perspective_correct=false`일 때도 실제 저장과 동일한 axis-aligned crop을 보여줍니다.
+- `ui/widgets/preview_widget.py`의 contour redraw는 seed(1~3점)와 정상 contour(4점)를 분리해 `UnboundLocalError`와 seed 가이드 일부 미표시 문제를 제거했습니다.
+- 재귀 Watch Mode는 output path가 input root 내부면 시작을 차단하고, 직접 실행 경로에서도 watch/batch/manual 상호 배제를 강제합니다.
+- Watch 처리 시 settings snapshot에서 `move_failed_files=False`를 강제해 `_failed` 재처리 루프를 막고, `FolderWatcher.fileChanged`는 size/mtime signature가 바뀐 경우에만 overwrite 재처리를 큐잉합니다.
+- processed index는 v2로 올라가며 `status=success|partial`를 저장합니다. legacy 레코드는 기본 `success`로 읽고, `partial` 레코드는 skip 대신 경고 후 재처리합니다.
+- `retry_failed_files()`는 일반 배치 시작과 동일하게 빈 output path를 `<input>/output_cropped`로 보정하고 출력 디렉터리 검증 후 진행합니다.
+- 검증: `python -m compileall -q photo_cropper`, `python -m photo_cropper.selftest`
 
 ## 2026-03-04 정합성 점검 메모
 

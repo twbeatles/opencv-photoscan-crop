@@ -14,9 +14,11 @@ from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 logger = logging.getLogger(__name__)
 
-INDEX_VERSION = 1
+INDEX_VERSION = 2
 INDEX_DIRNAME = ".photocropper"
 INDEX_FILENAME = "processed_index.json"
+RECORD_STATUS_SUCCESS = "success"
+RECORD_STATUS_PARTIAL = "partial"
 
 
 def _now_iso_utc() -> str:
@@ -52,6 +54,13 @@ def _unique_paths(paths: Iterable[str]) -> List[str]:
         seen.add(normalized)
         result.append(normalized)
     return result
+
+
+def _normalize_record_status(value: Any) -> str:
+    status = str(value or "").strip().lower()
+    if status == RECORD_STATUS_PARTIAL:
+        return RECORD_STATUS_PARTIAL
+    return RECORD_STATUS_SUCCESS
 
 
 def build_pipeline_signature(settings_obj: Any) -> str:
@@ -140,6 +149,7 @@ class ProcessedIndexStore:
             "mtime_ns": mtime_ns,
             "outputs": outputs,
             "pipeline_signature": pipeline_signature,
+            "status": _normalize_record_status(raw.get("status")),
         }
 
     @staticmethod
@@ -222,26 +232,27 @@ class ProcessedIndexStore:
         size: int,
         mtime_ns: int,
         pipeline_signature: str,
-    ) -> Tuple[Optional[List[str]], bool]:
-        """Return matched outputs and whether index is usable."""
+    ) -> Tuple[Optional[List[str]], bool, str]:
+        """Return matched outputs, whether index is usable, and record status."""
         with self._lock:
             self._ensure_loaded()
             if not self._usable:
-                return None, False
+                return None, False, ""
 
             key = (_abs_norm(source_path), int(size), int(mtime_ns), str(pipeline_signature))
             record = self._records.get(key)
             if record is None:
-                return None, True
+                return None, True, ""
 
             outputs = [p for p in list(record.get("outputs") or []) if os.path.exists(p)]
+            status = _normalize_record_status(record.get("status"))
             if outputs:
-                return outputs, True
+                return outputs, True, status
 
             # Stale record without surviving outputs: remove it.
             self._records.pop(key, None)
             self._save_locked()
-            return None, True
+            return None, True, ""
 
     def upsert_record(
         self,
@@ -250,6 +261,7 @@ class ProcessedIndexStore:
         mtime_ns: int,
         outputs: Iterable[str],
         pipeline_signature: str,
+        status: str = RECORD_STATUS_SUCCESS,
     ) -> bool:
         with self._lock:
             self._ensure_loaded()
@@ -266,6 +278,7 @@ class ProcessedIndexStore:
                 "mtime_ns": int(mtime_ns),
                 "outputs": normalized_outputs,
                 "pipeline_signature": str(pipeline_signature),
+                "status": _normalize_record_status(status),
             }
             self._records[self._record_key(record)] = record
             return self._save_locked()

@@ -15,10 +15,10 @@ from typing import Any, Callable, Optional, Tuple
 
 import numpy as np
 
-from ..advanced import AdvancedImageProcessor
 from ..batch import BatchProcessor, FileResult, ProcessStatus
 from ..image import ImageProcessor
 from ..settings_model import AppSettings
+from .contour_utils import axis_aligned_crop, crop_manual_contour
 
 
 ContourDenormalizeFn = Callable[[Any, Any], Optional[np.ndarray]]
@@ -54,9 +54,6 @@ class ManualExtractProcessor:
             settings.performance,
             debug_settings=settings.debug,
         )
-        self._perspective_processor = AdvancedImageProcessor(
-            use_gpu=settings.performance.use_gpu
-        )
         self._batch_processor = BatchProcessor(settings)
         self._skip_processed_notice_shown = False
 
@@ -64,24 +61,7 @@ class ManualExtractProcessor:
         self, image: np.ndarray, contour_points: np.ndarray
     ) -> Optional[np.ndarray]:
         """Crop by axis-aligned bounding box of contour points."""
-        pts = np.array(contour_points, dtype=np.float32).reshape((-1, 2))
-        if len(pts) != 4:
-            return None
-
-        x_min = int(np.floor(float(np.min(pts[:, 0]))))
-        y_min = int(np.floor(float(np.min(pts[:, 1]))))
-        x_max = int(np.ceil(float(np.max(pts[:, 0]))))
-        y_max = int(np.ceil(float(np.max(pts[:, 1]))))
-
-        img_h, img_w = image.shape[:2]
-        x_min = max(0, min(x_min, max(0, img_w - 1)))
-        y_min = max(0, min(y_min, max(0, img_h - 1)))
-        x_max = max(x_min + 1, min(x_max, img_w))
-        y_max = max(y_min + 1, min(y_max, img_h))
-
-        if x_max <= x_min or y_max <= y_min:
-            return None
-        return image[y_min:y_max, x_min:x_max].copy()
+        return axis_aligned_crop(image, contour_points)
 
     def _check_skip_processed(
         self, path: str, started_at: float
@@ -90,11 +70,13 @@ class ManualExtractProcessor:
         if not self.settings.filter.skip_processed:
             return None, ""
 
-        index_outputs, index_usable = self._batch_processor.lookup_processed_outputs_from_index(
+        index_outputs, index_usable, index_status = self._batch_processor.lookup_processed_outputs_from_index(
             path,
             self.output_path,
         )
         if index_outputs:
+            if index_status == "partial":
+                return None, "부분 저장 이력이 있어 재처리를 계속 진행합니다."
             filename = os.path.basename(path)
             skip_result = FileResult(
                 filename=filename,
@@ -175,18 +157,13 @@ class ManualExtractProcessor:
             if contour_valid:
                 contour_orig = self._denormalize_contour(contour_norm, image.shape)
                 if contour_orig is not None:
-                    if self.settings.advanced.perspective_correct:
-                        corr = self._perspective_processor.correct_perspective(
-                            image,
-                            contour_orig.astype(np.float32),
-                            auto_detect=False,
-                        )
-                        if corr.success and corr.image is not None:
-                            cropped = corr.image
-                            used_manual = True
-                    else:
-                        cropped = self._axis_aligned_crop(image, contour_orig)
-                        used_manual = cropped is not None
+                    cropped = crop_manual_contour(
+                        image,
+                        contour_orig,
+                        perspective_correct=self.settings.advanced.perspective_correct,
+                        use_gpu=self.settings.performance.use_gpu,
+                    )
+                    used_manual = cropped is not None
 
             if cropped is not None and used_manual:
                 # Keep manual path behavior equivalent to auto path.

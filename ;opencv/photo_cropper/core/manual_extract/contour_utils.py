@@ -81,6 +81,72 @@ def denormalize_contour_points(
         return None
 
 
+def axis_aligned_crop(
+    image: np.ndarray,
+    contour_points: Any,
+) -> Optional[np.ndarray]:
+    """Crop an image using the axis-aligned bounding box of a 4-point contour."""
+    if image is None or contour_points is None:
+        return None
+    try:
+        pts = np.array(contour_points, dtype=np.float32).reshape((-1, 2))
+    except Exception:
+        return None
+    if len(pts) != 4:
+        return None
+
+    x_min = int(np.floor(float(np.min(pts[:, 0]))))
+    y_min = int(np.floor(float(np.min(pts[:, 1]))))
+    x_max = int(np.ceil(float(np.max(pts[:, 0]))))
+    y_max = int(np.ceil(float(np.max(pts[:, 1]))))
+
+    img_h, img_w = image.shape[:2]
+    x_min = max(0, min(x_min, max(0, img_w - 1)))
+    y_min = max(0, min(y_min, max(0, img_h - 1)))
+    x_max = max(x_min + 1, min(x_max, img_w))
+    y_max = max(y_min + 1, min(y_max, img_h))
+
+    if x_max <= x_min or y_max <= y_min:
+        return None
+    return image[y_min:y_max, x_min:x_max].copy()
+
+
+def crop_manual_contour(
+    image: np.ndarray,
+    contour_points: Any,
+    *,
+    perspective_correct: bool,
+    use_gpu: bool = False,
+) -> Optional[np.ndarray]:
+    """
+    Crop an image from a manually edited contour using the same crop-mode
+    decision as the manual-save path.
+    """
+    if image is None or contour_points is None:
+        return None
+    try:
+        pts = np.array(contour_points, dtype=np.float32).reshape((-1, 2))
+    except Exception:
+        return None
+    if len(pts) != 4:
+        return None
+
+    if not perspective_correct:
+        return axis_aligned_crop(image, pts)
+
+    from ..advanced import AdvancedImageProcessor
+
+    processor = AdvancedImageProcessor(use_gpu=use_gpu)
+    result = processor.correct_perspective(
+        image,
+        pts.astype(np.float32),
+        auto_detect=False,
+    )
+    if not result.success or result.image is None:
+        return None
+    return result.image
+
+
 def is_boundary_detection_failure(message: str) -> bool:
     """Return True when message indicates boundary detection failure."""
     if not message:

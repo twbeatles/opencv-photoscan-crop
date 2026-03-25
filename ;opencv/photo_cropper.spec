@@ -292,4 +292,11 @@ Tips for further size reduction:
       `.editorconfig`) do not introduce any new frozen-build dependencies.
     - Recent false-positive filtering and multi-photo quad-dimension fixes are
       code-only changes and do not require extra packaging hooks.
+
+2026-03-25 note:
+    - Stabilization changes for manual-preview/save crop parity, recursive
+      watch output guards, processed-index v2 status handling, and watch-mode
+      overwrite/fileChanged handling are code-path-only updates.
+    - No new third-party packages or PyInstaller hidden imports were required
+      after verifying the current module graph against this patch set.
 """

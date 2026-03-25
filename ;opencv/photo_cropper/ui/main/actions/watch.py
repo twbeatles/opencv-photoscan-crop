@@ -103,6 +103,16 @@ class WatchActions:
             return "watch"
         return ""
 
+    def busy_reason_for_watch_start(self) -> str:
+        processor = self.services.batch_session.processor
+        if processor and processor.is_running:
+            return "batch"
+        if self.state.manual_extract_running:
+            return "manual"
+        if self.services.watch_mode_coordinator.is_active:
+            return "watch"
+        return ""
+
     def on_scheduled_batch_trigger(self, _input_dir: str, _output_dir: str) -> bool:
         busy_reason = self.busy_reason_for_scheduled_batch()
         if busy_reason:
@@ -184,6 +194,17 @@ class WatchActions:
             )
 
     def start_watch_mode(self) -> None:
+        busy_reason = self.busy_reason_for_watch_start()
+        if busy_reason:
+            if self.refs.watch_mode_action is not None:
+                self.refs.watch_mode_action.setChecked(False)
+            QMessageBox.warning(
+                self.services.host_window,
+                "경고",
+                f"{busy_reason} 작업이 진행 중입니다. 먼저 중지하거나 완료한 뒤 폴더 감시를 시작하세요.",
+            )
+            return
+
         input_path = self.refs.input_path_edit.text() if self.refs.input_path_edit else ""
         output_path = self.refs.output_path_edit.text() if self.refs.output_path_edit else ""
         watch_settings = getattr(self.state.settings, "watch_mode", None)
@@ -205,6 +226,15 @@ class WatchActions:
                 QMessageBox.warning(self.services.host_window, "경고", "유효한 입력 폴더를 선택하세요.")
             elif start_result.error_code == "invalid_output":
                 ToastManager.error("출력 폴더 준비 실패")
+                if start_result.message and self.refs.status_label is not None:
+                    self.refs.status_label.setText(f"폴더 감시 시작 실패: {start_result.message}")
+            elif start_result.error_code == "unsafe_output":
+                QMessageBox.warning(
+                    self.services.host_window,
+                    "경고",
+                    start_result.message
+                    or "재귀 Watch Mode에서는 출력 폴더를 입력 폴더 내부에 둘 수 없습니다.",
+                )
                 if start_result.message and self.refs.status_label is not None:
                     self.refs.status_label.setText(f"폴더 감시 시작 실패: {start_result.message}")
             else:

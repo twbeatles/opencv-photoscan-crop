@@ -47,6 +47,15 @@ class WatchModeCoordinator(QObject):
         if self._batch_processor is not None:
             self._batch_processor.update_settings(settings)
 
+    @staticmethod
+    def _is_output_inside_input(input_path: str, output_path: str) -> bool:
+        try:
+            input_abs = os.path.normcase(os.path.abspath(input_path))
+            output_abs = os.path.normcase(os.path.abspath(output_path))
+            return os.path.commonpath([input_abs, output_abs]) == input_abs
+        except Exception:
+            return False
+
     def start(
         self,
         input_path: str,
@@ -66,6 +75,18 @@ class WatchModeCoordinator(QObject):
         if not normalized_output:
             normalized_output = os.path.join(normalized_input, "output_cropped")
 
+        recursive = bool(watch_settings and watch_settings.recursive)
+        if recursive and self._is_output_inside_input(normalized_input, normalized_output):
+            return WatchStartResult(
+                success=False,
+                output_path=normalized_output,
+                error_code="unsafe_output",
+                message=(
+                    "재귀 Watch Mode에서는 출력 폴더를 입력 폴더 내부에 둘 수 없습니다: "
+                    f"{normalized_output}"
+                ),
+            )
+
         try:
             os.makedirs(normalized_output, exist_ok=True)
         except Exception as exc:
@@ -79,7 +100,6 @@ class WatchModeCoordinator(QObject):
         self.stop()
         self._ensure_batch_processor()
 
-        recursive = bool(watch_settings and watch_settings.recursive)
         debounce_ms = int(watch_settings.debounce_ms if watch_settings else 500)
         max_wait_seconds = float(
             getattr(watch_settings, "max_wait_seconds", 30.0)
@@ -144,7 +164,9 @@ class WatchModeCoordinator(QObject):
         try:
             processor = self._batch_processor
             assert processor is not None
-            processor.update_settings(self._settings)
+            watch_settings = AppSettings.from_dict(self._settings.to_dict())
+            watch_settings.file_management.move_failed_files = False
+            processor.update_settings(watch_settings)
             result = processor.process_single(input_path, output_path)
             raw_status = ""
             if hasattr(result, "status") and result.status is not None:

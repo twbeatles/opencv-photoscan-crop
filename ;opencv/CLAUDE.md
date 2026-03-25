@@ -118,12 +118,18 @@ UI composition root입니다.
 - 후처리 순서: 얼굴 보정 -> 스마트 보정 -> 리사이즈 -> 분류 라우팅 -> 워터마크
 - Watch/Batch/수동 추출 경로가 동일 규칙을 사용해야 함
 - `skip_processed`는 `.photocropper/processed_index.json` 인덱스 우선, 실패 시 파일명 기반 fallback
+- processed index v2는 레코드별 `status=success|partial`를 저장하며, `partial`은 skip 대신 경고 후 재처리
+- 수동 contour preview도 `core.manual_extract.crop_manual_contour()`를 통해 실제 저장과 동일한 crop 규칙을 사용
 
 ### 성능/안정성
 
 - 대용량 파일 제한: `performance.max_image_size_mb`
 - DNN 얼굴 감지 실패 시 Haar 즉시 폴백
 - 멀티스레드 취소 시 완료 future drain + 미실행 작업 `CANCELLED` 통계 반영
+- 재귀 Watch Mode는 output path가 input root 내부면 시작을 차단
+- Watch 처리 경로는 settings snapshot에서 `move_failed_files=False`를 강제해 `_failed` 루프를 막음
+- `FolderWatcher.fileChanged`는 overwrite된 동일 경로도 size/mtime signature가 바뀐 경우에만 재큐잉
+- UI 직접 실행 경로에서도 watch/batch/manual 상호 배제를 강제
 
 ## 빌드
 
@@ -236,3 +242,13 @@ pyinstaller photo_cropper.spec --clean
 - Multi-photo input loading now reuses `ImageProcessor.load_image()` so EXIF orientation normalization matches single-photo and manual paths.
 - Multi-photo runs can return `ProcessStatus.PARTIAL_SUCCESS`; batch/watch summaries and processing logs expose that status separately.
 - `BatchSessionService.create_processor()` now rejects replacement of a running processor so UI batch actions cannot silently start overlapping sessions.
+
+## 2026-03-25 Stabilization Update
+
+- Manual contour preview now shares `core.manual_extract.crop_manual_contour()` with save, so `perspective_correct=False` yields the same axis-aligned crop in preview and output.
+- `ui/widgets/preview_widget.py` redraw logic now cleanly separates seed points (1-3) from valid contours (4), eliminating the previous `UnboundLocalError` path.
+- `WatchModeCoordinator.start()` now rejects recursive watch when output is inside input, and `WatchActions` / `BatchActions` block direct starts while watch/batch/manual work is already active.
+- Watch-mode processing uses an `AppSettings` snapshot with `file_management.move_failed_files=False`, preventing `_failed` subtree feedback loops without mutating the global settings object.
+- `FolderWatcher.fileChanged` now participates in reprocessing, but only queues when the file's size/mtime signature actually changed.
+- `ProcessedIndexStore` moved to schema v2 with backward-compatible `status` normalization; legacy records default to `success`, partial records do not force full skip.
+- `retry_failed_files()` now reuses the same output-path normalization/validation as regular batch start (`<input>/output_cropped` fallback).

@@ -70,9 +70,14 @@
 - 저장 전 후처리 순서는 단일/멀티포토 모두 얼굴 보정 → 스마트 보정 → 리사이즈 → 분류 폴더 라우팅(워터마크 전) → 워터마크입니다.
 - `performance.max_image_size_mb`는 실제 처리 전에 파일 크기 제한으로 적용됩니다.
 - `skip_processed`는 `.photocropper/processed_index.json` 인덱스를 우선 사용하고, 실패 시 자동 분류 하위 폴더까지 포함해 fallback 탐지합니다.
+- processed index v2는 레코드별 `status=success|partial`를 저장하며, `partial`은 경고 후 재처리하고 full skip하지 않습니다.
 - 얼굴 감지 `use_dnn=True`는 모델 자동 다운로드/체크섬 검증 후 로드하며, 실패 시 Haar로 즉시 폴백합니다.
 - 멀티스레드 취소는 완료 future를 drain하고 남은 미실행 항목을 `CANCELLED`로 집계해 통계 정합성을 유지합니다.
 - 스케줄러는 `watch_mode.scheduler_*` 설정과 런타임 연결되어 앱 실행 중 자동 배치를 트리거합니다.
+- 재귀 Watch Mode는 output path가 input root 내부면 시작을 거부합니다.
+- Watch 처리 경로는 settings snapshot에서 `move_failed_files=False`를 강제해 `_failed` 피드백 루프를 막습니다.
+- `FolderWatcher.fileChanged`는 overwrite된 동일 경로도 size/mtime signature가 바뀌었을 때만 재큐잉합니다.
+- 수동 contour preview는 `core.manual_extract.crop_manual_contour()`를 사용해 save와 같은 crop 규칙을 공유합니다.
 
 ### UI Components
 
@@ -303,6 +308,16 @@ pyinstaller photo_cropper.spec --clean
 - Added stage-specific candidate filters in `core/image/processor.py` to reduce no-photo false positives in `accurate` mode.
 - Normalized quad point ordering in `core/multi_photo_detector.py::_quad_dimensions()` before perspective-crop dimension calculation.
 - Added `ui.main.preview_worker` to `photo_cropper.spec` hidden imports; no extra runtime third-party dependencies were introduced.
+
+## 2026-03-25 Stabilization Notes
+
+- Manual contour preview and save now share `core.manual_extract.crop_manual_contour()`, so `perspective_correct=False` produces the same axis-aligned crop in both paths.
+- `ui/widgets/preview_widget.py` redraw logic now has separate seed-point and 4-point contour branches, removing the previous `UnboundLocalError` and partial seed-guide rendering bug.
+- `WatchModeCoordinator.start()` rejects recursive watch when output is inside input, and direct UI starts now enforce watch/batch/manual mutual exclusion.
+- Watch-mode processing snapshots settings and forces `file_management.move_failed_files=False`; global settings remain unchanged.
+- `FolderWatcher.fileChanged` is now part of the reprocessing path, but duplicate events are suppressed unless the file signature changed.
+- `ProcessedIndexStore` moved to schema v2 with backward-compatible `status` handling for legacy records and partial-result records.
+- `retry_failed_files()` now normalizes an empty output path to `<input>/output_cropped` before validation, matching normal batch start.
 
 ## 2026-03-09 UI/MainWindow Consistency Notes
 

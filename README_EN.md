@@ -47,6 +47,12 @@ A Python application that automatically detects and accurately crops scanned pho
 - **Multi-photo `partial_success` status**: incomplete multi-photo saves are surfaced as `partial_success` in batch summaries, Watch toasts, and processing log summaries
 - **Shared multi-photo loader**: multi-photo input loading now reuses `ImageProcessor.load_image()` so EXIF orientation normalization matches single-photo and manual paths
 - **Batch re-entry guard**: running batch sessions are no longer replaced, and `start_processing()` / `retry_failed_files()` refuse overlapping starts
+- **Manual preview/save crop parity**: manual contour preview now shares the same crop rule as final save
+- **Recursive Watch output guard**: recursive watch refuses to start when the output directory is inside the input root
+- **Watch failed-file routing disabled**: Watch processing forces `move_failed_files=False` on a runtime snapshot to avoid `_failed` feedback loops
+- **Watch overwrite reprocessing**: overwriting the same file path now re-queues through `fileChanged` only when the size/mtime signature actually changed
+- **Processed index v2 partial policy**: index records now store `status=success|partial`, and `partial` warns then reprocesses instead of full skipping
+- **Retry Failed path normalization**: empty output paths are normalized to `<input>/output_cropped` with the same validation used by normal batch start
 
 ### 🌐 Multi-Language Support
 - Automatic system locale detection
@@ -191,6 +197,8 @@ python -m photo_cropper.cli --help
 - **Folder Watch**: Auto-process new files
 - **Scheduler**: Scheduled batch processing
 
+> Note: in recursive Watch Mode, the output directory must live outside the input root. If you want to keep the default `<input>/output_cropped`, disable recursive watch or choose an external output directory.
+
 ### Algorithm Settings
 - **Canny Threshold**: Edge detection sensitivity (0-255)
 - **CLAHE**: Low contrast image enhancement
@@ -213,6 +221,7 @@ python -m photo_cropper.cli --help
 
 > Note: `skip processed` now uses a local processed index first (`.photocropper/processed_index.json`).
 > Index key: `source_path + size + mtime_ns + pipeline_signature`; multi-photo outputs are stored in `outputs[]`.
+> `partial_success` is persisted as `status=partial`, but later runs do not fully skip it; they warn and reprocess.
 > Filename-based probing is used as fallback only when the index is unavailable.
 > Classification subfolders (default Korean names, user-configurable) and multi-photo subfolders (`*_photos`) are both included in fallback probing.
 
@@ -223,6 +232,9 @@ python -m photo_cropper.cli --help
 - **Full selftest**: `cd ";opencv" && python -m photo_cropper.selftest`
 - **CLI smoke test**: `cd ";opencv" && python -m photo_cropper.cli -i ./scans -o ./cropped --multi-photo --multi-photo-separate-folders --preserve-metadata --no-perspective-correct --skip-processed`
 - **Watch mode parity**: verify new files in Watch Mode go through same resize/watermark/classification behavior as batch mode
+- **Recursive watch safety**: verify recursive watch refuses to start when output is inside input
+- **Watch overwrite behavior**: overwrite a watched image in place and confirm it re-queues only when size/mtime actually changed
+- **Manual preview/save parity**: with `advanced.perspective_correct=false`, confirm manual preview and saved crop shapes match
 - **Scheduler check**: with `watch_mode.scheduler_enabled=true`, confirm auto-batch starts at scheduled time and overlapping triggers are skipped
 - **Unicode path test**: use a watermark image in a non-ASCII path and verify output succeeds
 - **Cancel semantics**: in multithreaded batch, request stop and verify final stats consistency and CLI exit code `130`
@@ -382,6 +394,16 @@ Please report bugs or feature suggestions in Issues.
 - Verified `cd ";opencv" && python -m photo_cropper.selftest` with `SELFTEST OK`.
 - Reduced no-photo false-positive regressions in `accurate` mode with stage-specific candidate filters, and normalized quad point ordering for multi-photo perspective-crop dimension calculations.
 - Added `ui.main.preview_worker` to `photo_cropper.spec` hidden imports; no new runtime third-party dependencies were introduced by this consistency pass.
+
+## 2026-03-25 Stabilization Notes
+
+- Manual contour preview now goes through `core.manual_extract.crop_manual_contour()`, so `perspective_correct=false` shows the same axis-aligned crop that save uses.
+- `ui/widgets/preview_widget.py` now renders seed input (1-3 points) separately from a valid 4-point contour, removing the `UnboundLocalError` path and partial guide-line rendering bug.
+- Recursive Watch Mode now rejects output paths inside the input root, and direct UI starts now enforce watch/batch/manual mutual exclusion.
+- Watch processing uses a settings snapshot with `move_failed_files=False`, preventing `_failed` reprocessing loops, while `FolderWatcher.fileChanged` only re-queues overwrite events when the file signature actually changed.
+- Processed-index schema is now v2 with `status=success|partial`; legacy records default to `success`, and `partial` records warn but still reprocess.
+- `retry_failed_files()` now shares the same empty-output normalization and output-directory validation path as regular batch start.
+- Verification: `cd ";opencv" && python -m compileall -q photo_cropper`, `cd ";opencv" && python -m photo_cropper.selftest`
 
 ## 2026-03-04 Consistency Check Notes
 

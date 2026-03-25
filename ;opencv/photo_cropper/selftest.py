@@ -13,6 +13,32 @@ from __future__ import annotations
 import sys
 
 
+class _SignalRecorder:
+    def __init__(self) -> None:
+        self.calls = []
+
+    def emit(self, *args, **kwargs) -> None:
+        self.calls.append((args, kwargs))
+
+
+def _ensure_qt_app(context: str):
+    import os
+
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    try:
+        from PyQt6.QtWidgets import QApplication
+    except Exception as e:
+        print(f"WARN: PyQt6 unavailable for {context}: {e}")
+        return None, False
+
+    app = QApplication.instance()
+    owned_app = False
+    if app is None:
+        app = QApplication([])
+        owned_app = True
+    return app, owned_app
+
+
 def _test_crop_editor_import_smoke() -> None:
     try:
         from .ui.widgets.crop_editor_widget import CropEditorWidget
@@ -155,6 +181,81 @@ def _test_watch_mode_coordinator_invalid_input() -> None:
     coordinator.deleteLater()
 
 
+def _test_watch_mode_coordinator_recursive_output_guard() -> None:
+    import os
+    import tempfile
+
+    from .core.settings_model import AppSettings
+    from .core.watch_mode import WatchModeCoordinator
+
+    settings = AppSettings()
+    settings.watch_mode.recursive = True
+    coordinator = WatchModeCoordinator(settings=settings)
+
+    with tempfile.TemporaryDirectory(prefix="photocropper_watch_guard_") as td:
+        input_dir = os.path.join(td, "input")
+        output_dir = os.path.join(input_dir, "output_cropped")
+        os.makedirs(output_dir, exist_ok=True)
+
+        result = coordinator.start(
+            input_path=input_dir,
+            output_path=output_dir,
+            watch_settings=settings.watch_mode,
+        )
+
+        assert result.success is False
+        assert result.error_code == "unsafe_output"
+        assert os.path.abspath(result.output_path) == os.path.abspath(output_dir)
+
+    coordinator.stop()
+    coordinator.deleteLater()
+
+
+def _test_watch_mode_processing_disables_failed_file_move() -> None:
+    from types import SimpleNamespace
+
+    from .core.batch import ProcessStatus
+    from .core.settings_model import AppSettings
+    from .core.watch_mode import WatchModeCoordinator
+
+    settings = AppSettings()
+    settings.file_management.move_failed_files = True
+    coordinator = WatchModeCoordinator(settings=settings)
+
+    class FakeBatchProcessor:
+        def __init__(self) -> None:
+            self.updated_settings = []
+            self.process_calls = []
+
+        def update_settings(self, updated_settings) -> None:
+            self.updated_settings.append(updated_settings)
+
+        def process_single(self, input_path: str, output_path: str):
+            snapshot = self.updated_settings[-1]
+            self.process_calls.append(
+                (
+                    input_path,
+                    output_path,
+                    snapshot.file_management.move_failed_files,
+                )
+            )
+            return SimpleNamespace(status=ProcessStatus.SUCCESS, message="ok")
+
+    fake_batch = FakeBatchProcessor()
+    coordinator._batch_processor = fake_batch
+
+    result = coordinator._process_watched_file("input.jpg", "output")
+    assert result["success"] is True
+    assert result["status"] == "success"
+    assert settings.file_management.move_failed_files is True
+    assert len(fake_batch.updated_settings) == 1
+    assert fake_batch.updated_settings[0] is not settings
+    assert fake_batch.updated_settings[0].file_management.move_failed_files is False
+    assert fake_batch.process_calls == [("input.jpg", "output", False)]
+
+    coordinator.deleteLater()
+
+
 def _test_batch_session_service_smoke() -> None:
     from .core.batch import BatchSessionService
 
@@ -256,6 +357,90 @@ def _test_contour_utils_roundtrip() -> None:
     scaled = scale_contour_to_preview(preview, crop_result)
     assert scaled is not None
     assert np.allclose(scaled[0], [30.0, 40.0], atol=1.0)
+
+
+def _test_preview_widget_contour_redraw_variants() -> None:
+    import numpy as np
+
+    app, owned_app = _ensure_qt_app("preview widget redraw test")
+    if app is None:
+        return
+
+    from .ui.widgets.preview_widget import ImagePreviewWidget
+
+    widget = ImagePreviewWidget()
+    try:
+        image = np.zeros((90, 140, 3), dtype=np.uint8)
+        contour = np.array(
+            [[12, 10], [126, 14], [121, 78], [14, 74]],
+            dtype=np.float32,
+        )
+
+        widget.set_original_image(image, image.copy(), contour)
+        assert len(widget._contour_lines) == 4
+        assert len(widget._contour_handles) == 4
+
+        widget.set_original_image(image, image.copy(), None)
+        widget._manual_seed_points = [[10.0, 12.0], [70.0, 12.0]]
+        widget._redraw_contour_overlay()
+        assert len(widget._contour_lines) == 1
+        assert len(widget._contour_handles) == 2
+
+        widget._manual_seed_points = [[10.0, 12.0], [70.0, 12.0], [70.0, 48.0]]
+        widget._redraw_contour_overlay()
+        assert len(widget._contour_lines) == 2
+        assert len(widget._contour_handles) == 3
+    finally:
+        widget.deleteLater()
+        if owned_app:
+            app.quit()
+
+
+def _test_manual_preview_shared_crop_mode() -> None:
+    from types import SimpleNamespace
+
+    import numpy as np
+
+    from .core.manual_extract import crop_manual_contour
+    from .core.settings_model import AppSettings
+    from .ui.main.actions.preview import PreviewActions
+
+    image = np.zeros((110, 140, 3), dtype=np.uint8)
+    image[25:86, 35:96] = (15, 120, 240)
+    contour = np.array(
+        [[35, 25], [95, 25], [95, 85], [35, 85]],
+        dtype=np.float32,
+    )
+
+    settings = AppSettings()
+    settings.advanced.perspective_correct = False
+    state = SimpleNamespace(
+        settings=settings,
+        last_original=image,
+    )
+    services = SimpleNamespace(
+        image_processor=SimpleNamespace(_apply_post_processing=lambda img: img)
+    )
+
+    actions = PreviewActions(
+        state=state,
+        refs=SimpleNamespace(),
+        services=services,
+        signals=SimpleNamespace(),
+    )
+
+    preview_image = actions._build_manual_preview_image(contour)
+    saved_image = crop_manual_contour(
+        image,
+        contour,
+        perspective_correct=False,
+        use_gpu=False,
+    )
+
+    assert preview_image is not None
+    assert saved_image is not None
+    assert preview_image.shape == saved_image.shape
+    assert np.array_equal(preview_image, saved_image)
 
 
 def _test_boundary_failed_file_collection_helper() -> None:
@@ -427,6 +612,48 @@ def _test_recursive_watch_new_subdir_initial_scan() -> None:
 
     if owned_app:
         app.quit()
+
+
+def _test_folder_watcher_file_changed_requeues_only_on_signature_change() -> None:
+    import os
+    import tempfile
+
+    app, owned_app = _ensure_qt_app("watch fileChanged signature test")
+    if app is None:
+        return
+
+    from .core.folder_watcher import FolderWatcher
+
+    watcher = FolderWatcher(debounce_ms=10)
+    try:
+        with tempfile.TemporaryDirectory(prefix="photocropper_watch_changed_") as td:
+            sample = os.path.join(td, "sample.jpg")
+            with open(sample, "wb") as f:
+                f.write(b"seed")
+
+            watcher._track_known_file(sample)
+            initial_signature = watcher._file_signatures.get(sample)
+            assert initial_signature is not None
+
+            watcher._on_file_changed(sample)
+            assert sample not in watcher._pending_files
+
+            with open(sample, "ab") as f:
+                f.write(b"-updated")
+
+            watcher._on_file_changed(sample)
+            assert sample in watcher._pending_files
+            changed_signature = watcher._file_signatures.get(sample)
+            assert changed_signature is not None
+            assert changed_signature != initial_signature
+
+            watcher._pending_files.clear()
+            watcher._on_file_changed(sample)
+            assert sample not in watcher._pending_files
+    finally:
+        watcher.deleteLater()
+        if owned_app:
+            app.quit()
 
 
 def _test_watch_max_wait_roundtrip() -> None:
@@ -1591,12 +1818,13 @@ def _test_multi_photo_status_variants_and_partial_index_behavior() -> None:
     from .core.batch import BatchProcessor, ProcessStatus
     from .core.settings_model import AppSettings
 
-    def run_case(save_plan, *, stop_on_check: Optional[int] = None):
+    def run_case(save_plan, *, stop_on_check: Optional[int] = None, repeat: bool = False):
         settings = AppSettings()
         settings.multi_photo.enabled = True
         settings.filter.skip_processed = True
         batch = BatchProcessor(settings)
         state = {"save_calls": 0, "stop_checks": 0}
+        logs = []
 
         class FakeProcessor:
             def load_image(self, _path):
@@ -1642,6 +1870,7 @@ def _test_multi_photo_status_variants_and_partial_index_behavior() -> None:
 
         batch._get_worker_processor = lambda: FakeProcessor()
         batch._get_multi_photo_detector = lambda: FakeDetector()
+        batch.set_callbacks(on_log=lambda message, level: logs.append((message, level)))
 
         if stop_on_check is not None:
             def fake_stop_requested():
@@ -1658,28 +1887,73 @@ def _test_multi_photo_status_variants_and_partial_index_behavior() -> None:
                 f.write(b"scan")
 
             result = batch.process_single(src, out_dir)
-            matched, usable = batch.lookup_processed_outputs_from_index(src, out_dir)
-            return result, matched, usable
+            matched, usable, record_status = batch.lookup_processed_outputs_from_index(
+                src, out_dir
+            )
+            repeat_result = None
+            if repeat:
+                repeat_result = batch.process_single(src, out_dir)
+            return result, matched, usable, record_status, repeat_result, state, logs
 
-    success_result, success_outputs, success_usable = run_case([True, True])
+    (
+        success_result,
+        success_outputs,
+        success_usable,
+        success_status,
+        _success_repeat,
+        _success_state,
+        _success_logs,
+    ) = run_case([True, True])
     assert success_result.status == ProcessStatus.SUCCESS, success_result.message
     assert success_usable is True
+    assert success_status == "success"
     assert success_outputs is not None and len(success_outputs) == 2
 
-    partial_result, partial_outputs, partial_usable = run_case([True, False])
+    (
+        partial_result,
+        partial_outputs,
+        partial_usable,
+        partial_status,
+        partial_retry_result,
+        partial_state,
+        partial_logs,
+    ) = run_case([True, False, True, True], repeat=True)
     assert partial_result.status == ProcessStatus.PARTIAL_SUCCESS, partial_result.message
     assert partial_usable is True
-    assert partial_outputs is None
+    assert partial_status == "partial"
+    assert partial_outputs is not None and len(partial_outputs) == 1
+    assert partial_retry_result is not None
+    assert partial_retry_result.status != ProcessStatus.SKIPPED
+    assert partial_state["save_calls"] >= 4
+    assert any("부분 저장 이력" in message for message, _level in partial_logs)
 
-    failed_result, failed_outputs, _failed_usable = run_case([False, False])
+    (
+        failed_result,
+        failed_outputs,
+        _failed_usable,
+        failed_status,
+        _failed_repeat,
+        _failed_state,
+        _failed_logs,
+    ) = run_case([False, False])
     assert failed_result.status == ProcessStatus.FAILED, failed_result.message
+    assert failed_status == ""
     assert failed_outputs is None
 
-    cancelled_result, cancelled_outputs, _cancelled_usable = run_case(
+    (
+        cancelled_result,
+        cancelled_outputs,
+        _cancelled_usable,
+        cancelled_status,
+        _cancelled_repeat,
+        _cancelled_state,
+        _cancelled_logs,
+    ) = run_case(
         [True, True],
         stop_on_check=2,
     )
     assert cancelled_result.status == ProcessStatus.CANCELLED, cancelled_result.message
+    assert cancelled_status == ""
     assert cancelled_outputs is None
 
 
@@ -1735,8 +2009,11 @@ def _test_processed_index_roundtrip_and_source_change() -> None:
             f.write(b"result-v1")
 
         processor.record_processed_outputs(src, out_dir, [out])
-        matched, usable = processor.lookup_processed_outputs_from_index(src, out_dir)
+        matched, usable, status = processor.lookup_processed_outputs_from_index(
+            src, out_dir
+        )
         assert usable is True
+        assert status == "success"
         assert matched is not None and len(matched) == 1
         assert os.path.normcase(os.path.abspath(matched[0])) == os.path.normcase(
             os.path.abspath(out)
@@ -1746,11 +2023,358 @@ def _test_processed_index_roundtrip_and_source_change() -> None:
         with open(src, "ab") as f:
             f.write(b"-changed")
 
-        matched_changed, usable_changed = processor.lookup_processed_outputs_from_index(
-            src, out_dir
+        matched_changed, usable_changed, status_changed = (
+            processor.lookup_processed_outputs_from_index(src, out_dir)
         )
         assert usable_changed is True
+        assert status_changed == ""
         assert matched_changed is None
+
+
+def _test_processed_index_backward_compat_and_partial_status() -> None:
+    import json
+    import os
+    import tempfile
+
+    from .core.processed_index import (
+        INDEX_DIRNAME,
+        INDEX_FILENAME,
+        RECORD_STATUS_PARTIAL,
+        ProcessedIndexStore,
+        build_pipeline_signature,
+    )
+    from .core.settings_model import AppSettings
+
+    settings = AppSettings()
+    pipeline_signature = build_pipeline_signature(settings)
+
+    with tempfile.TemporaryDirectory(prefix="photocropper_index_compat_") as td:
+        output_dir = os.path.join(td, "out")
+        os.makedirs(output_dir, exist_ok=True)
+        index_root = os.path.join(output_dir, INDEX_DIRNAME)
+        os.makedirs(index_root, exist_ok=True)
+
+        src = os.path.join(td, "source.jpg")
+        out = os.path.join(output_dir, "source_cropped.jpg")
+        with open(src, "wb") as f:
+            f.write(b"source")
+        with open(out, "wb") as f:
+            f.write(b"output")
+
+        st = os.stat(src)
+        legacy_payload = {
+            "version": 1,
+            "updated_at": "2026-03-25T00:00:00Z",
+            "records": [
+                {
+                    "source_path": src,
+                    "size": int(st.st_size),
+                    "mtime_ns": int(getattr(st, "st_mtime_ns", int(st.st_mtime * 1e9))),
+                    "outputs": [out],
+                    "pipeline_signature": pipeline_signature,
+                }
+            ],
+        }
+        with open(
+            os.path.join(index_root, INDEX_FILENAME),
+            "w",
+            encoding="utf-8",
+        ) as f:
+            json.dump(legacy_payload, f, ensure_ascii=False)
+
+        store = ProcessedIndexStore(output_dir)
+        matched, usable, status = store.lookup_outputs(
+            source_path=src,
+            size=int(st.st_size),
+            mtime_ns=int(getattr(st, "st_mtime_ns", int(st.st_mtime * 1e9))),
+            pipeline_signature=pipeline_signature,
+        )
+        assert usable is True
+        assert status == "success"
+        assert matched is not None and len(matched) == 1
+
+        assert store.upsert_record(
+            source_path=src,
+            size=int(st.st_size),
+            mtime_ns=int(getattr(st, "st_mtime_ns", int(st.st_mtime * 1e9))),
+            outputs=[out],
+            pipeline_signature=pipeline_signature,
+            status=RECORD_STATUS_PARTIAL,
+        )
+        partial_outputs, partial_usable, partial_status = store.lookup_outputs(
+            source_path=src,
+            size=int(st.st_size),
+            mtime_ns=int(getattr(st, "st_mtime_ns", int(st.st_mtime * 1e9))),
+            pipeline_signature=pipeline_signature,
+        )
+        assert partial_usable is True
+        assert partial_status == "partial"
+        assert partial_outputs is not None and len(partial_outputs) == 1
+
+
+def _test_watch_actions_block_while_batch_or_manual_running() -> None:
+    from types import SimpleNamespace
+
+    app, owned_app = _ensure_qt_app("watch action guard test")
+    if app is None:
+        return
+
+    from PyQt6.QtGui import QAction
+    from PyQt6.QtWidgets import QLabel, QLineEdit, QMainWindow, QMessageBox
+
+    from .core.settings_model import AppSettings
+    from .ui.main.actions.watch import WatchActions
+
+    class FakeProcessor:
+        def __init__(self) -> None:
+            self.is_running = False
+
+    class FakeBatchSession:
+        def __init__(self) -> None:
+            self.processor = FakeProcessor()
+
+    class FakeWatchCoordinator:
+        def __init__(self) -> None:
+            self.is_active = False
+            self.start_calls = []
+
+        def start(self, **kwargs):
+            self.start_calls.append(kwargs)
+            raise AssertionError("Watch coordinator start should have been blocked")
+
+    host_window = QMainWindow()
+    refs = SimpleNamespace(
+        input_path_edit=QLineEdit(),
+        output_path_edit=QLineEdit(),
+        watch_mode_action=QAction(host_window),
+        status_label=QLabel(),
+    )
+    refs.watch_mode_action.setCheckable(True)
+    refs.watch_mode_action.setChecked(True)
+
+    services = SimpleNamespace(
+        host_window=host_window,
+        batch_session=FakeBatchSession(),
+        watch_mode_coordinator=FakeWatchCoordinator(),
+        scheduler=SimpleNamespace(),
+    )
+    state = SimpleNamespace(
+        settings=AppSettings(),
+        manual_extract_running=False,
+    )
+    actions = WatchActions(state=state, refs=refs, services=services)
+
+    warnings = []
+    original_warning = QMessageBox.warning
+    QMessageBox.warning = lambda *_args, **_kwargs: warnings.append((_args, _kwargs))
+    try:
+        services.batch_session.processor.is_running = True
+        actions.start_watch_mode()
+        assert refs.watch_mode_action.isChecked() is False
+        assert len(warnings) == 1
+        assert services.watch_mode_coordinator.start_calls == []
+
+        refs.watch_mode_action.setChecked(True)
+        services.batch_session.processor.is_running = False
+        state.manual_extract_running = True
+        actions.start_watch_mode()
+        assert refs.watch_mode_action.isChecked() is False
+        assert len(warnings) == 2
+        assert services.watch_mode_coordinator.start_calls == []
+    finally:
+        QMessageBox.warning = original_warning
+        host_window.deleteLater()
+        refs.input_path_edit.deleteLater()
+        refs.output_path_edit.deleteLater()
+        refs.status_label.deleteLater()
+        if owned_app:
+            app.quit()
+
+
+def _test_batch_actions_block_when_watch_running() -> None:
+    from types import SimpleNamespace
+
+    app, owned_app = _ensure_qt_app("batch action watch guard test")
+    if app is None:
+        return
+
+    from PyQt6.QtWidgets import QLineEdit, QMainWindow, QMessageBox
+
+    from .core.settings_model import AppSettings
+    from .ui.main.actions.batch import BatchActions
+
+    class FakeProcessor:
+        is_running = False
+
+    class FakeBatchSession:
+        def __init__(self) -> None:
+            self.processor = FakeProcessor()
+            self.failed_files = ["failed.jpg"]
+            self.create_calls = 0
+
+        def create_processor(self, **_kwargs):
+            self.create_calls += 1
+            raise AssertionError("Batch processor creation should have been blocked")
+
+    host_window = QMainWindow()
+    refs = SimpleNamespace(
+        input_path_edit=QLineEdit(),
+        output_path_edit=QLineEdit(),
+        progress_dialog=None,
+        status_label=None,
+        batch_prev_btn=None,
+        batch_next_btn=None,
+        batch_save_edits_btn=None,
+        batch_failed_btn=None,
+        batch_load_btn=None,
+        batch_edit_status_label=None,
+    )
+    services = SimpleNamespace(
+        host_window=host_window,
+        batch_session=FakeBatchSession(),
+        watch_mode_coordinator=SimpleNamespace(is_active=True),
+    )
+    state = SimpleNamespace(
+        settings=AppSettings(),
+        image_list=[],
+        current_image_index=-1,
+        batch_contours_edited=set(),
+        failed_boundary_files=[],
+        manual_extract_running=False,
+    )
+    signals = SimpleNamespace(
+        batch_progress_received=_SignalRecorder(),
+        batch_log_received=_SignalRecorder(),
+        batch_complete_received=_SignalRecorder(),
+    )
+    actions = BatchActions(state=state, refs=refs, services=services, signals=signals)
+
+    warnings = []
+    original_warning = QMessageBox.warning
+    QMessageBox.warning = lambda *_args, **_kwargs: warnings.append((_args, _kwargs))
+    try:
+        actions.start_processing()
+        actions.retry_failed_files()
+        assert len(warnings) == 2
+        assert services.batch_session.create_calls == 0
+    finally:
+        QMessageBox.warning = original_warning
+        host_window.deleteLater()
+        refs.input_path_edit.deleteLater()
+        refs.output_path_edit.deleteLater()
+        if owned_app:
+            app.quit()
+
+
+def _test_retry_failed_files_normalizes_empty_output_path() -> None:
+    import os
+    import tempfile
+    from types import SimpleNamespace
+
+    app, owned_app = _ensure_qt_app("retry failed output normalization test")
+    if app is None:
+        return
+
+    from PyQt6.QtWidgets import QLineEdit, QMainWindow, QMessageBox
+
+    from .core.settings_model import AppSettings
+    from .ui.main.actions.batch import BatchActions
+
+    class FakeProcessor:
+        def __init__(self) -> None:
+            self.is_running = False
+            self.start_calls = []
+
+        def start_async(self, input_path: str, output_path: str, files) -> None:
+            self.start_calls.append((input_path, output_path, list(files)))
+
+    class FakeBatchSession:
+        def __init__(self) -> None:
+            self._processor = None
+            self.failed_files = ["failed_a.jpg", "failed_b.jpg"]
+            self.create_calls = 0
+
+        @property
+        def processor(self):
+            return self._processor
+
+        def create_processor(self, **_kwargs):
+            self.create_calls += 1
+            self._processor = FakeProcessor()
+            return self._processor
+
+    host_window = QMainWindow()
+    refs = SimpleNamespace(
+        input_path_edit=QLineEdit(),
+        output_path_edit=QLineEdit(),
+        progress_dialog=None,
+        status_label=None,
+        batch_prev_btn=None,
+        batch_next_btn=None,
+        batch_save_edits_btn=None,
+        batch_failed_btn=None,
+        batch_load_btn=None,
+        batch_edit_status_label=None,
+    )
+    services = SimpleNamespace(
+        host_window=host_window,
+        batch_session=FakeBatchSession(),
+        watch_mode_coordinator=SimpleNamespace(is_active=False),
+    )
+    state = SimpleNamespace(
+        settings=AppSettings(),
+        image_list=[],
+        current_image_index=-1,
+        batch_contours_edited=set(),
+        failed_boundary_files=[],
+        manual_extract_running=False,
+    )
+    signals = SimpleNamespace(
+        batch_progress_received=_SignalRecorder(),
+        batch_log_received=_SignalRecorder(),
+        batch_complete_received=_SignalRecorder(),
+    )
+    actions = BatchActions(state=state, refs=refs, services=services, signals=signals)
+    progress_paths = []
+    actions._create_progress_dialog = lambda output_path: progress_paths.append(output_path)
+
+    original_question = QMessageBox.question
+    original_warning = QMessageBox.warning
+    original_information = QMessageBox.information
+    QMessageBox.question = lambda *_args, **_kwargs: QMessageBox.StandardButton.Yes
+    QMessageBox.warning = lambda *_args, **_kwargs: QMessageBox.StandardButton.Ok
+    QMessageBox.information = lambda *_args, **_kwargs: QMessageBox.StandardButton.Ok
+    try:
+        with tempfile.TemporaryDirectory(prefix="photocropper_retry_failed_") as td:
+            input_dir = os.path.join(td, "input")
+            os.makedirs(input_dir, exist_ok=True)
+            refs.input_path_edit.setText(input_dir)
+            refs.output_path_edit.setText("")
+
+            actions.retry_failed_files()
+
+            default_output = os.path.join(input_dir, "output_cropped")
+            assert refs.output_path_edit.text() == default_output
+            assert os.path.isdir(default_output)
+            assert services.batch_session.create_calls == 1
+            assert progress_paths == [default_output]
+            assert services.batch_session.processor is not None
+            assert services.batch_session.processor.start_calls == [
+                (
+                    input_dir,
+                    default_output,
+                    ["failed_a.jpg", "failed_b.jpg"],
+                )
+            ]
+    finally:
+        QMessageBox.question = original_question
+        QMessageBox.warning = original_warning
+        QMessageBox.information = original_information
+        host_window.deleteLater()
+        refs.input_path_edit.deleteLater()
+        refs.output_path_edit.deleteLater()
+        if owned_app:
+            app.quit()
 
 
 def _test_profile_apply_rebuild_validation() -> None:
@@ -2208,7 +2832,11 @@ def main() -> int:
         _test_image_save_io_module_smoke()
         _test_watch_mode_coordinator_import_smoke()
         _test_watch_mode_coordinator_invalid_input()
+        _test_watch_mode_coordinator_recursive_output_guard()
+        _test_watch_mode_processing_disables_failed_file_move()
         _test_contour_utils_roundtrip()
+        _test_preview_widget_contour_redraw_variants()
+        _test_manual_preview_shared_crop_mode()
         _test_boundary_failed_file_collection_helper()
         _test_cli_settings_merge_priority()
         _test_settings_forward_compat()
@@ -2217,6 +2845,7 @@ def main() -> int:
         _test_batch_thread_local_reuse()
         _test_settings_panel_performance_roundtrip()
         _test_recursive_watch_new_subdir_initial_scan()
+        _test_folder_watcher_file_changed_requeues_only_on_signature_change()
         _test_watch_max_wait_roundtrip()
         _test_watch_callback_runs_on_background_worker()
         _test_watch_readiness_is_owned_by_auto_processor()
@@ -2230,6 +2859,10 @@ def main() -> int:
         _test_multi_photo_status_variants_and_partial_index_behavior()
         _test_cli_new_crop_options()
         _test_processed_index_roundtrip_and_source_change()
+        _test_processed_index_backward_compat_and_partial_status()
+        _test_watch_actions_block_while_batch_or_manual_running()
+        _test_batch_actions_block_when_watch_running()
+        _test_retry_failed_files_normalizes_empty_output_path()
         _test_profile_apply_rebuild_validation()
         _test_settings_panel_classification_folder_roundtrip()
         _test_cli_cancel_exit_code_130()

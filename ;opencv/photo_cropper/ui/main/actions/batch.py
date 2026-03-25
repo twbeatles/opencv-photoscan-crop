@@ -82,12 +82,51 @@ class BatchActions:
         processor = self.batch_processor
         return bool(processor and processor.is_running)
 
+    def _is_watch_running(self) -> bool:
+        return bool(self.services.watch_mode_coordinator.is_active)
+
     def _show_batch_running_warning(self) -> None:
         QMessageBox.warning(
             self.services.host_window,
             "경고",
             "배치 처리가 이미 진행 중입니다. 현재 작업이 끝나거나 취소된 뒤 다시 시도하세요.",
         )
+
+    def _show_watch_running_warning(self) -> None:
+        QMessageBox.warning(
+            self.services.host_window,
+            "경고",
+            "폴더 감시 모드가 활성화되어 있습니다. 먼저 중지한 뒤 다시 시도하세요.",
+        )
+
+    def _resolve_batch_io_paths(self) -> Optional[tuple[str, str]]:
+        input_edit = self.refs.input_path_edit
+        output_edit = self.refs.output_path_edit
+        if input_edit is None or output_edit is None:
+            return None
+
+        input_path = input_edit.text().strip()
+        valid, error = validate_directory(input_path)
+        if not valid:
+            QMessageBox.warning(self.services.host_window, "경고", f"입력 폴더 오류: {error}")
+            return None
+
+        output_path = output_edit.text().strip()
+        if not output_path:
+            output_path = os.path.join(input_path, "output_cropped")
+            output_edit.setText(output_path)
+
+        try:
+            os.makedirs(output_path, exist_ok=True)
+        except Exception as exc:
+            QMessageBox.warning(
+                self.services.host_window,
+                "경고",
+                f"출력 폴더 오류: {exc}",
+            )
+            return None
+
+        return input_path, output_path
 
     def update_batch_edit_controls(self) -> None:
         total = len(self.state.image_list) if self.state.image_list else 0
@@ -153,21 +192,14 @@ class BatchActions:
             self._show_batch_running_warning()
             return
 
-        input_edit = self.refs.input_path_edit
-        output_edit = self.refs.output_path_edit
-        if input_edit is None or output_edit is None:
+        if self._is_watch_running():
+            self._show_watch_running_warning()
             return
 
-        input_path = input_edit.text()
-        output_path = output_edit.text()
-        valid, error = validate_directory(input_path)
-        if not valid:
-            QMessageBox.warning(self.services.host_window, "경고", f"입력 폴더 오류: {error}")
+        paths = self._resolve_batch_io_paths()
+        if paths is None:
             return
-
-        if not output_path:
-            output_path = os.path.join(input_path, "output_cropped")
-            output_edit.setText(output_path)
+        input_path, output_path = paths
 
         recursive = bool(
             getattr(self.state.settings.file_management, "recursive_search", False)
@@ -325,6 +357,10 @@ class BatchActions:
             self._show_batch_running_warning()
             return
 
+        if self._is_watch_running():
+            self._show_watch_running_warning()
+            return
+
         failed = self.services.batch_session.failed_files
         if not failed:
             QMessageBox.information(self.services.host_window, "알림", "재처리할 실패 파일이 없습니다.")
@@ -339,8 +375,11 @@ class BatchActions:
         if reply != QMessageBox.StandardButton.Yes:
             return
 
-        input_path = self.refs.input_path_edit.text() if self.refs.input_path_edit else ""
-        output_path = self.refs.output_path_edit.text() if self.refs.output_path_edit else ""
+        paths = self._resolve_batch_io_paths()
+        if paths is None:
+            return
+        input_path, output_path = paths
+
         try:
             self.services.batch_session.create_processor(
                 settings=self.state.settings,

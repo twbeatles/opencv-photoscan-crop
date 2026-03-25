@@ -11,6 +11,7 @@ import numpy as np
 
 from ....core.image import PreviewProcessResult
 from ....core.manual_extract import (
+    crop_manual_contour,
     denormalize_contour_points,
     normalize_contour_points,
     scale_contour_to_preview,
@@ -85,6 +86,27 @@ class PreviewActions:
     def denormalize_contour_points(self, normalized_points, image_shape):
         return denormalize_contour_points(normalized_points, image_shape)
 
+    def _build_manual_preview_image(
+        self,
+        contour_points: np.ndarray,
+    ) -> Optional[np.ndarray]:
+        original = self.state.last_original
+        if original is None:
+            return None
+
+        cropped = crop_manual_contour(
+            original,
+            contour_points,
+            perspective_correct=bool(
+                getattr(self.state.settings.advanced, "perspective_correct", True)
+            ),
+            use_gpu=bool(getattr(self.state.settings.performance, "use_gpu", False)),
+        )
+        if cropped is None:
+            return None
+
+        return self.services.image_processor._apply_post_processing(cropped)
+
     def on_preview_contour_edited(self, contour_points) -> None:
         if self.state.last_original is None:
             return
@@ -111,20 +133,23 @@ class PreviewActions:
                     self._update_batch_edit_controls()
 
         try:
-            from ....core.advanced import AdvancedImageProcessor
-
-            processor = AdvancedImageProcessor()
-            result = processor.correct_perspective(self.state.last_original, points)
-            if result.success and result.image is not None:
+            preview_image = self._build_manual_preview_image(points)
+            if preview_image is not None:
                 if self.refs.preview_widget is not None:
-                    self.refs.preview_widget.set_processed_image(result.image)
-                self.state.last_processed = result.image.copy()
+                    self.refs.preview_widget.set_processed_image(preview_image)
+                self.state.last_processed = preview_image.copy()
                 if self.refs.status_label is not None:
                     self.refs.status_label.setText("외곽선 수동 편집 반영됨")
             else:
+                self.state.last_processed = None
+                if self.refs.preview_widget is not None:
+                    self.refs.preview_widget.set_processed_image(None)
                 if self.refs.status_label is not None:
                     self.refs.status_label.setText("외곽선 편집 반영 실패")
         except Exception as exc:
+            self.state.last_processed = None
+            if self.refs.preview_widget is not None:
+                self.refs.preview_widget.set_processed_image(None)
             if self.refs.status_label is not None:
                 self.refs.status_label.setText(f"외곽선 편집 오류: {exc}")
 

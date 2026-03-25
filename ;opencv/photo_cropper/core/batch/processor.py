@@ -50,7 +50,12 @@ from ...utils.file_helpers import (
 )
 from ...utils.processing_log import ProcessingLogger, get_processing_logger
 from ...utils.naming_rules import NamingRule, NamingRuleEngine
-from ..processed_index import ProcessedIndexStore, build_pipeline_signature
+from ..processed_index import (
+    ProcessedIndexStore,
+    RECORD_STATUS_PARTIAL,
+    RECORD_STATUS_SUCCESS,
+    build_pipeline_signature,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -526,15 +531,15 @@ class BatchProcessor:
 
     def lookup_processed_outputs_from_index(
         self, source_path: str, output_dir: str
-    ) -> Tuple[Optional[List[str]], bool]:
+    ) -> Tuple[Optional[List[str]], bool, str]:
         """Lookup previously produced outputs by source signature and pipeline signature."""
         signature = self._source_stat_signature(source_path)
         if signature is None:
-            return None, False
+            return None, False, ""
 
         size, mtime_ns = signature
         store = self._get_processed_index_store(output_dir)
-        outputs, usable = store.lookup_outputs(
+        outputs, usable, status = store.lookup_outputs(
             source_path=source_path,
             size=size,
             mtime_ns=mtime_ns,
@@ -542,13 +547,15 @@ class BatchProcessor:
         )
         if not usable and store.last_error:
             self._warn_processed_index_issue(output_dir, store.last_error)
-        return outputs, usable
+        return outputs, usable, status
 
     def record_processed_outputs(
         self,
         source_path: str,
         output_dir: str,
         outputs: List[str],
+        *,
+        status: str = RECORD_STATUS_SUCCESS,
     ) -> None:
         """Persist processed outputs for future skip-processed checks."""
         if not outputs:
@@ -566,6 +573,7 @@ class BatchProcessor:
             mtime_ns=mtime_ns,
             outputs=outputs,
             pipeline_signature=self._pipeline_signature(),
+            status=status,
         )
         if not ok and store.last_error:
             self._warn_processed_index_issue(output_dir, store.last_error)
@@ -1664,20 +1672,26 @@ class BatchProcessor:
 
         # Skip already processed files
         if self.settings.filter.skip_processed:
-            index_outputs, index_usable = self.lookup_processed_outputs_from_index(
+            index_outputs, index_usable, index_status = self.lookup_processed_outputs_from_index(
                 input_path,
                 output_dir,
             )
             if index_outputs:
-                self._log(
-                    f"  건너뜀: 처리 이력 일치 - {os.path.basename(index_outputs[0])}",
-                    "skip",
-                )
-                return FileResult(
-                    filename=display_name,
-                    status=ProcessStatus.SKIPPED,
-                    message="이미 처리됨(인덱스)",
-                )
+                if index_status == RECORD_STATUS_PARTIAL:
+                    self._log(
+                        "  부분 저장 이력이 있어 재처리를 계속 진행합니다.",
+                        "warning",
+                    )
+                else:
+                    self._log(
+                        f"  건너뜀: 처리 이력 일치 - {os.path.basename(index_outputs[0])}",
+                        "skip",
+                    )
+                    return FileResult(
+                        filename=display_name,
+                        status=ProcessStatus.SKIPPED,
+                        message="이미 처리됨(인덱스)",
+                    )
 
             naming_or_timestamp = (
                 self.settings.file_management.use_naming_rules
@@ -1692,7 +1706,7 @@ class BatchProcessor:
                 )
                 self._skip_processed_notice_shown = True
 
-            if output_path_override is not None:
+            if output_path_override is not None and index_status != RECORD_STATUS_PARTIAL:
                 if os.path.exists(output_path_override):
                     self._log(
                         f"  건너뜀: 이미 처리됨 - {os.path.basename(output_path_override)}",
@@ -1703,7 +1717,7 @@ class BatchProcessor:
                         status=ProcessStatus.SKIPPED,
                         message="이미 처리됨",
                     )
-            elif not naming_or_timestamp:
+            elif not naming_or_timestamp and index_status != RECORD_STATUS_PARTIAL:
                 base_name = os.path.splitext(display_name)[0]
                 ext = "." + self.settings.output.output_format.lower()
                 existing = self._find_existing_output(
@@ -1749,6 +1763,17 @@ class BatchProcessor:
                         outputs = [multi_result.output_path]
                     if outputs:
                         self.record_processed_outputs(input_path, output_dir, outputs)
+                elif multi_result.status == ProcessStatus.PARTIAL_SUCCESS:
+                    outputs = list(multi_result.output_paths or [])
+                    if not outputs and multi_result.output_path:
+                        outputs = [multi_result.output_path]
+                    if outputs:
+                        self.record_processed_outputs(
+                            input_path,
+                            output_dir,
+                            outputs,
+                            status=RECORD_STATUS_PARTIAL,
+                        )
                 return multi_result
             except Exception as e:
                 self._log(f"  멀티포토 처리 오류: {e}, 단일 모드로 전환", "warning")

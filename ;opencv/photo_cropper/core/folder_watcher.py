@@ -67,6 +67,7 @@ class FolderWatcher(QObject):
         self._is_watching = False
         self._known_files: Set[str] = set()
         self._pending_files: Set[str] = set()
+        self._file_signatures: Dict[str, Tuple[int, int]] = {}
 
         self._debounce_timer = QTimer(self)
         self._debounce_timer.setSingleShot(True)
@@ -131,6 +132,7 @@ class FolderWatcher(QObject):
         self._is_watching = False
         self._known_files.clear()
         self._pending_files.clear()
+        self._file_signatures.clear()
         self._debounce_timer.stop()
 
         self.watch_stopped.emit()
@@ -141,18 +143,19 @@ class FolderWatcher(QObject):
             return
 
         self._known_files.clear()
+        self._file_signatures.clear()
 
         if self._recursive:
             for root, _, files in os.walk(self._watch_path):
                 for filename in files:
                     filepath = os.path.join(root, filename)
                     if self._is_image_file(filepath):
-                        self._known_files.add(filepath)
+                        self._track_known_file(filepath)
         else:
             for filename in os.listdir(self._watch_path):
                 filepath = os.path.join(self._watch_path, filename)
                 if os.path.isfile(filepath) and self._is_image_file(filepath):
-                    self._known_files.add(filepath)
+                    self._track_known_file(filepath)
 
         logger.debug("Initial known files: %d", len(self._known_files))
 
@@ -160,6 +163,39 @@ class FolderWatcher(QObject):
     def _is_image_file(filepath: str) -> bool:
         ext = os.path.splitext(filepath)[1].lower()
         return ext in SUPPORTED_EXTENSIONS
+
+    @staticmethod
+    def _file_signature(filepath: str) -> Optional[Tuple[int, int]]:
+        try:
+            st = os.stat(filepath)
+        except Exception:
+            return None
+        return (
+            int(st.st_size),
+            int(getattr(st, "st_mtime_ns", int(st.st_mtime * 1e9))),
+        )
+
+    def _ensure_file_path_watched(self, filepath: str) -> None:
+        if not filepath or not os.path.isfile(filepath):
+            return
+        watched_files = set(self._watcher.files())
+        if filepath not in watched_files:
+            self._watcher.addPath(filepath)
+
+    def _track_known_file(self, filepath: str) -> None:
+        self._known_files.add(filepath)
+        signature = self._file_signature(filepath)
+        if signature is not None:
+            self._file_signatures[filepath] = signature
+        self._ensure_file_path_watched(filepath)
+
+    def _untrack_known_file(self, filepath: str) -> None:
+        self._known_files.discard(filepath)
+        self._pending_files.discard(filepath)
+        self._file_signatures.pop(filepath, None)
+        watched_files = set(self._watcher.files())
+        if filepath in watched_files:
+            self._watcher.removePath(filepath)
 
     def _scan_directory_images(self, directory: str) -> Set[str]:
         images: Set[str] = set()
@@ -177,7 +213,7 @@ class FolderWatcher(QObject):
         for filepath in filepaths:
             if filepath in self._known_files:
                 continue
-            self._known_files.add(filepath)
+            self._track_known_file(filepath)
             self._pending_files.add(filepath)
             queued = True
 
@@ -192,6 +228,32 @@ class FolderWatcher(QObject):
 
     def _on_file_changed(self, path: str) -> None:
         logger.debug("File changed: %s", path)
+        filepath = str(path or "")
+        if not filepath:
+            return
+
+        if not os.path.exists(filepath):
+            if filepath in self._known_files:
+                self._untrack_known_file(filepath)
+                self.file_removed.emit(filepath)
+            return
+
+        if not self._is_image_file(filepath):
+            return
+
+        self._ensure_file_path_watched(filepath)
+        signature = self._file_signature(filepath)
+        if signature is None:
+            return
+
+        previous = self._file_signatures.get(filepath)
+        if previous == signature:
+            return
+
+        self._known_files.add(filepath)
+        self._file_signatures[filepath] = signature
+        self._pending_files.add(filepath)
+        self._debounce_timer.start(self._debounce_ms)
 
     def _check_for_new_files(self, directory: str) -> None:
         try:
@@ -203,17 +265,12 @@ class FolderWatcher(QObject):
             new_files = current_files - self._known_files
             removed_files = existing_in_dir - current_files
 
-            self._known_files.update(new_files)
-            self._known_files -= removed_files
-
-            for filepath in new_files:
-                self._pending_files.add(filepath)
+            if new_files:
+                self._queue_new_files(new_files)
 
             for filepath in removed_files:
+                self._untrack_known_file(filepath)
                 self.file_removed.emit(filepath)
-
-            if self._pending_files:
-                self._debounce_timer.start(self._debounce_ms)
 
         except Exception as exc:
             logger.error("Error checking for new files in %s: %s", directory, exc)
