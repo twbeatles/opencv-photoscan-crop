@@ -7,7 +7,7 @@ from __future__ import annotations
 import os
 from typing import Callable, Optional
 
-from ....utils.file_helpers import get_image_files
+from ....utils.file_helpers import build_recursive_excluded_roots, get_image_files
 from ..models import WindowRefs, WindowState
 
 
@@ -37,7 +37,24 @@ class NavigationActions:
         input_path = input_edit.text()
         if input_path and os.path.isdir(input_path):
             recursive = self.state.settings.file_management.recursive_search
-            self.state.image_list = get_image_files(input_path, recursive=recursive)
+            output_edit = getattr(self.refs, "output_path_edit", None)
+            output_path = output_edit.text().strip() if output_edit is not None else ""
+            if not output_path:
+                output_path = os.path.join(input_path, "output_cropped")
+            excluded_roots = (
+                build_recursive_excluded_roots(
+                    input_path,
+                    output_path,
+                    failed_folder_name=self.state.settings.file_management.failed_folder_name,
+                )
+                if recursive
+                else None
+            )
+            self.state.image_list = get_image_files(
+                input_path,
+                recursive=recursive,
+                excluded_roots=excluded_roots,
+            )
             if badge is not None:
                 badge.setText(f" 파일: {len(self.state.image_list)}개 ")
 

@@ -230,19 +230,26 @@ def _test_watch_mode_processing_disables_failed_file_move() -> None:
         def update_settings(self, updated_settings) -> None:
             self.updated_settings.append(updated_settings)
 
-        def process_single(self, input_path: str, output_path: str):
+        def process_single(
+            self,
+            input_path: str,
+            output_path: str,
+            input_root: str | None = None,
+        ):
             snapshot = self.updated_settings[-1]
             self.process_calls.append(
                 (
                     input_path,
                     output_path,
                     snapshot.file_management.move_failed_files,
+                    input_root,
                 )
             )
             return SimpleNamespace(status=ProcessStatus.SUCCESS, message="ok")
 
     fake_batch = FakeBatchProcessor()
     coordinator._batch_processor = fake_batch
+    coordinator._watch_input_root = "watch-root"
 
     result = coordinator._process_watched_file("input.jpg", "output")
     assert result["success"] is True
@@ -251,7 +258,7 @@ def _test_watch_mode_processing_disables_failed_file_move() -> None:
     assert len(fake_batch.updated_settings) == 1
     assert fake_batch.updated_settings[0] is not settings
     assert fake_batch.updated_settings[0].file_management.move_failed_files is False
-    assert fake_batch.process_calls == [("input.jpg", "output", False)]
+    assert fake_batch.process_calls == [("input.jpg", "output", False, "watch-root")]
 
     coordinator.deleteLater()
 
@@ -316,6 +323,7 @@ def _test_manual_extract_session_runner_empty() -> None:
     with tempfile.TemporaryDirectory(prefix="photocropper_manual_runner_") as td:
         runner.run(
             output_path=td,
+            input_root=td,
             files=[],
             contours_norm={},
             settings_snapshot={},
@@ -484,6 +492,126 @@ def _test_boundary_failed_file_collection_helper() -> None:
         assert os.path.basename(resolved[0]).lower() == "a.jpg"
 
 
+def _test_boundary_failed_file_collection_prefers_relative_paths() -> None:
+    import os
+    import tempfile
+
+    from .core.batch import ProcessStatus
+    from .core.manual_extract import collect_boundary_failed_files
+
+    class _Result:
+        def __init__(self, status, message, filename):
+            self.status = status
+            self.message = message
+            self.filename = filename
+
+    with tempfile.TemporaryDirectory(prefix="photocropper_boundary_relative_") as td:
+        in_dir = os.path.join(td, "input_root")
+        left_dir = os.path.join(in_dir, "left_group")
+        right_dir = os.path.join(in_dir, "right_group")
+        os.makedirs(left_dir, exist_ok=True)
+        os.makedirs(right_dir, exist_ok=True)
+        left_file = os.path.join(left_dir, "photo.jpg")
+        right_file = os.path.join(right_dir, "photo.jpg")
+        with open(left_file, "wb") as f:
+            f.write(b"left")
+        with open(right_file, "wb") as f:
+            f.write(b"right")
+
+        results = [
+            _Result(
+                ProcessStatus.FAILED,
+                "Failed to detect photo boundary.",
+                os.path.join("right_group", "photo.jpg"),
+            ),
+        ]
+
+        resolved = collect_boundary_failed_files(
+            results=results,
+            input_root=in_dir,
+            image_list=[left_file, right_file],
+            batch_failed_entries=["photo.jpg"],
+            recursive_search=True,
+            get_image_files_fn=lambda root, recursive=False: [left_file, right_file],
+            logger=None,
+        )
+        assert resolved == [os.path.normpath(right_file)]
+
+
+def _test_recursive_scan_excludes_internal_generated_dirs() -> None:
+    import os
+    import tempfile
+
+    from .utils.file_helpers import build_recursive_excluded_roots, get_image_files
+
+    with tempfile.TemporaryDirectory(prefix="photocropper_recursive_scan_") as td:
+        input_dir = os.path.join(td, "input")
+        output_dir = os.path.join(input_dir, "output_cropped")
+        keep_dir = os.path.join(input_dir, "keep", "nested")
+        failed_dir = os.path.join(input_dir, "_failed", "nested")
+        backup_dir = os.path.join(input_dir, "backup")
+        hidden_dir = os.path.join(input_dir, "misc", ".photocropper")
+
+        for directory in (output_dir, keep_dir, failed_dir, backup_dir, hidden_dir):
+            os.makedirs(directory, exist_ok=True)
+
+        file_map = {
+            os.path.join(input_dir, "root.jpg"): b"root",
+            os.path.join(keep_dir, "keep.jpg"): b"keep",
+            os.path.join(output_dir, "out.jpg"): b"out",
+            os.path.join(failed_dir, "failed.jpg"): b"failed",
+            os.path.join(backup_dir, "backup.jpg"): b"backup",
+            os.path.join(hidden_dir, "index.jpg"): b"index",
+        }
+        for path, payload in file_map.items():
+            with open(path, "wb") as f:
+                f.write(payload)
+
+        excluded = build_recursive_excluded_roots(
+            input_dir,
+            output_dir,
+            failed_folder_name="_failed",
+        )
+        scanned = get_image_files(
+            input_dir,
+            recursive=True,
+            excluded_roots=excluded,
+        )
+        rel_paths = {
+            os.path.relpath(path, input_dir).replace("\\", "/")
+            for path in scanned
+        }
+        assert rel_paths == {"root.jpg", "keep/nested/keep.jpg"}
+
+
+def _test_classify_failed_files_preserves_relative_dirs() -> None:
+    import os
+    import tempfile
+
+    from .utils.file_helpers import classify_failed_files
+
+    with tempfile.TemporaryDirectory(prefix="photocropper_failed_relative_") as td:
+        input_dir = os.path.join(td, "input")
+        source_dir = os.path.join(input_dir, "nested", "deep")
+        os.makedirs(source_dir, exist_ok=True)
+        source_file = os.path.join(source_dir, "sample.jpg")
+        with open(source_file, "wb") as f:
+            f.write(b"sample")
+
+        moved_count, errors = classify_failed_files(
+            [source_file],
+            input_dir,
+            failed_folder_name="_failed",
+            copy_mode=True,
+            input_root=input_dir,
+        )
+        failed_copy = os.path.join(input_dir, "_failed", "nested", "deep", "sample.jpg")
+        assert moved_count == 1
+        assert errors == []
+        assert os.path.exists(source_file)
+        assert os.path.exists(failed_copy)
+
+
 def _test_cli_settings_merge_priority() -> None:
     import json
     import os
@@ -553,9 +681,19 @@ def _test_cli_settings_merge_priority() -> None:
         assert int(merged.algorithm.adaptive_block_size) == 21
         assert abs(float(merged.algorithm.adaptive_c) - 3.5) < 1e-6
         assert merged.output.jpg_quality == 88  # preset applied
-        assert merged.classification.model == "custom"  # CLI overrides config
+        assert merged.classification.model == "advanced"  # CLI alias normalized
         assert abs(merged.classification.min_confidence - 0.65) < 1e-6
         assert merged.advanced.auto_deskew is True  # legacy alias mapped
+
+
+def _test_classification_settings_custom_alias_normalizes_to_advanced() -> None:
+    from .core.settings_model import AppSettings, ClassificationSettings
+
+    classification = ClassificationSettings(model="custom")
+    assert classification.model == "advanced"
+
+    loaded = AppSettings.from_dict({"classification": {"model": "custom"}})
+    assert loaded.classification.model == "advanced"
 
 
 def _test_recursive_watch_new_subdir_initial_scan() -> None:
@@ -1741,6 +1879,75 @@ def _test_multi_photo_merge_distance_and_separate_folders() -> None:
         assert os.path.abspath(found) == os.path.abspath(output_path)
 
 
+def _test_recursive_output_paths_preserve_relative_dirs() -> None:
+    import os
+    import tempfile
+    from types import SimpleNamespace
+
+    import numpy as np
+
+    from .core.batch import BatchProcessor, ProcessStatus
+    from .core.image import CropResult, DetectionStage
+    from .core.settings_model import AppSettings
+
+    settings = AppSettings()
+    batch = BatchProcessor(settings)
+
+    class FakeProcessor:
+        @staticmethod
+        def get_image_info(_path):
+            return (320, 240, 3)
+
+        @staticmethod
+        def process_image(_path, **_kwargs):
+            img = np.full((60, 90, 3), 180, dtype=np.uint8)
+            return CropResult(
+                success=True,
+                image=img,
+                message="ok",
+                detection_stage=DetectionStage.CANNY,
+            )
+
+        @staticmethod
+        def save_image(
+            image,
+            output_path,
+            output_format="JPG",
+            jpg_quality=95,
+            png_compression=6,
+            webp_quality=90,
+            source_path=None,
+            preserve_metadata=False,
+        ):
+            del image
+            del output_format, jpg_quality, png_compression, webp_quality
+            del source_path, preserve_metadata
+            os.makedirs(os.path.dirname(output_path), exist_ok=True)
+            with open(output_path, "wb") as f:
+                f.write(b"saved")
+            return True, "ok", 1.0
+
+    batch._get_worker_processor = lambda: FakeProcessor()
+    batch._run_post_pipeline = lambda image, output_dir: (image, output_dir)
+
+    with tempfile.TemporaryDirectory(prefix="photocropper_recursive_out_") as td:
+        input_root = os.path.join(td, "input")
+        output_root = os.path.join(td, "output")
+        nested_dir = os.path.join(input_root, "album", "set1")
+        os.makedirs(nested_dir, exist_ok=True)
+        os.makedirs(output_root, exist_ok=True)
+
+        src = os.path.join(nested_dir, "sample.jpg")
+        with open(src, "wb") as f:
+            f.write(b"src")
+
+        result = batch.process_single(src, output_root, input_root=input_root)
+        expected = os.path.join(output_root, "album", "set1", "sample_cropped.jpg")
+        assert result.status == ProcessStatus.SUCCESS, result.message
+        assert os.path.abspath(result.output_path) == os.path.abspath(expected)
+        assert os.path.exists(expected)
+
+
 def _test_multi_photo_uses_shared_loader() -> None:
     import os
     import tempfile
@@ -2377,6 +2584,97 @@ def _test_retry_failed_files_normalizes_empty_output_path() -> None:
             app.quit()
 
 
+def _test_batch_actions_recursive_output_guard() -> None:
+    import os
+    import tempfile
+    from types import SimpleNamespace
+
+    app, owned_app = _ensure_qt_app("batch action recursive output guard test")
+    if app is None:
+        return
+
+    from PyQt6.QtWidgets import QLineEdit, QMainWindow, QMessageBox
+
+    from .core.settings_model import AppSettings
+    from .ui.main.actions.batch import BatchActions
+
+    class FakeProcessor:
+        is_running = False
+
+    class FakeBatchSession:
+        def __init__(self) -> None:
+            self.processor = FakeProcessor()
+            self.failed_files = ["failed.jpg"]
+            self.create_calls = 0
+
+        def create_processor(self, **_kwargs):
+            self.create_calls += 1
+            raise AssertionError("Batch processor creation should have been blocked")
+
+    host_window = QMainWindow()
+    refs = SimpleNamespace(
+        input_path_edit=QLineEdit(),
+        output_path_edit=QLineEdit(),
+        progress_dialog=None,
+        status_label=None,
+        batch_prev_btn=None,
+        batch_next_btn=None,
+        batch_save_edits_btn=None,
+        batch_failed_btn=None,
+        batch_load_btn=None,
+        batch_edit_status_label=None,
+    )
+    settings = AppSettings()
+    settings.file_management.recursive_search = True
+    services = SimpleNamespace(
+        host_window=host_window,
+        batch_session=FakeBatchSession(),
+        watch_mode_coordinator=SimpleNamespace(is_active=False),
+    )
+    state = SimpleNamespace(
+        settings=settings,
+        image_list=[],
+        current_image_index=-1,
+        batch_contours_edited=set(),
+        failed_boundary_files=[],
+        manual_extract_running=False,
+    )
+    signals = SimpleNamespace(
+        batch_progress_received=_SignalRecorder(),
+        batch_log_received=_SignalRecorder(),
+        batch_complete_received=_SignalRecorder(),
+    )
+    actions = BatchActions(state=state, refs=refs, services=services, signals=signals)
+
+    warnings = []
+    original_question = QMessageBox.question
+    original_warning = QMessageBox.warning
+    QMessageBox.question = lambda *_args, **_kwargs: QMessageBox.StandardButton.Yes
+    QMessageBox.warning = lambda *_args, **_kwargs: warnings.append((_args, _kwargs))
+    try:
+        with tempfile.TemporaryDirectory(prefix="photocropper_batch_guard_") as td:
+            input_dir = os.path.join(td, "input")
+            output_dir = os.path.join(input_dir, "output_cropped")
+            os.makedirs(output_dir, exist_ok=True)
+            refs.input_path_edit.setText(input_dir)
+            refs.output_path_edit.setText(output_dir)
+
+            actions.start_processing()
+            actions.retry_failed_files()
+
+            assert len(warnings) == 2
+            assert services.batch_session.create_calls == 0
+            assert all("출력 폴더를 입력 폴더 내부" in args[2] for args, _kwargs in warnings)
+    finally:
+        QMessageBox.question = original_question
+        QMessageBox.warning = original_warning
+        host_window.deleteLater()
+        refs.input_path_edit.deleteLater()
+        refs.output_path_edit.deleteLater()
+        if owned_app:
+            app.quit()
+
+
 def _test_profile_apply_rebuild_validation() -> None:
     import tempfile
 
@@ -2441,6 +2739,47 @@ def _test_settings_panel_classification_folder_roundtrip() -> None:
         app.quit()
 
 
+def _test_settings_panel_legacy_custom_alias_and_schedule_once_hint() -> None:
+    import os
+
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    try:
+        from PyQt6.QtWidgets import QApplication
+    except Exception as e:
+        print(f"WARN: PyQt6 unavailable for settings alias/hint test: {e}")
+        return
+
+    from .core.settings_model import AppSettings
+    from .ui.widgets.settings import SettingsPanel
+
+    app = QApplication.instance()
+    owned_app = False
+    if app is None:
+        app = QApplication([])
+        owned_app = True
+
+    settings = AppSettings.from_dict({"classification": {"model": "custom"}})
+    panel = SettingsPanel(settings)
+    panel._load_settings(settings)
+
+    model_options = [
+        panel.classification_model_combo.itemText(i)
+        for i in range(panel.classification_model_combo.count())
+    ]
+    assert model_options == ["basic", "advanced"]
+    assert panel.classification_model_combo.currentText() == "advanced"
+
+    panel.schedule_type_combo.setCurrentText("once")
+    assert "다음 도래" in panel.schedule_hint_label.text()
+
+    out = panel._build_settings()
+    assert out.classification.model == "advanced"
+
+    panel.deleteLater()
+    if owned_app:
+        app.quit()
+
+
 def _test_cli_cancel_exit_code_130() -> None:
     import os
     import tempfile
@@ -2451,6 +2790,7 @@ def _test_cli_cancel_exit_code_130() -> None:
     class FakeProgress:
         processed = 0
         success = 0
+        partial_success = 0
         failed = 0
         skipped = 0
         is_cancelled = True
@@ -2497,6 +2837,88 @@ def _test_cli_cancel_exit_code_130() -> None:
     finally:
         batch_mod.BatchProcessor = original_batch_processor
         cli_mod.time.sleep = original_sleep
+
+
+def _test_cli_partial_exit_code_rules() -> None:
+    import io
+    import os
+    import tempfile
+    from contextlib import redirect_stdout
+
+    from . import cli as cli_mod
+    from .core import batch as batch_mod
+
+    class FakeProgress:
+        processed = 1
+        success = 0
+        partial_success = 1
+        failed = 0
+        skipped = 0
+        is_cancelled = False
+
+    class FakeProcessor:
+        def __init__(self, _settings):
+            self._progress = FakeProgress()
+
+        def set_callbacks(self, on_log=None, **_kwargs):
+            self._on_log = on_log
+
+        def start_async(self, _input, _output):
+            return True
+
+        @property
+        def is_running(self):
+            return False
+
+        @property
+        def progress(self):
+            return self._progress
+
+    original_batch_processor = batch_mod.BatchProcessor
+    batch_mod.BatchProcessor = FakeProcessor
+    try:
+        with tempfile.TemporaryDirectory(prefix="photocropper_cli_partial_") as td:
+            in_dir = os.path.join(td, "in")
+            out_dir = os.path.join(td, "out")
+            os.makedirs(in_dir, exist_ok=True)
+            os.makedirs(out_dir, exist_ok=True)
+
+            parser = cli_mod.create_parser()
+            args = parser.parse_args(["-i", in_dir, "-o", out_dir])
+            buffer = io.StringIO()
+            with redirect_stdout(buffer):
+                code = cli_mod.process_batch(args)
+            assert code == 0
+            assert "partial_success=1" in buffer.getvalue()
+
+            strict_args = parser.parse_args(
+                ["-i", in_dir, "-o", out_dir, "--strict-partial"]
+            )
+            assert cli_mod.process_batch(strict_args) == 1
+    finally:
+        batch_mod.BatchProcessor = original_batch_processor
+
+
+def _test_cli_recursive_output_guard() -> None:
+    import io
+    import os
+    import tempfile
+    from contextlib import redirect_stderr
+
+    from . import cli as cli_mod
+
+    with tempfile.TemporaryDirectory(prefix="photocropper_cli_guard_") as td:
+        in_dir = os.path.join(td, "input")
+        out_dir = os.path.join(in_dir, "output_cropped")
+        os.makedirs(out_dir, exist_ok=True)
+
+        parser = cli_mod.create_parser()
+        args = parser.parse_args(["-i", in_dir, "-o", out_dir, "--recursive"])
+        error_buffer = io.StringIO()
+        with redirect_stderr(error_buffer):
+            code = cli_mod.process_batch(args)
+        assert code == 2
+        assert "output directory inside the input directory" in error_buffer.getvalue()
 
 
 def _test_multi_photo_merge_distance_effect() -> None:
@@ -2838,7 +3260,11 @@ def main() -> int:
         _test_preview_widget_contour_redraw_variants()
         _test_manual_preview_shared_crop_mode()
         _test_boundary_failed_file_collection_helper()
+        _test_boundary_failed_file_collection_prefers_relative_paths()
+        _test_recursive_scan_excludes_internal_generated_dirs()
+        _test_classify_failed_files_preserves_relative_dirs()
         _test_cli_settings_merge_priority()
+        _test_classification_settings_custom_alias_normalizes_to_advanced()
         _test_settings_forward_compat()
         _test_unicode_text_watermark()
         _test_preview_single_pass()
@@ -2855,6 +3281,7 @@ def main() -> int:
         _test_save_image_fallback_and_metadata_best_effort()
         _test_resize_fill_no_upscale_boundary()
         _test_multi_photo_merge_distance_and_separate_folders()
+        _test_recursive_output_paths_preserve_relative_dirs()
         _test_multi_photo_uses_shared_loader()
         _test_multi_photo_status_variants_and_partial_index_behavior()
         _test_cli_new_crop_options()
@@ -2863,9 +3290,13 @@ def main() -> int:
         _test_watch_actions_block_while_batch_or_manual_running()
         _test_batch_actions_block_when_watch_running()
         _test_retry_failed_files_normalizes_empty_output_path()
+        _test_batch_actions_recursive_output_guard()
         _test_profile_apply_rebuild_validation()
         _test_settings_panel_classification_folder_roundtrip()
+        _test_settings_panel_legacy_custom_alias_and_schedule_once_hint()
         _test_cli_cancel_exit_code_130()
+        _test_cli_partial_exit_code_rules()
+        _test_cli_recursive_output_guard()
         _test_crop_accuracy_synthetic()
         _test_no_photo_false_positive_regression()
         _test_multi_photo_close_gap_split()

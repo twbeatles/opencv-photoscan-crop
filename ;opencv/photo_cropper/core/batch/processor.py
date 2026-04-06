@@ -44,9 +44,12 @@ from ..resize_processor import (
 from ..multi_photo_detector import MultiPhotoDetector
 from ...utils.file_helpers import (
     SUPPORTED_IMAGE_FORMATS,
+    build_recursive_excluded_roots,
     get_image_files,
     classify_failed_files,
     get_unique_filename,
+    relative_display_path,
+    relative_parent_dir,
 )
 from ...utils.processing_log import ProcessingLogger, get_processing_logger
 from ...utils.naming_rules import NamingRule, NamingRuleEngine
@@ -92,6 +95,7 @@ class BatchProgress:
     total: int = 0
     processed: int = 0
     success: int = 0
+    partial_success: int = 0
     failed: int = 0
     skipped: int = 0
     current_file: str = ""
@@ -112,7 +116,7 @@ class BatchProgress:
         """Get success rate percentage."""
         if self.processed == 0:
             return 0.0
-        return (self.success / self.processed) * 100
+        return ((self.success + self.partial_success) / self.processed) * 100
 
     @property
     def eta_seconds(self) -> float:
@@ -399,7 +403,13 @@ class BatchProcessor:
         else:
             logger.info(message)
 
-    def _resolve_input_path(self, input_dir: str, file_entry: str) -> Tuple[str, str]:
+    def _resolve_input_path(
+        self,
+        input_dir: str,
+        file_entry: str,
+        *,
+        input_root: Optional[str] = None,
+    ) -> Tuple[str, str]:
         """
         Resolve a file entry to an absolute input path and display name.
 
@@ -410,17 +420,31 @@ class BatchProcessor:
         Returns:
             Tuple of (input_path, display_name)
         """
+        display_root = input_root or input_dir
         if os.path.isabs(file_entry):
-            return file_entry, os.path.basename(file_entry)
+            return file_entry, relative_display_path(file_entry, display_root)
 
         candidate = os.path.join(input_dir, file_entry)
         if os.path.exists(candidate):
-            return candidate, os.path.basename(candidate)
+            return candidate, relative_display_path(candidate, display_root)
 
         if os.path.exists(file_entry):
-            return file_entry, os.path.basename(file_entry)
+            return file_entry, relative_display_path(file_entry, display_root)
 
-        return candidate, os.path.basename(candidate)
+        return candidate, relative_display_path(candidate, display_root)
+
+    def _resolve_base_output_dir(
+        self,
+        input_path: str,
+        output_dir: str,
+        *,
+        input_root: Optional[str] = None,
+    ) -> str:
+        """Resolve output directory, preserving input-relative parent path when needed."""
+        rel_parent = relative_parent_dir(input_path, input_root)
+        resolved = os.path.join(output_dir, rel_parent) if rel_parent else output_dir
+        os.makedirs(resolved, exist_ok=True)
+        return resolved
 
     def _ensure_naming_engine(self) -> Optional[NamingRuleEngine]:
         """Initialize naming engine if enabled in settings."""
@@ -442,35 +466,35 @@ class BatchProcessor:
 
         return self._naming_engine
 
-    def _resolve_multi_photo_output_dir(self, input_path: str, output_dir: str) -> str:
+    def _resolve_multi_photo_output_dir(
+        self,
+        input_path: str,
+        output_dir: str,
+        *,
+        input_root: Optional[str] = None,
+    ) -> str:
         """Resolve per-input subfolder for multi-photo outputs when enabled."""
+        base_output_dir = self._resolve_base_output_dir(
+            input_path,
+            output_dir,
+            input_root=input_root,
+        )
         if not (
             self.settings.multi_photo.enabled
             and self.settings.multi_photo.separate_output_folders
         ):
-            return output_dir
+            return base_output_dir
 
         base_name = os.path.splitext(os.path.basename(input_path))[0]
         folder_name = f"{base_name}_photos"
-
-        # Avoid duplicate nesting if caller already passed the per-input folder.
-        if os.path.basename(os.path.normpath(output_dir)) == folder_name:
-            resolved = output_dir
-        else:
-            resolved = os.path.join(output_dir, folder_name)
+        resolved = os.path.join(base_output_dir, folder_name)
 
         os.makedirs(resolved, exist_ok=True)
         return resolved
 
     def _build_output_path(self, input_path: str, output_dir: str, suffix: str) -> str:
         """Build output path using naming rules or default scheme."""
-        effective_output_dir = output_dir
-        if suffix.startswith("_photo"):
-            effective_output_dir = self._resolve_multi_photo_output_dir(
-                input_path, output_dir
-            )
-
-        os.makedirs(effective_output_dir, exist_ok=True)
+        os.makedirs(output_dir, exist_ok=True)
 
         output_format = self.settings.output.output_format
         if self.settings.file_management.use_naming_rules:
@@ -479,7 +503,7 @@ class BatchProcessor:
                 with self._naming_lock:
                     path = engine.generate_name(
                         input_path,
-                        output_dir=effective_output_dir,
+                        output_dir=output_dir,
                         output_format=output_format,
                     )
                 if suffix and suffix != "_cropped":
@@ -490,7 +514,7 @@ class BatchProcessor:
         base_name = os.path.splitext(os.path.basename(input_path))[0] + suffix
         extension = "." + output_format.lower()
         return get_unique_filename(
-            effective_output_dir,
+            output_dir,
             base_name,
             extension,
             add_timestamp=self.settings.output.add_timestamp,
@@ -731,9 +755,54 @@ class BatchProcessor:
         """
         return self._run_post_pipeline(image, output_dir)
 
-    def build_output_path(self, input_path: str, output_dir: str, suffix: str) -> str:
-        """Public wrapper for output path generation."""
+    def resolve_base_output_dir(
+        self,
+        input_path: str,
+        output_dir: str,
+        *,
+        input_root: Optional[str] = None,
+    ) -> str:
+        """Public wrapper for input-root-aware base output directory resolution."""
+        return self._resolve_base_output_dir(
+            input_path,
+            output_dir,
+            input_root=input_root,
+        )
+
+    def build_output_path_in_resolved_dir(
+        self,
+        input_path: str,
+        output_dir: str,
+        suffix: str,
+    ) -> str:
+        """Build an output path in an already-resolved directory."""
         return self._build_output_path(input_path, output_dir, suffix)
+
+    def build_output_path(
+        self,
+        input_path: str,
+        output_dir: str,
+        suffix: str,
+        *,
+        input_root: Optional[str] = None,
+    ) -> str:
+        """Public wrapper for output path generation."""
+        if (
+            self.settings.multi_photo.enabled
+            and str(suffix or "").startswith("_photo")
+        ):
+            effective_output_dir = self._resolve_multi_photo_output_dir(
+                input_path,
+                output_dir,
+                input_root=input_root,
+            )
+        else:
+            effective_output_dir = self._resolve_base_output_dir(
+                input_path,
+                output_dir,
+                input_root=input_root,
+            )
+        return self._build_output_path(input_path, effective_output_dir, suffix)
 
     def _maybe_apply_watermark(self, image: np.ndarray) -> np.ndarray:
         """Apply watermark settings if enabled."""
@@ -919,15 +988,31 @@ class BatchProcessor:
         *,
         multi_photo: bool = False,
         input_path: Optional[str] = None,
+        input_root: Optional[str] = None,
     ) -> List[str]:
         """
         Candidate output directories for duplicate probing.
 
         Includes classification category folders when auto-folder routing is enabled.
         """
-        roots: List[str] = [output_dir]
+        if input_path:
+            base_output_dir = self._resolve_base_output_dir(
+                input_path,
+                output_dir,
+                input_root=input_root,
+            )
+        else:
+            base_output_dir = output_dir
+
+        roots: List[str] = [base_output_dir]
         if multi_photo and input_path:
-            roots.append(self._resolve_multi_photo_output_dir(input_path, output_dir))
+            roots.append(
+                self._resolve_multi_photo_output_dir(
+                    input_path,
+                    output_dir,
+                    input_root=input_root,
+                )
+            )
 
         dirs: List[str] = []
         for root in roots:
@@ -959,6 +1044,7 @@ class BatchProcessor:
         *,
         multi_photo: bool = False,
         input_path: Optional[str] = None,
+        input_root: Optional[str] = None,
     ) -> Optional[str]:
         """
         Find existing output path for skip-processed checks across candidate dirs.
@@ -967,6 +1053,7 @@ class BatchProcessor:
             output_dir,
             multi_photo=multi_photo,
             input_path=input_path,
+            input_root=input_root,
         ):
             expected = os.path.join(candidate_dir, f"{base_name}_cropped{ext}")
             if os.path.exists(expected):
@@ -997,6 +1084,7 @@ class BatchProcessor:
         *,
         multi_photo: bool = False,
         input_path: Optional[str] = None,
+        input_root: Optional[str] = None,
     ) -> Optional[str]:
         """Public wrapper for skip-processed duplicate probing."""
         return self._find_existing_output(
@@ -1005,6 +1093,7 @@ class BatchProcessor:
             output_dir,
             multi_photo=multi_photo,
             input_path=input_path,
+            input_root=input_root,
         )
 
     def _safe_callback(self, callback: Optional[Callable], *args, **kwargs):
@@ -1047,8 +1136,10 @@ class BatchProcessor:
             self._progress.processed = processed_index
             self._progress.current_file = result.filename
 
-            if result.status in (ProcessStatus.SUCCESS, ProcessStatus.PARTIAL_SUCCESS):
+            if result.status == ProcessStatus.SUCCESS:
                 self._progress.success += 1
+            elif result.status == ProcessStatus.PARTIAL_SUCCESS:
+                self._progress.partial_success += 1
             elif result.status == ProcessStatus.FAILED:
                 self._progress.failed += 1
             elif result.status in (ProcessStatus.SKIPPED, ProcessStatus.CANCELLED):
@@ -1223,7 +1314,12 @@ class BatchProcessor:
             return not self._processing_thread.is_alive()
         return True
 
-    def process_single(self, input_path: str, output_dir: str) -> FileResult:
+    def process_single(
+        self,
+        input_path: str,
+        output_dir: str,
+        input_root: Optional[str] = None,
+    ) -> FileResult:
         """Process one file synchronously using the same pipeline as batch mode."""
         if not input_path or not os.path.exists(input_path):
             return FileResult(
@@ -1258,6 +1354,7 @@ class BatchProcessor:
             1,
             1,
             None,
+            input_root=input_root or os.path.dirname(input_path),
         )
 
         if (
@@ -1267,9 +1364,10 @@ class BatchProcessor:
             try:
                 classify_failed_files(
                     [input_path],
-                    os.path.dirname(input_path),
+                    input_root or os.path.dirname(input_path),
                     failed_folder_name=self.settings.file_management.failed_folder_name,
                     copy_mode=self.settings.file_management.copy_failed_instead_of_move,
+                    input_root=input_root or os.path.dirname(input_path),
                 )
             except Exception as e:
                 self._log(f"실패 파일 분류 중 오류: {e}", "warning")
@@ -1284,7 +1382,16 @@ class BatchProcessor:
             # Get file list
             if file_list is None:
                 if self.settings.file_management.recursive_search:
-                    file_list = get_image_files(input_dir, recursive=True)
+                    excluded_roots = build_recursive_excluded_roots(
+                        input_dir,
+                        output_dir,
+                        failed_folder_name=self.settings.file_management.failed_folder_name,
+                    )
+                    file_list = get_image_files(
+                        input_dir,
+                        recursive=True,
+                        excluded_roots=excluded_roots,
+                    )
                 else:
                     file_list = self.get_image_files(input_dir)
 
@@ -1338,6 +1445,7 @@ class BatchProcessor:
             work_items = []
             reserved_outputs = set()
             preview_engine = None
+            input_root = input_dir
 
             if (
                 not self.settings.multi_photo.enabled
@@ -1361,7 +1469,16 @@ class BatchProcessor:
                 preview_engine.reset_counter()
 
             for filename in file_list:
-                input_path, _ = self._resolve_input_path(input_dir, filename)
+                input_path, _ = self._resolve_input_path(
+                    input_dir,
+                    filename,
+                    input_root=input_root,
+                )
+                base_output_dir = self._resolve_base_output_dir(
+                    input_path,
+                    output_dir,
+                    input_root=input_root,
+                )
                 output_path_override = None
                 classification_routing = (
                     self.settings.classification.enabled
@@ -1371,7 +1488,7 @@ class BatchProcessor:
                     if preview_engine:
                         output_path_override = preview_engine.generate_name(
                             input_path,
-                            output_dir=output_dir,
+                            output_dir=base_output_dir,
                             output_format=self.settings.output.output_format,
                             ensure_unique=not self.settings.filter.skip_processed,
                         )
@@ -1386,7 +1503,7 @@ class BatchProcessor:
                             filename_out = f"{base_name}_{timestamp}{extension}"
                         else:
                             filename_out = f"{base_name}{extension}"
-                        output_path_override = os.path.join(output_dir, filename_out)
+                        output_path_override = os.path.join(base_output_dir, filename_out)
 
                     if not (
                         self.settings.filter.skip_processed
@@ -1428,6 +1545,7 @@ class BatchProcessor:
                             item_index,
                             total,
                             output_path_override,
+                            input_root,
                         )
                         futures[future] = (filename, item_index)
                         pending.add(future)
@@ -1529,6 +1647,7 @@ class BatchProcessor:
                         i,
                         total,
                         output_path_override,
+                        input_dir,
                     )
                     processed = i
                     self._handle_result(result, input_dir, filename, i)
@@ -1545,9 +1664,6 @@ class BatchProcessor:
 
             # Completion
             self._log("=" * 50, "info")
-            partial_count = len(
-                [r for r in self._results if r.status == ProcessStatus.PARTIAL_SUCCESS]
-            )
             if self._is_stop_requested():
                 self._log("작업이 중단되었습니다", "warning")
             else:
@@ -1557,12 +1673,12 @@ class BatchProcessor:
                 progress = BatchProgress(**self._progress.__dict__)
             self._log(
                 f"최종 통계 - 총: {progress.processed}, 성공: {progress.success}, "
-                f"실패: {progress.failed}, 건너뜀: {progress.skipped}",
+                f"부분 성공: {progress.partial_success}, 실패: {progress.failed}, 건너뜀: {progress.skipped}",
                 "info",
             )
 
-            if partial_count > 0:
-                self._log(f"Partial success files: {partial_count}", "partial")
+            if progress.partial_success > 0:
+                self._log(f"Partial success files: {progress.partial_success}", "partial")
 
             if self._failed_files:
                 self._log(f"실패한 파일: {len(self._failed_files)}개", "warning")
@@ -1578,6 +1694,7 @@ class BatchProcessor:
                         input_dir,
                         failed_folder_name=self.settings.file_management.failed_folder_name,
                         copy_mode=self.settings.file_management.copy_failed_instead_of_move,
+                        input_root=input_dir,
                     )
                     if moved_count > 0:
                         self._log(f"실패 파일 {moved_count}개 분류 완료", "info")
@@ -1618,9 +1735,11 @@ class BatchProcessor:
         current: int,
         total: int,
         output_path_override: Optional[str] = None,
+        input_root: Optional[str] = None,
     ) -> FileResult:
         """Process a single file."""
         start_time = time.time()
+        effective_input_root = input_root or input_dir
 
         if self._is_stop_requested():
             return FileResult(
@@ -1629,7 +1748,16 @@ class BatchProcessor:
                 message="작업 취소됨",
             )
 
-        input_path, display_name = self._resolve_input_path(input_dir, filename)
+        input_path, display_name = self._resolve_input_path(
+            input_dir,
+            filename,
+            input_root=effective_input_root,
+        )
+        base_output_dir = self._resolve_base_output_dir(
+            input_path,
+            output_dir,
+            input_root=effective_input_root,
+        )
 
         self._log(f"[{current}/{total}] 처리 중: {display_name}", "info")
 
@@ -1718,7 +1846,7 @@ class BatchProcessor:
                         message="이미 처리됨",
                     )
             elif not naming_or_timestamp and index_status != RECORD_STATUS_PARTIAL:
-                base_name = os.path.splitext(display_name)[0]
+                base_name = os.path.splitext(os.path.basename(input_path))[0]
                 ext = "." + self.settings.output.output_format.lower()
                 existing = self._find_existing_output(
                     base_name,
@@ -1726,6 +1854,7 @@ class BatchProcessor:
                     output_dir,
                     multi_photo=self.settings.multi_photo.enabled,
                     input_path=input_path,
+                    input_root=effective_input_root,
                 )
                 if existing:
                     self._log(
@@ -1740,7 +1869,12 @@ class BatchProcessor:
         # Backup
         if backup_dir:
             try:
-                backup_path = os.path.join(backup_dir, display_name)
+                rel_parent = relative_parent_dir(input_path, effective_input_root)
+                backup_target_dir = (
+                    os.path.join(backup_dir, rel_parent) if rel_parent else backup_dir
+                )
+                os.makedirs(backup_target_dir, exist_ok=True)
+                backup_path = os.path.join(backup_target_dir, os.path.basename(input_path))
                 shutil.copy2(input_path, backup_path)
             except Exception as e:
                 self._log(f"  백업 실패: {e}", "warning")
@@ -1756,6 +1890,7 @@ class BatchProcessor:
                     total,
                     start_time,
                     processor,
+                    input_root=effective_input_root,
                 )
                 if multi_result.status == ProcessStatus.SUCCESS:
                     outputs = list(multi_result.output_paths or [])
@@ -1791,7 +1926,7 @@ class BatchProcessor:
         if result.success and result.image is not None:
             processed_image, resolved_output_dir = self._run_post_pipeline(
                 result.image,
-                output_dir,
+                base_output_dir,
             )
 
             # Generate output filename
@@ -1855,6 +1990,7 @@ class BatchProcessor:
         total: int,
         start_time: float,
         processor: ImageProcessor,
+        input_root: Optional[str] = None,
     ) -> FileResult:
         """
         Process a single file with multi-photo detection.
@@ -1896,6 +2032,7 @@ class BatchProcessor:
                     filename,
                     processing_time,
                     processor,
+                    input_root=input_root,
                 )
             else:
                 return FileResult(
@@ -1915,7 +2052,11 @@ class BatchProcessor:
         saved_count = 0
         failed_count = 0
         saved_outputs: List[str] = []
-        multi_output_root = self._resolve_multi_photo_output_dir(input_path, output_dir)
+        multi_output_root = self._resolve_multi_photo_output_dir(
+            input_path,
+            output_dir,
+            input_root=input_root,
+        )
         target_total = max(int(detection_result.total_found or 0), len(cropped_photos))
         cancelled_midway = False
 
@@ -2020,6 +2161,7 @@ class BatchProcessor:
         filename: str,
         processing_time: float,
         processor: Optional[ImageProcessor] = None,
+        input_root: Optional[str] = None,
     ) -> FileResult:
         """Save a single processed result."""
         active_processor = processor or self.processor
@@ -2030,9 +2172,14 @@ class BatchProcessor:
                 message="저장할 이미지가 없습니다",
                 processing_time_ms=processing_time,
             )
+        base_output_dir = self._resolve_base_output_dir(
+            input_path,
+            output_dir,
+            input_root=input_root,
+        )
         processed_image, resolved_output_dir = self._run_post_pipeline(
             result.image,
-            output_dir,
+            base_output_dir,
         )
         output_path = self._build_output_path(
             input_path,

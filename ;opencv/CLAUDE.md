@@ -62,9 +62,10 @@ photo_cropper/
 대량 이미지 처리 엔진입니다.
 
 - `start_async(input_path, output_path, files)`
-- `process_single(input_path, output_dir)` (Watch Mode에서 재사용)
+- `process_single(input_path, output_dir, input_root=None)` (Watch Mode/수동 추출에서 재사용)
 - `apply_post_pipeline`, `build_output_path`, `find_existing_output`
 - `lookup_processed_outputs_from_index`, `record_processed_outputs` (`skip_processed` 로컬 인덱스)
+- `BatchProgress.partial_success`로 full success와 partial success를 분리 집계
 
 ### 3) MainWindow (`ui/main/window.py`)
 
@@ -105,6 +106,7 @@ UI composition root입니다.
    - `WatchActions.reconfigure_scheduler()`에서 `watch_mode.scheduler_*`를 런타임 스케줄에 반영
    - 앱 실행 중 예약 시각 도달 시 `BatchActions.start_processing()` 경로로 전체 배치 트리거
    - 배치/수동/워치 실행 중에는 스케줄 트리거를 skip 처리
+   - `schedule_type=once`는 날짜 없는 "다음 도래 HH:MM 1회 실행" 의미
 
 ## 코딩 가이드라인
 
@@ -117,8 +119,14 @@ UI composition root입니다.
 
 - 후처리 순서: 얼굴 보정 -> 스마트 보정 -> 리사이즈 -> 분류 라우팅 -> 워터마크
 - Watch/Batch/수동 추출 경로가 동일 규칙을 사용해야 함
+- 재귀 Batch/Watch/CLI는 output path를 input root 내부에 둘 수 없음
+- 재귀 입력은 `output_root`, `_failed`, `backup`, `.photocropper`를 입력 스캔에서 제외
+- 재귀 출력/실패 보관/멀티포토 저장은 입력 기준 상대 경로를 보존
 - `skip_processed`는 `.photocropper/processed_index.json` 인덱스 우선, 실패 시 파일명 기반 fallback
 - processed index v2는 레코드별 `status=success|partial`를 저장하며, `partial`은 skip 대신 경고 후 재처리
+- CLI는 summary에 `processed/success/partial_success/failed/skipped`를 항상 출력하고, `--strict-partial` 사용 시 partial도 종료코드 `1` 대상
+- 분류 모델 `custom`은 legacy alias로만 유지되며 내부적으로 `advanced`로 정규화
+- scheduler `once`는 날짜 없는 "다음 도래 HH:MM 1회 실행" 의미
 - 수동 contour preview도 `core.manual_extract.crop_manual_contour()`를 통해 실제 저장과 동일한 crop 규칙을 사용
 
 ### 성능/안정성
@@ -252,3 +260,11 @@ pyinstaller photo_cropper.spec --clean
 - `FolderWatcher.fileChanged` now participates in reprocessing, but only queues when the file's size/mtime signature actually changed.
 - `ProcessedIndexStore` moved to schema v2 with backward-compatible `status` normalization; legacy records default to `success`, partial records do not force full skip.
 - `retry_failed_files()` now reuses the same output-path normalization/validation as regular batch start (`<input>/output_cropped` fallback).
+
+## 2026-04-06 Implementation Alignment Update
+
+- Recursive batch/watch/CLI now share the same output-inside-input guard and recursive scan exclusion rules (`output_root`, `_failed`, `backup`, `.photocropper`).
+- Recursive outputs, failed-file routing, and multi-photo `*_photos` layouts now preserve the input-relative directory tree.
+- `BatchProgress.partial_success` is now a first-class counter; GUI/CLI summaries use aligned semantics, and CLI gained `--strict-partial`.
+- Legacy classification model `custom` is normalized to the `advanced` alias, while the settings UI only exposes `basic` and `advanced`.
+- Scheduler `once` is documented/UI-labeled as "next upcoming HH:MM one-shot" rather than a date-based reservation.

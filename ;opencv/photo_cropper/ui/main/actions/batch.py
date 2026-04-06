@@ -12,12 +12,18 @@ from typing import Callable, Optional
 import numpy as np
 from PyQt6.QtWidgets import QMessageBox
 
-from ....core.batch import BatchProgress, ProcessStatus
+from ....core.batch import BatchProgress
 from ....core.manual_extract import (
     ManualExtractSessionRunner,
     collect_boundary_failed_files,
 )
-from ....utils.file_helpers import get_image_files, open_file_explorer, validate_directory
+from ....utils.file_helpers import (
+    build_recursive_excluded_roots,
+    get_image_files,
+    is_output_inside_input,
+    open_file_explorer,
+    validate_directory,
+)
 from ...widgets.progress_dialog import ProgressDialog
 from ...widgets.toast_notification import ToastManager
 from ..models import WindowRefs, WindowServices, WindowSignals, WindowState
@@ -70,14 +76,6 @@ class BatchActions:
         if processor is not None:
             processor.update_settings(self.state.settings)
 
-    @staticmethod
-    def _partial_result_count(results: list) -> int:
-        return sum(
-            1
-            for result in (results or [])
-            if getattr(result, "status", None) == ProcessStatus.PARTIAL_SUCCESS
-        )
-
     def _is_batch_running(self) -> bool:
         processor = self.batch_processor
         return bool(processor and processor.is_running)
@@ -123,6 +121,20 @@ class BatchActions:
                 self.services.host_window,
                 "경고",
                 f"출력 폴더 오류: {exc}",
+            )
+            return None
+
+        recursive = bool(
+            getattr(self.state.settings.file_management, "recursive_search", False)
+        )
+        if recursive and is_output_inside_input(input_path, output_path):
+            QMessageBox.warning(
+                self.services.host_window,
+                "경고",
+                (
+                    "재귀 배치 처리에서는 출력 폴더를 입력 폴더 내부에 둘 수 없습니다.\n"
+                    f"입력: {input_path}\n출력: {output_path}"
+                ),
             )
             return None
 
@@ -204,7 +216,20 @@ class BatchActions:
         recursive = bool(
             getattr(self.state.settings.file_management, "recursive_search", False)
         )
-        files = get_image_files(input_path, recursive=recursive)
+        excluded_roots = (
+            build_recursive_excluded_roots(
+                input_path,
+                output_path,
+                failed_folder_name=self.state.settings.file_management.failed_folder_name,
+            )
+            if recursive
+            else None
+        )
+        files = get_image_files(
+            input_path,
+            recursive=recursive,
+            excluded_roots=excluded_roots,
+        )
         if not files:
             QMessageBox.information(
                 self.services.host_window,
@@ -255,8 +280,20 @@ class BatchActions:
 
     def collect_boundary_failed_files(self, results: list) -> list[str]:
         input_root = self.refs.input_path_edit.text().strip() if self.refs.input_path_edit else ""
+        output_path = self.refs.output_path_edit.text().strip() if self.refs.output_path_edit else ""
+        if input_root and not output_path:
+            output_path = os.path.join(input_root, "output_cropped")
         recursive = bool(
             getattr(self.state.settings.file_management, "recursive_search", False)
+        )
+        excluded_roots = (
+            build_recursive_excluded_roots(
+                input_root,
+                output_path,
+                failed_folder_name=self.state.settings.file_management.failed_folder_name,
+            )
+            if recursive and input_root
+            else None
         )
         batch_failed = self.services.batch_session.failed_files
         return collect_boundary_failed_files(
@@ -265,13 +302,19 @@ class BatchActions:
             image_list=self.state.image_list or [],
             batch_failed_entries=batch_failed,
             recursive_search=recursive,
-            get_image_files_fn=get_image_files,
+            get_image_files_fn=(
+                lambda root, recursive=False: get_image_files(
+                    root,
+                    recursive=recursive,
+                    excluded_roots=excluded_roots if recursive else None,
+                )
+            ),
             logger=logger,
         )
 
     def on_batch_complete(self, progress: BatchProgress, results: list) -> None:
-        partial_count = self._partial_result_count(results)
-        full_success_count = max(int(progress.success) - partial_count, 0)
+        partial_count = int(getattr(progress, "partial_success", 0) or 0)
+        full_success_count = int(progress.success)
         summary_message = (
             f"처리 완료: 정상 성공 {full_success_count}개, 부분 성공 {partial_count}개, "
             f"실패 {progress.failed}개, 건너뜀 {progress.skipped}개"
@@ -522,13 +565,14 @@ class BatchActions:
 
         self.state.manual_extract_thread = threading.Thread(
             target=self.run_manual_extract_worker,
-            args=(output_path, files_snapshot, contours_snapshot, settings_snapshot),
+            args=(input_path, output_path, files_snapshot, contours_snapshot, settings_snapshot),
             daemon=True,
         )
         self.state.manual_extract_thread.start()
 
     def run_manual_extract_worker(
         self,
+        input_path: str,
         output_path: str,
         files: list,
         contours_norm: dict,
@@ -536,6 +580,7 @@ class BatchActions:
     ) -> None:
         try:
             self._manual_runner.run(
+                input_root=input_path,
                 output_path=output_path,
                 files=files,
                 contours_norm=contours_norm,

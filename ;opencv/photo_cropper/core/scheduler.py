@@ -21,7 +21,7 @@ logger = logging.getLogger(__name__)
 
 class ScheduleType(Enum):
     """Schedule type options."""
-    ONCE = "once"          # Run once at specified time
+    ONCE = "once"          # Run once at the next upcoming specified HH:MM (no date)
     DAILY = "daily"        # Run every day at specified time
     INTERVAL = "interval"  # Run every N minutes
     HOURLY = "hourly"      # Run every hour
@@ -33,7 +33,7 @@ class ScheduleTask:
     task_id: str
     name: str
     schedule_type: ScheduleType
-    time: Optional[QTime] = None  # For ONCE, DAILY
+    time: Optional[QTime] = None  # For ONCE(next upcoming HH:MM) and DAILY
     interval_minutes: int = 60    # For INTERVAL
     input_path: str = ""
     output_path: str = ""
@@ -47,7 +47,7 @@ class Scheduler(QObject):
     Task scheduler for automated batch processing.
     
     Features:
-        - One-time scheduled tasks
+        - One-time scheduled tasks (next upcoming HH:MM, no date)
         - Daily recurring tasks
         - Interval-based tasks
         - Multiple concurrent schedules
@@ -216,7 +216,7 @@ class Scheduler(QObject):
                     task.time.hour(), task.time.minute()
                 ))
                 if next_run <= now:
-                    # Already passed today, schedule for tomorrow
+                    # Already passed today, schedule the next upcoming HH:MM tomorrow.
                     from datetime import timedelta
                     next_run += timedelta(days=1)
                 task.next_run = next_run

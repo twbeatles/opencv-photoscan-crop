@@ -725,12 +725,18 @@ class SettingsPanel(QWidget):
         sched_form = QFormLayout()
         self.schedule_type_combo = NoScrollComboBox()
         self.schedule_type_combo.addItems(["interval", "once", "daily", "hourly"])
+        self.schedule_type_combo.setToolTip(
+            "once는 날짜 지정 없이 다음 도래 HH:MM에 한 번만 실행됩니다."
+        )
         self.schedule_type_combo.currentTextChanged.connect(self._on_schedule_type_changed)
         sched_form.addRow("스케줄 유형:", self.schedule_type_combo)
 
         self.schedule_time_edit = QLineEdit()
         self.schedule_time_edit.setPlaceholderText("HH:MM (예: 09:00)")
         self.schedule_time_edit.setText("00:00")
+        self.schedule_time_edit.setToolTip(
+            "daily/once에서 사용합니다. once는 날짜 없는 다음 도래 시각 1회 실행입니다."
+        )
         self.schedule_time_edit.textChanged.connect(self._on_setting_changed)
         sched_form.addRow("시간:", self.schedule_time_edit)
 
@@ -740,6 +746,11 @@ class SettingsPanel(QWidget):
         self.schedule_interval_spin.valueChanged.connect(self._on_setting_changed)
         sched_form.addRow("간격 (분):", self.schedule_interval_spin)
         sched_layout.addLayout(sched_form)
+
+        self.schedule_hint_label = QLabel()
+        self.schedule_hint_label.setObjectName("subtitleLabel")
+        self.schedule_hint_label.setWordWrap(True)
+        sched_layout.addWidget(self.schedule_hint_label)
 
         sched_section.add_widget(sched_group)
         layout.addWidget(sched_section)
@@ -1570,7 +1581,7 @@ class SettingsPanel(QWidget):
         model_row = QHBoxLayout()
         model_row.addWidget(QLabel("분류 모델:"))
         self.classification_model_combo = NoScrollComboBox()
-        self.classification_model_combo.addItems(["basic", "advanced", "custom"])
+        self.classification_model_combo.addItems(["basic", "advanced"])
         self.classification_model_combo.currentTextChanged.connect(
             self._on_setting_changed
         )
@@ -1690,6 +1701,17 @@ class SettingsPanel(QWidget):
 
         self.tab_widget.addTab(self._make_scrollable_tab(content), "🤖 AI")
 
+    @staticmethod
+    def _schedule_hint_text(schedule_type: str) -> str:
+        normalized = str(schedule_type or "").strip().lower()
+        if normalized == "once":
+            return "once: 날짜 없이 다음 도래 HH:MM에 한 번만 실행됩니다."
+        if normalized == "daily":
+            return "daily: 매일 지정한 HH:MM에 반복 실행됩니다."
+        if normalized == "hourly":
+            return "hourly: 매 정시에 반복 실행됩니다."
+        return "interval: 지정한 분 간격마다 반복 실행됩니다."
+
     def _on_schedule_type_changed(self, schedule_type: str):
         """Handle schedule type change to show/hide relevant controls."""
         # Show time field for daily/once, interval for interval mode
@@ -1699,6 +1721,8 @@ class SettingsPanel(QWidget):
         if hasattr(self, "schedule_interval_spin"):
             show_interval = schedule_type in ("interval", "hourly")
             self.schedule_interval_spin.setEnabled(show_interval)
+        if hasattr(self, "schedule_hint_label"):
+            self.schedule_hint_label.setText(self._schedule_hint_text(schedule_type))
         self._on_setting_changed()
 
     # ========================================

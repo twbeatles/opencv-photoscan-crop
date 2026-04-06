@@ -68,12 +68,17 @@
 
 - Watch Mode는 `ui/main/actions/watch.py`를 통해 `BatchProcessor.process_single()` 경로를 재사용합니다.
 - 저장 전 후처리 순서는 단일/멀티포토 모두 얼굴 보정 → 스마트 보정 → 리사이즈 → 분류 폴더 라우팅(워터마크 전) → 워터마크입니다.
+- 재귀 Batch/Watch/CLI는 output path를 input root 내부에 둘 수 없고, recursive scan에서는 `output_root`, `_failed`, `backup`, `.photocropper`를 자동 제외합니다.
+- 재귀 출력/실패 보관/멀티포토 `*_photos`는 입력 기준 상대 경로를 유지합니다.
 - `performance.max_image_size_mb`는 실제 처리 전에 파일 크기 제한으로 적용됩니다.
 - `skip_processed`는 `.photocropper/processed_index.json` 인덱스를 우선 사용하고, 실패 시 자동 분류 하위 폴더까지 포함해 fallback 탐지합니다.
 - processed index v2는 레코드별 `status=success|partial`를 저장하며, `partial`은 경고 후 재처리하고 full skip하지 않습니다.
+- `BatchProgress.partial_success`는 full success와 분리 집계되며, CLI는 항상 `processed/success/partial_success/failed/skipped`를 출력합니다.
+- CLI `--strict-partial`은 partial-only run도 종료코드 `1`로 바꾸고, 분류 모델 `custom`은 `advanced` alias로만 유지됩니다.
 - 얼굴 감지 `use_dnn=True`는 모델 자동 다운로드/체크섬 검증 후 로드하며, 실패 시 Haar로 즉시 폴백합니다.
 - 멀티스레드 취소는 완료 future를 drain하고 남은 미실행 항목을 `CANCELLED`로 집계해 통계 정합성을 유지합니다.
 - 스케줄러는 `watch_mode.scheduler_*` 설정과 런타임 연결되어 앱 실행 중 자동 배치를 트리거합니다.
+- scheduler `once`는 날짜 없는 "다음 도래 HH:MM 1회 실행" 의미입니다.
 - 재귀 Watch Mode는 output path가 input root 내부면 시작을 거부합니다.
 - Watch 처리 경로는 settings snapshot에서 `move_failed_files=False`를 강제해 `_failed` 피드백 루프를 막습니다.
 - `FolderWatcher.fileChanged`는 overwrite된 동일 경로도 size/mtime signature가 바뀌었을 때만 재큐잉합니다.
@@ -166,7 +171,7 @@ class AppSettings:
 @dataclass
 class ClassificationSettings:
     enabled: bool = False
-    model: str = "basic"   # basic | advanced | custom(custom=advanced)
+    model: str = "basic"   # basic | advanced (legacy custom aliases to advanced)
     category_folders: dict[str, str]  # portrait/landscape/document/blackwhite/other
 
 @dataclass
@@ -318,6 +323,14 @@ pyinstaller photo_cropper.spec --clean
 - `FolderWatcher.fileChanged` is now part of the reprocessing path, but duplicate events are suppressed unless the file signature changed.
 - `ProcessedIndexStore` moved to schema v2 with backward-compatible `status` handling for legacy records and partial-result records.
 - `retry_failed_files()` now normalizes an empty output path to `<input>/output_cropped` before validation, matching normal batch start.
+
+## 2026-04-06 Implementation Alignment Notes
+
+- Recursive batch/watch/CLI now share a single output-inside-input safety rule plus recursive scan exclusion for `output_root`, `_failed`, `backup`, and `.photocropper`.
+- Recursive output routing preserves input-relative paths for final outputs, failed-file storage, and multi-photo `*_photos` directories.
+- `BatchProgress.partial_success` is now explicit, GUI/CLI summaries are aligned, and CLI gained `--strict-partial`.
+- Classification model `custom` remains only as a deprecated compatibility alias of `advanced`; the settings UI now offers only `basic` and `advanced`.
+- Scheduler `once` wording is clarified as "next upcoming HH:MM one-shot" with no date field.
 
 ## 2026-03-09 UI/MainWindow Consistency Notes
 

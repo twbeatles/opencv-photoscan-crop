@@ -54,6 +54,15 @@
 - **processed index v2 partial 정책**: 인덱스 레코드에 `status=success|partial`를 저장하고, `partial`은 경고만 남긴 뒤 재처리
 - **Retry Failed 경로 정규화**: 일반 배치와 동일하게 빈 output path를 `<input>/output_cropped`로 보정 후 검증
 
+### 🛡️ 구현 정합성 업데이트 (2026-04)
+- **재귀 Batch/CLI/Watch 안전 가드**: recursive 처리에서는 output이 input root 내부면 시작을 차단
+- **재귀 스캔 내부 산출물 제외**: `output_root`, `_failed`, `backup`, `.photocropper`를 자동 제외
+- **상대경로 보존 저장 규칙**: recursive 입력은 output, `_failed`, `*_photos`에서 입력 기준 상대 경로를 유지
+- **partial_success 집계 정렬**: GUI/CLI summary가 `success`, `partial_success`, `failed`, `skipped`를 동일 규칙으로 집계
+- **CLI `--strict-partial` 추가**: 기본은 partial을 success 계열로 처리하고, strict일 때만 종료코드 1 반환
+- **분류 모델 정규화**: legacy `custom`은 `advanced` alias로 유지되며 UI는 `basic/advanced`만 노출
+- **Scheduler `once` 의미 명확화**: 날짜 없는 "다음 도래 HH:MM 1회 실행" 의미로 고정
+
 ### 🔥 v8.5 핵심 기능
 - **다중 사진 자동 감지**: 한 스캔에서 여러 사진을 자동으로 분리
 - **워터마크 추가**: 텍스트/이미지 워터마크 지원
@@ -157,6 +166,12 @@ python -m photo_cropper.cli -i ./scans -o ./cropped --multi-photo --multi-photo-
 # 메타데이터 보존 + 원근 보정 OFF
 python -m photo_cropper.cli -i ./scans -o ./cropped --preserve-metadata --no-perspective-correct
 
+# recursive 입력 + partial 엄격 종료 정책
+python -m photo_cropper.cli -i ./scans -o ../cropped --recursive --strict-partial
+
+# legacy custom 값도 허용되지만 내부적으로 advanced로 처리
+python -m photo_cropper.cli -i ./scans -o ./cropped --classify --classify-model custom
+
 # 병렬 처리 (스레드 수 지정)
 python -m photo_cropper.cli -i ./scans -o ./cropped --jobs 6
 
@@ -208,6 +223,8 @@ python -m photo_cropper.cli --help
 - **스케줄러**: 예약 시간에 자동 배치 처리
 
 > 참고: 재귀 Watch Mode에서는 출력 폴더를 입력 폴더 내부에 둘 수 없습니다. 기본 출력값(`<input>/output_cropped`)을 그대로 쓰려면 재귀 감시를 끄거나, 출력 폴더를 입력 루트 밖으로 지정하세요.
+> 참고: 재귀 Batch/Watch/CLI에서는 내부 생성 폴더(`output_root`, `_failed`, `backup`, `.photocropper`)를 입력 스캔에서 자동 제외합니다.
+> 참고: 스케줄 유형 `once`는 날짜 지정이 아니라 "다음 도래 HH:MM에 1회 실행" 의미입니다.
 
 ### 알고리즘 설정
 - **Canny 임계값**: 에지 감지 민감도 조절 (0-255)
@@ -228,12 +245,15 @@ python -m photo_cropper.cli --help
 - **메타데이터 보존**: EXIF/ICC best-effort 복사 (실패 시 저장은 계속 진행)
 - **그레이스케일/노이즈 제거/선명도 향상**
 - **자동 분류 저장(선택)**: 분류 신뢰도 조건 충족 시 카테고리 하위 폴더에 저장
+> 참고: 재귀 입력에서는 출력 결과, `_failed`, 멀티포토 `*_photos` 폴더가 입력 기준 상대 경로를 보존합니다.
+> 참고: 분류 모델 `custom`은 더 이상 별도 모델이 아니며 `advanced`의 호환 alias로 처리됩니다.
 
 > 참고: `skip processed`는 출력 폴더 로컬 인덱스(`.photocropper/processed_index.json`)를 우선 사용합니다.
 > 인덱스 키는 `source_path + size + mtime_ns + pipeline_signature`이며, 멀티포토는 `outputs[]`로 다중 결과를 기록합니다.
 > `partial_success`는 인덱스에 `status=partial`로 남기되, 다음 실행에서 full skip하지 않고 경고 후 재처리합니다.
 > 인덱스가 비활성/오류일 때만 파일명 기반 fallback 탐지와 제한 경고가 적용됩니다.
 > 자동 분류 하위 폴더(기본 `인물/풍경/문서/흑백/기타`, 사용자 지정 가능)와 멀티포토 하위 폴더(`*_photos`)도 탐지 대상에 포함됩니다.
+> 참고: CLI summary는 항상 `processed/success/partial_success/failed/skipped`를 출력하며, `--strict-partial` 사용 시 partial만 있어도 종료코드 `1`입니다.
 
 ## 🧪 안정성 체크 포인트
 
@@ -242,10 +262,12 @@ python -m photo_cropper.cli --help
 - **전체 selftest**: `cd ";opencv" && python -m photo_cropper.selftest`
 - **CLI 스모크 테스트**: `cd ";opencv" && python -m photo_cropper.cli -i ./scans -o ./cropped --multi-photo --multi-photo-separate-folders --preserve-metadata --no-perspective-correct --skip-processed`
 - **워치 모드 검증**: GUI에서 Watch Mode 시작 후 신규 파일 투입 시 배치와 동일한 출력(워터마크/리사이즈/분류 폴더) 확인
+- **재귀 Batch 안전성 검증**: recursive batch/CLI + output inside input 조합에서 시작이 차단되는지 확인
 - **재귀 Watch 안전성 검증**: recursive watch + output inside input 조합에서 시작이 차단되는지 확인
 - **Watch overwrite 검증**: 같은 경로 이미지를 덮어쓴 뒤 size/mtime이 바뀌면 재큐잉되고, 변동이 없으면 중복 처리되지 않는지 확인
 - **수동 preview/save parity 검증**: `advanced.perspective_correct=false`에서 수동 편집 직후 preview와 실제 저장 결과 shape이 일치하는지 확인
 - **스케줄러 검증**: `watch_mode.scheduler_enabled=true` 상태에서 예약 시각 도달 시 자동 배치 시작/중복 실행 skip 확인
+- **CLI partial 정책 검증**: partial만 발생한 run은 기본 종료코드 `0`, `--strict-partial`에서는 `1`인지 확인
 - **유니코드 경로 검증**: 한글 경로의 워터마크 이미지 파일을 지정해 저장 성공 여부 확인
 - **취소 검증**: 멀티스레드 배치 실행 중 중단 요청 시 통계/상태 정합성 확인 및 CLI 종료코드 `130` 확인
 - **벤치마크 하네스 검증**:
@@ -315,6 +337,13 @@ pyinstaller ".\\;opencv\\photo_cropper.spec" --clean
 | UPX 압축 | 실행 파일 압축 (~40% 크기 감소) |
 
 ## 📋 변경 이력
+
+### v9.0 구현 정합성 업데이트 (2026-04-06)
+- 🛡️ recursive batch/watch/CLI에서 output-inside-input 조합을 공통 규칙으로 차단하고, recursive scan exclusion(`output_root`, `_failed`, `backup`, `.photocropper`)을 일원화
+- 🛡️ recursive 출력/실패 보관/멀티포토 저장이 입력 기준 상대 경로를 보존하도록 정렬
+- 🛡️ `BatchProgress.partial_success`를 분리하고 GUI/CLI summary 정합성 및 CLI `--strict-partial` 종료 정책을 추가
+- 🛡️ legacy 분류 모델 `custom`을 `advanced` alias로 정규화하고 UI 선택지를 `basic/advanced`로 정리
+- 🛡️ Scheduler `once`를 날짜 없는 "다음 도래 HH:MM 1회 실행" 의미로 명확히 문서화
 
 ### v9.0 통합 개선 업데이트 (2026-03-05)
 - ✨ `skip_processed` 로컬 인덱스(`.photocropper/processed_index.json`) 추가 및 Batch/Watch/수동 추출 공통 적용

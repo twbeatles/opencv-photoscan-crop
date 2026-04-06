@@ -12,6 +12,14 @@ dist/
 ;opencv/benchmark/report.json
 ;opencv/benchmark/report-*.json
 
+# Runtime output artifacts from local processing
+**/output_cropped/
+**/_failed/
+**/backup/
+**/_debug/
+**/*_photos/
+*.photocropper
+
 # PyInstaller cache
 *.spec.bak
 

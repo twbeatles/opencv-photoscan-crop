@@ -94,7 +94,7 @@ class ImageClassifier:
     
     @staticmethod
     def _normalize_model(model: str) -> str:
-        """Normalize classification model name."""
+        """Normalize classification model name, keeping legacy aliases compatible."""
         mode = str(model or "basic").lower()
         if mode not in ("basic", "advanced", "custom"):
             mode = "basic"
@@ -117,7 +117,7 @@ class ImageClassifier:
         
         Args:
             image: Input image (BGR/Gray)
-            model: Classification profile ("basic", "advanced", "custom")
+            model: Classification profile ("basic", "advanced", legacy "custom" alias)
             
         Returns:
             ClassificationResult with category and confidence

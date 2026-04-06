@@ -12,7 +12,12 @@ from PyQt6.QtCore import QTime
 from PyQt6.QtWidgets import QMessageBox
 
 from ....core.scheduler import ScheduleTask, ScheduleType
-from ....utils.file_helpers import get_image_files, validate_directory
+from ....utils.file_helpers import (
+    build_recursive_excluded_roots,
+    get_image_files,
+    is_output_inside_input,
+    validate_directory,
+)
 from ...widgets.toast_notification import ToastManager
 from ..models import WindowRefs, WindowServices, WindowState
 
@@ -150,7 +155,30 @@ class WatchActions:
             return False
 
         recursive = bool(getattr(self.state.settings.file_management, "recursive_search", False))
-        files = get_image_files(input_path, recursive=recursive)
+        if recursive and is_output_inside_input(input_path, output_path):
+            message = (
+                "⏰ 스케줄 실행 실패: 재귀 배치에서는 출력 폴더를 입력 폴더 내부에 둘 수 없습니다"
+            )
+            logger.warning("%s (input=%s, output=%s)", message, input_path, output_path)
+            if self.refs.status_label is not None:
+                self.refs.status_label.setText(message)
+            ToastManager.warning(message)
+            return False
+
+        excluded_roots = (
+            build_recursive_excluded_roots(
+                input_path,
+                output_path,
+                failed_folder_name=self.state.settings.file_management.failed_folder_name,
+            )
+            if recursive
+            else None
+        )
+        files = get_image_files(
+            input_path,
+            recursive=recursive,
+            excluded_roots=excluded_roots,
+        )
         if not files:
             message = "⏰ 스케줄 실행 건너뜀: 처리할 이미지가 없습니다"
             logger.info(message)

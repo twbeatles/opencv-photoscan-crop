@@ -18,6 +18,7 @@ import numpy as np
 from ..batch import BatchProcessor, FileResult, ProcessStatus
 from ..image import ImageProcessor
 from ..settings_model import AppSettings
+from ...utils.file_helpers import relative_display_path
 from .contour_utils import axis_aligned_crop, crop_manual_contour
 
 
@@ -41,10 +42,12 @@ class ManualExtractProcessor:
         self,
         settings: AppSettings,
         output_path: str,
+        input_root: str,
         denormalize_contour_fn: ContourDenormalizeFn,
     ):
         self.settings = settings
         self.output_path = output_path
+        self.input_root = input_root
         self._denormalize_contour = denormalize_contour_fn
 
         self._image_processor = ImageProcessor(
@@ -107,6 +110,7 @@ class ManualExtractProcessor:
             self.output_path,
             multi_photo=self.settings.multi_photo.enabled,
             input_path=path,
+            input_root=self.input_root,
         )
         if existing:
             skip_result = FileResult(
@@ -125,7 +129,7 @@ class ManualExtractProcessor:
     ) -> ManualExtractOutcome:
         """Process one file using manual contour first, auto-detect fallback."""
         started_at = time.time()
-        filename = os.path.basename(path)
+        filename = relative_display_path(path, self.input_root)
 
         skip_result, notice = self._check_skip_processed(path, started_at)
         if skip_result is not None:
@@ -177,9 +181,13 @@ class ManualExtractProcessor:
 
             processed_image, resolved_output_dir = self._batch_processor.apply_post_pipeline(
                 cropped,
-                self.output_path,
+                self._batch_processor.resolve_base_output_dir(
+                    path,
+                    self.output_path,
+                    input_root=self.input_root,
+                ),
             )
-            out_path = self._batch_processor.build_output_path(
+            out_path = self._batch_processor.build_output_path_in_resolved_dir(
                 path,
                 resolved_output_dir,
                 suffix="_cropped",

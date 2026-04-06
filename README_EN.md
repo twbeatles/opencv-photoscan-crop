@@ -54,6 +54,15 @@ A Python application that automatically detects and accurately crops scanned pho
 - **Processed index v2 partial policy**: index records now store `status=success|partial`, and `partial` warns then reprocesses instead of full skipping
 - **Retry Failed path normalization**: empty output paths are normalized to `<input>/output_cropped` with the same validation used by normal batch start
 
+### 🛡️ Implementation Alignment Update (2026-04)
+- **Recursive Batch/CLI/Watch safety guard**: recursive runs now refuse to start when the output lives inside the input root
+- **Recursive scan exclusion of generated folders**: `output_root`, `_failed`, `backup`, and `.photocropper` are pruned automatically
+- **Relative-path-preserving output rules**: recursive output, `_failed`, and `*_photos` trees now preserve the input-relative directory context
+- **Aligned `partial_success` accounting**: GUI and CLI summaries now use the same `success/partial_success/failed/skipped` counters
+- **CLI `--strict-partial` added**: partial results remain success-like by default, but become exit code `1` in strict mode
+- **Classification model normalization**: legacy `custom` is kept as a deprecated alias of `advanced`, and the UI now exposes only `basic/advanced`
+- **Scheduler `once` wording clarified**: it means "run once at the next upcoming HH:MM" without a date field
+
 ### 🌐 Multi-Language Support
 - Automatic system locale detection
 - 5 languages: English, Korean, Japanese, Chinese, Spanish
@@ -153,6 +162,12 @@ python -m photo_cropper.cli -i ./scans -o ./cropped --multi-photo --multi-photo-
 # Preserve metadata + disable perspective warp
 python -m photo_cropper.cli -i ./scans -o ./cropped --preserve-metadata --no-perspective-correct
 
+# Recursive input + strict partial failure policy
+python -m photo_cropper.cli -i ./scans -o ../cropped --recursive --strict-partial
+
+# Legacy custom is still accepted, but treated as advanced internally
+python -m photo_cropper.cli -i ./scans -o ./cropped --classify --classify-model custom
+
 # Show options
 python -m photo_cropper.cli --help
 ```
@@ -198,6 +213,8 @@ python -m photo_cropper.cli --help
 - **Scheduler**: Scheduled batch processing
 
 > Note: in recursive Watch Mode, the output directory must live outside the input root. If you want to keep the default `<input>/output_cropped`, disable recursive watch or choose an external output directory.
+> Note: recursive Batch/Watch/CLI scans automatically exclude generated folders such as `output_root`, `_failed`, `backup`, and `.photocropper`.
+> Note: schedule type `once` means "run once at the next upcoming HH:MM" rather than a date-based one-shot schedule.
 
 ### Algorithm Settings
 - **Canny Threshold**: Edge detection sensitivity (0-255)
@@ -218,12 +235,15 @@ python -m photo_cropper.cli --help
 - **Metadata Preserve**: EXIF/ICC best-effort copy (save still succeeds on metadata failure)
 - **Grayscale/Denoise/Sharpening**
 - **Auto Classification Output (optional)**: Save into category subfolders when confidence threshold is met
+> Note: recursive inputs preserve the input-relative directory structure across output results, `_failed`, and multi-photo `*_photos` folders.
+> Note: classification model `custom` is no longer a separate profile and is treated as a compatibility alias of `advanced`.
 
 > Note: `skip processed` now uses a local processed index first (`.photocropper/processed_index.json`).
 > Index key: `source_path + size + mtime_ns + pipeline_signature`; multi-photo outputs are stored in `outputs[]`.
 > `partial_success` is persisted as `status=partial`, but later runs do not fully skip it; they warn and reprocess.
 > Filename-based probing is used as fallback only when the index is unavailable.
 > Classification subfolders (default Korean names, user-configurable) and multi-photo subfolders (`*_photos`) are both included in fallback probing.
+> Note: CLI summaries always print `processed/success/partial_success/failed/skipped`, and `--strict-partial` turns partial-only runs into exit code `1`.
 
 ## 🧪 Stability Checklist
 
@@ -232,10 +252,12 @@ python -m photo_cropper.cli --help
 - **Full selftest**: `cd ";opencv" && python -m photo_cropper.selftest`
 - **CLI smoke test**: `cd ";opencv" && python -m photo_cropper.cli -i ./scans -o ./cropped --multi-photo --multi-photo-separate-folders --preserve-metadata --no-perspective-correct --skip-processed`
 - **Watch mode parity**: verify new files in Watch Mode go through same resize/watermark/classification behavior as batch mode
+- **Recursive batch safety**: verify recursive batch/CLI refuses to start when output is inside input
 - **Recursive watch safety**: verify recursive watch refuses to start when output is inside input
 - **Watch overwrite behavior**: overwrite a watched image in place and confirm it re-queues only when size/mtime actually changed
 - **Manual preview/save parity**: with `advanced.perspective_correct=false`, confirm manual preview and saved crop shapes match
 - **Scheduler check**: with `watch_mode.scheduler_enabled=true`, confirm auto-batch starts at scheduled time and overlapping triggers are skipped
+- **CLI partial policy**: confirm partial-only runs exit `0` by default and exit `1` with `--strict-partial`
 - **Unicode path test**: use a watermark image in a non-ASCII path and verify output succeeds
 - **Cancel semantics**: in multithreaded batch, request stop and verify final stats consistency and CLI exit code `130`
 - **Benchmark harness validation**:
@@ -305,6 +327,13 @@ Install [UPX](https://github.com/upx/upx/releases) to reduce executable size by 
 | UPX Compression | Compressed executable (~40% size reduction) |
 
 ## 📋 Changelog
+
+### v9.0 Implementation Alignment Update (2026-04-06)
+- 🛡️ Unified the recursive output-inside-input guard across batch/watch/CLI, and centralized recursive scan exclusion for `output_root`, `_failed`, `backup`, and `.photocropper`
+- 🛡️ Preserved input-relative directory structure for recursive output results, failed-file routing, and multi-photo folder layouts
+- 🛡️ Split out `BatchProgress.partial_success`, aligned GUI/CLI summary semantics, and added CLI `--strict-partial`
+- 🛡️ Normalized legacy classification model `custom` into the `advanced` alias while simplifying UI choices to `basic/advanced`
+- 🛡️ Clarified Scheduler `once` as a no-date "next upcoming HH:MM" run
 
 ### v9.0 Integrated Improvements (2026-03-05)
 - ✨ Added local processed index (`.photocropper/processed_index.json`) and wired it across batch/watch/manual flows

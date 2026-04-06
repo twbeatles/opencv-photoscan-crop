@@ -26,6 +26,7 @@ class ManualExtractSessionRunner:
     def run(
         self,
         output_path: str,
+        input_root: str,
         files: List[str],
         contours_norm: Dict[str, np.ndarray],
         settings_snapshot: dict,
@@ -42,6 +43,7 @@ class ManualExtractSessionRunner:
         extractor = ManualExtractProcessor(
             settings=settings,
             output_path=output_path,
+            input_root=input_root,
             denormalize_contour_fn=self._denormalize_contour,
         )
 
@@ -96,4 +98,3 @@ class ManualExtractSessionRunner:
         progress.current_file = ""
         on_progress(progress)
         on_complete(progress, results)
-

@@ -1,12 +1,10 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""
-File helper utilities for Photo Cropper.
-"""
+"""File helper utilities for Photo Cropper."""
 
 import os
 import logging
-from typing import List, Optional, Tuple
+from typing import Iterable, List, Optional, Sequence, Tuple
 from datetime import datetime
 
 logger = logging.getLogger(__name__)
@@ -18,22 +16,140 @@ SUPPORTED_IMAGE_FORMATS = (
 )
 
 
-def get_image_files(directory: str, recursive: bool = False) -> List[str]:
+def normalize_path(path: str) -> str:
+    """Normalize a filesystem path for case-insensitive comparisons."""
+    return os.path.normcase(os.path.abspath(str(path or "")))
+
+
+def is_path_within(parent_path: str, child_path: str) -> bool:
+    """Return True when ``child_path`` is the same path or nested under ``parent_path``."""
+    parent = normalize_path(parent_path)
+    child = normalize_path(child_path)
+    if not parent or not child:
+        return False
+    try:
+        return os.path.commonpath([parent, child]) == parent
+    except Exception:
+        return False
+
+
+def is_output_inside_input(input_path: str, output_path: str) -> bool:
+    """Return True when output path is the same as, or nested under, input path."""
+    return is_path_within(input_path, output_path)
+
+
+def relative_parent_dir(file_path: str, root_path: Optional[str]) -> str:
+    """Return the input-root-relative parent directory for a file, or empty string."""
+    root = str(root_path or "").strip()
+    if not root:
+        return ""
+
+    normalized_root = normalize_path(root)
+    normalized_file = normalize_path(file_path)
+    if not is_path_within(normalized_root, normalized_file):
+        return ""
+
+    try:
+        rel_path = os.path.relpath(normalized_file, normalized_root)
+    except Exception:
+        return ""
+
+    rel_parent = os.path.dirname(rel_path)
+    if rel_parent in ("", "."):
+        return ""
+    return rel_parent
+
+
+def relative_display_path(file_path: str, root_path: Optional[str]) -> str:
+    """Return root-relative display path when possible, otherwise basename."""
+    root = str(root_path or "").strip()
+    normalized_file = normalize_path(file_path)
+    if root and is_path_within(root, normalized_file):
+        try:
+            rel_path = os.path.relpath(normalized_file, normalize_path(root))
+            if rel_path not in ("", "."):
+                return rel_path
+        except Exception:
+            pass
+    return os.path.basename(normalized_file)
+
+
+def build_recursive_excluded_roots(
+    input_root: str,
+    output_root: str = "",
+    *,
+    failed_folder_name: str = "_failed",
+    include_backup: bool = True,
+) -> List[str]:
+    """Build canonical roots that should be excluded from recursive input scans."""
+    normalized_input = normalize_path(input_root)
+    if not normalized_input:
+        return []
+
+    roots: List[str] = []
+    candidates = [output_root]
+    if failed_folder_name:
+        candidates.append(os.path.join(normalized_input, failed_folder_name))
+    if include_backup:
+        candidates.append(os.path.join(normalized_input, "backup"))
+
+    for candidate in candidates:
+        normalized_candidate = normalize_path(candidate)
+        if not normalized_candidate:
+            continue
+        if normalized_candidate not in roots:
+            roots.append(normalized_candidate)
+    return roots
+
+
+def _normalize_excluded_roots(
+    excluded_roots: Optional[Sequence[str]],
+) -> List[str]:
+    normalized: List[str] = []
+    for raw in excluded_roots or []:
+        candidate = normalize_path(raw)
+        if not candidate:
+            continue
+        if candidate not in normalized:
+            normalized.append(candidate)
+    return normalized
+
+
+def _is_excluded_directory(path: str, excluded_roots: Sequence[str]) -> bool:
+    if os.path.basename(path) == ".photocropper":
+        return True
+    normalized = normalize_path(path)
+    return any(is_path_within(root, normalized) for root in excluded_roots)
+
+
+def get_image_files(
+    directory: str,
+    recursive: bool = False,
+    *,
+    excluded_roots: Optional[Sequence[str]] = None,
+) -> List[str]:
     """
     Get all image files in a directory.
     
     Args:
         directory: Directory path
         recursive: Include subdirectories
+        excluded_roots: Absolute roots to prune from recursive scans
         
     Returns:
         List of image file paths
     """
     files = []
+    excluded = _normalize_excluded_roots(excluded_roots)
     
     try:
         if recursive:
-            for root, _, filenames in os.walk(directory):
+            for root, dirnames, filenames in os.walk(directory):
+                dirnames[:] = [
+                    dirname
+                    for dirname in dirnames
+                    if not _is_excluded_directory(os.path.join(root, dirname), excluded)
+                ]
                 for filename in filenames:
                     if filename.lower().endswith(SUPPORTED_IMAGE_FORMATS):
                         files.append(os.path.join(root, filename))
@@ -214,8 +330,12 @@ def validate_directory(path: str) -> Tuple[bool, str]:
 # New functions for v8.0
 # =============================================================================
 
-def get_image_files_with_info(directory: str, 
-                              recursive: bool = False) -> List[dict]:
+def get_image_files_with_info(
+    directory: str,
+    recursive: bool = False,
+    *,
+    excluded_roots: Optional[Sequence[str]] = None,
+) -> List[dict]:
     """
     Get image files with additional metadata.
     
@@ -229,7 +349,7 @@ def get_image_files_with_info(directory: str,
     files = []
     
     try:
-        paths = get_image_files(directory, recursive)
+        paths = get_image_files(directory, recursive, excluded_roots=excluded_roots)
         
         for path in paths:
             try:
@@ -423,10 +543,14 @@ def move_to_subfolder(filepath: str,
         return None
 
 
-def classify_failed_files(failed_files: List[str],
-                         source_dir: str,
-                         failed_folder_name: str = "_failed",
-                         copy_mode: bool = True) -> Tuple[int, List[str]]:
+def classify_failed_files(
+    failed_files: List[str],
+    source_dir: str,
+    failed_folder_name: str = "_failed",
+    copy_mode: bool = True,
+    *,
+    input_root: Optional[str] = None,
+) -> Tuple[int, List[str]]:
     """
     Move/copy failed files to a separate folder.
     
@@ -451,6 +575,8 @@ def classify_failed_files(failed_files: List[str],
     except Exception as e:
         return 0, [f"Could not create failed folder: {e}"]
     
+    normalized_input_root = normalize_path(input_root or source_dir)
+
     for filepath in failed_files:
         try:
             if not os.path.exists(filepath):
@@ -458,14 +584,17 @@ def classify_failed_files(failed_files: List[str],
                 continue
             
             filename = os.path.basename(filepath)
-            dest_path = os.path.join(failed_folder, filename)
+            rel_parent = relative_parent_dir(filepath, normalized_input_root)
+            dest_dir = os.path.join(failed_folder, rel_parent) if rel_parent else failed_folder
+            os.makedirs(dest_dir, exist_ok=True)
+            dest_path = os.path.join(dest_dir, filename)
             
             # Handle duplicate names
             if os.path.exists(dest_path):
                 base, ext = os.path.splitext(filename)
                 counter = 1
                 while os.path.exists(dest_path):
-                    dest_path = os.path.join(failed_folder, f"{base}_{counter}{ext}")
+                    dest_path = os.path.join(dest_dir, f"{base}_{counter}{ext}")
                     counter += 1
             
             if copy_mode:
@@ -481,7 +610,12 @@ def classify_failed_files(failed_files: List[str],
     return success_count, errors
 
 
-def get_folder_stats(directory: str, recursive: bool = False) -> dict:
+def get_folder_stats(
+    directory: str,
+    recursive: bool = False,
+    *,
+    excluded_roots: Optional[Sequence[str]] = None,
+) -> dict:
     """
     Get statistics about images in a folder.
     
@@ -492,7 +626,7 @@ def get_folder_stats(directory: str, recursive: bool = False) -> dict:
     Returns:
         Dictionary with folder statistics
     """
-    files = get_image_files(directory, recursive)
+    files = get_image_files(directory, recursive, excluded_roots=excluded_roots)
     
     if not files:
         return {

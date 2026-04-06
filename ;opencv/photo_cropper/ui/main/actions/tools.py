@@ -11,7 +11,7 @@ from PyQt6.QtWidgets import QInputDialog, QMessageBox
 
 from ....core.batch_profile_manager import get_batch_profile_manager
 from ....core.smart_enhancer import EnhancementPreset, get_smart_enhancer
-from ....utils.file_helpers import get_image_files
+from ....utils.file_helpers import build_recursive_excluded_roots, get_image_files
 from ...widgets.preset_manager import get_preset_manager
 from ...widgets.toast_notification import ToastManager
 from ..models import WindowRefs, WindowServices, WindowState
@@ -74,9 +74,24 @@ class ToolActions:
 
         from ....utils.file_helpers import detect_duplicates
 
+        recursive = bool(self.state.settings.file_management.recursive_search)
+        output_edit = getattr(self.refs, "output_path_edit", None)
+        output_path = output_edit.text().strip() if output_edit is not None else ""
+        if not output_path:
+            output_path = os.path.join(input_path, "output_cropped")
+        excluded_roots = (
+            build_recursive_excluded_roots(
+                input_path,
+                output_path,
+                failed_folder_name=self.state.settings.file_management.failed_folder_name,
+            )
+            if recursive
+            else None
+        )
         files = get_image_files(
             input_path,
-            recursive=self.state.settings.file_management.recursive_search,
+            recursive=recursive,
+            excluded_roots=excluded_roots,
         )
         if not files:
             QMessageBox.information(self.services.host_window, "결과", "검색할 이미지 파일이 없습니다.")

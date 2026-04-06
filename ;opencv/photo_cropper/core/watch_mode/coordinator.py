@@ -13,6 +13,7 @@ from PyQt6.QtCore import QObject, pyqtSignal
 from ..batch import BatchProcessor
 from ..folder_watcher import AutoProcessor
 from ..settings_model import AppSettings, WatchModeSettings
+from ...utils.file_helpers import is_output_inside_input
 from .types import WatchStartResult
 
 logger = logging.getLogger(__name__)
@@ -37,6 +38,7 @@ class WatchModeCoordinator(QObject):
         self._on_log = on_log
         self._batch_processor: Optional[BatchProcessor] = None
         self._auto_processor: Optional[AutoProcessor] = None
+        self._watch_input_root: str = ""
 
     @property
     def is_active(self) -> bool:
@@ -46,15 +48,6 @@ class WatchModeCoordinator(QObject):
         self._settings = settings
         if self._batch_processor is not None:
             self._batch_processor.update_settings(settings)
-
-    @staticmethod
-    def _is_output_inside_input(input_path: str, output_path: str) -> bool:
-        try:
-            input_abs = os.path.normcase(os.path.abspath(input_path))
-            output_abs = os.path.normcase(os.path.abspath(output_path))
-            return os.path.commonpath([input_abs, output_abs]) == input_abs
-        except Exception:
-            return False
 
     def start(
         self,
@@ -76,7 +69,7 @@ class WatchModeCoordinator(QObject):
             normalized_output = os.path.join(normalized_input, "output_cropped")
 
         recursive = bool(watch_settings and watch_settings.recursive)
-        if recursive and self._is_output_inside_input(normalized_input, normalized_output):
+        if recursive and is_output_inside_input(normalized_input, normalized_output):
             return WatchStartResult(
                 success=False,
                 output_path=normalized_output,
@@ -99,6 +92,7 @@ class WatchModeCoordinator(QObject):
 
         self.stop()
         self._ensure_batch_processor()
+        self._watch_input_root = normalized_input
 
         debounce_ms = int(watch_settings.debounce_ms if watch_settings else 500)
         max_wait_seconds = float(
@@ -142,6 +136,7 @@ class WatchModeCoordinator(QObject):
             self._auto_processor = None
 
         self._batch_processor = None
+        self._watch_input_root = ""
 
     def _bind_signals(self, auto_processor: AutoProcessor) -> None:
         auto_processor.processing_started.connect(self.processing_started)
@@ -167,7 +162,11 @@ class WatchModeCoordinator(QObject):
             watch_settings = AppSettings.from_dict(self._settings.to_dict())
             watch_settings.file_management.move_failed_files = False
             processor.update_settings(watch_settings)
-            result = processor.process_single(input_path, output_path)
+            result = processor.process_single(
+                input_path,
+                output_path,
+                input_root=self._watch_input_root or os.path.dirname(input_path),
+            )
             raw_status = ""
             if hasattr(result, "status") and result.status is not None:
                 raw_status = (

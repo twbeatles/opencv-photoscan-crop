@@ -10,6 +10,8 @@ from typing import Any, Callable, Iterable, List, Optional
 
 import numpy as np
 
+from ...utils.file_helpers import is_path_within, normalize_path
+
 
 def scale_contour_to_preview(
     preview_image: Any,
@@ -170,7 +172,7 @@ def collect_boundary_failed_files(
     image_list: Iterable[str],
     batch_failed_entries: Iterable[str],
     recursive_search: bool,
-    get_image_files_fn: Callable[[str, bool], List[str]],
+    get_image_files_fn: Callable[..., List[str]],
     logger: Optional[logging.Logger] = None,
 ) -> List[str]:
     """Collect absolute file paths failed due to boundary-detection errors."""
@@ -192,25 +194,52 @@ def collect_boundary_failed_files(
         return []
 
     candidate_paths: List[str] = []
+    normalized_input_root = normalize_path(input_root) if input_root else ""
 
     for entry in batch_failed_entries or []:
         if not entry:
             continue
         if os.path.isabs(entry):
             candidate_paths.append(os.path.normpath(entry))
-        elif input_root:
+        elif normalized_input_root:
             candidate_paths.append(os.path.normpath(os.path.join(input_root, entry)))
 
     for path in image_list or []:
         if path:
             candidate_paths.append(os.path.normpath(path))
 
-    if input_root and os.path.isdir(input_root):
+    if normalized_input_root and os.path.isdir(input_root):
         for path in get_image_files_fn(input_root, recursive_search):
             candidate_paths.append(os.path.normpath(path))
 
-    candidates_by_name: dict[str, List[str]] = {}
+    unique_candidates: List[str] = []
+    seen_candidates: set[str] = set()
     for path in candidate_paths:
+        normalized = normalize_path(path)
+        if not normalized or normalized in seen_candidates:
+            continue
+        seen_candidates.add(normalized)
+        unique_candidates.append(os.path.normpath(path))
+
+    candidates_by_abs: dict[str, str] = {}
+    candidates_by_relative: dict[str, List[str]] = {}
+    candidates_by_name: dict[str, List[str]] = {}
+    for path in unique_candidates:
+        normalized = normalize_path(path)
+        candidates_by_abs.setdefault(normalized, path)
+
+        if normalized_input_root and is_path_within(normalized_input_root, path):
+            try:
+                rel_key = os.path.normcase(
+                    os.path.normpath(os.path.relpath(path, input_root))
+                )
+            except Exception:
+                rel_key = ""
+            if rel_key:
+                rel_bucket = candidates_by_relative.setdefault(rel_key, [])
+                if path not in rel_bucket:
+                    rel_bucket.append(path)
+
         key = os.path.basename(path).lower()
         if not key:
             continue
@@ -218,18 +247,61 @@ def collect_boundary_failed_files(
         if path not in bucket:
             bucket.append(path)
 
+    def _consume_bucket(bucket: List[str], used: set[str]) -> Optional[str]:
+        while bucket:
+            candidate = bucket.pop(0)
+            normalized = normalize_path(candidate)
+            if normalized in used:
+                continue
+            return candidate
+        return None
+
     resolved: List[str] = []
     unresolved: List[str] = []
+    used_paths: set[str] = set()
     for name in failed_names:
         chosen = None
-        if os.path.isabs(name) and os.path.exists(name):
-            chosen = os.path.normpath(name)
-        else:
-            key = os.path.basename(name).lower()
-            bucket = candidates_by_name.get(key, [])
-            if bucket:
-                chosen = bucket.pop(0)
-        if chosen and chosen not in resolved:
+        stripped_name = str(name or "").strip()
+
+        if os.path.isabs(stripped_name):
+            normalized_abs = normalize_path(stripped_name)
+            direct_match = candidates_by_abs.get(normalized_abs)
+            if direct_match:
+                chosen = direct_match
+            elif os.path.exists(stripped_name):
+                chosen = os.path.normpath(stripped_name)
+
+        if chosen is None and normalized_input_root:
+            relative_key = ""
+            if os.path.isabs(stripped_name) and is_path_within(
+                normalized_input_root, stripped_name
+            ):
+                try:
+                    relative_key = os.path.normcase(
+                        os.path.normpath(os.path.relpath(stripped_name, input_root))
+                    )
+                except Exception:
+                    relative_key = ""
+            else:
+                cleaned = stripped_name.replace("/", os.sep).replace("\\", os.sep)
+                try:
+                    relative_key = os.path.normcase(os.path.normpath(cleaned))
+                except Exception:
+                    relative_key = ""
+
+            if relative_key:
+                chosen = _consume_bucket(
+                    candidates_by_relative.get(relative_key, []),
+                    used_paths,
+                )
+
+        if chosen is None:
+            key = os.path.basename(stripped_name).lower()
+            chosen = _consume_bucket(candidates_by_name.get(key, []), used_paths)
+
+        normalized_chosen = normalize_path(chosen) if chosen else ""
+        if chosen and normalized_chosen not in used_paths:
+            used_paths.add(normalized_chosen)
             resolved.append(chosen)
         else:
             unresolved.append(name)

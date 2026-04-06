@@ -324,8 +324,8 @@ class WatchModeSettings:
     
     # Scheduler
     scheduler_enabled: bool = False
-    schedule_type: str = "interval"  # once, daily, interval, hourly
-    schedule_time: str = "00:00"  # HH:MM format for daily/once
+    schedule_type: str = "interval"  # once(next upcoming HH:MM), daily, interval, hourly
+    schedule_time: str = "00:00"  # HH:MM format for daily/once(next upcoming time)
     schedule_interval_minutes: int = 60
 
 
@@ -355,7 +355,7 @@ class MultiPhotoSettings:
 class ClassificationSettings:
     """Image classification settings for v9.0."""
     enabled: bool = False
-    model: str = "basic"  # basic, advanced, custom(custom=advanced for now)
+    model: str = "basic"  # basic, advanced (legacy custom aliases to advanced)
     auto_folder: bool = True  # Create category folders automatically
     categories_enabled: dict[str, bool] = field(default_factory=lambda: {
         "portrait": True,
@@ -376,7 +376,9 @@ class ClassificationSettings:
     def __post_init__(self):
         self.min_confidence = max(0.0, min(1.0, float(self.min_confidence)))
         model = str(self.model or "basic").lower()
-        if model not in ("basic", "advanced", "custom"):
+        if model == "custom":
+            model = "advanced"
+        elif model not in ("basic", "advanced"):
             model = "basic"
         self.model = model
 

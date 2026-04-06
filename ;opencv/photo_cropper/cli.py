@@ -22,11 +22,13 @@ from typing import Any, Dict, Optional, Tuple
 try:
     from .core.batch_profile_manager import get_batch_profile_manager
     from .core.settings_model import AppSettings
+    from .utils.file_helpers import is_output_inside_input
 except ImportError:
     # Support direct execution: python photo_cropper/cli.py
     sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     from photo_cropper.core.batch_profile_manager import get_batch_profile_manager
     from photo_cropper.core.settings_model import AppSettings
+    from photo_cropper.utils.file_helpers import is_output_inside_input
 
 
 logger = logging.getLogger(__name__)
@@ -318,7 +320,13 @@ def _apply_cli_overrides(settings_data: Dict[str, Any], args: argparse.Namespace
         _set_nested(settings_data, "classification.enabled", True)
 
     if args.classify_model is not None:
-        _set_nested(settings_data, "classification.model", args.classify_model)
+        classify_model = str(args.classify_model or "").strip().lower()
+        if classify_model == "custom":
+            logger.warning(
+                "CLI classify model 'custom' is deprecated and will be treated as 'advanced'."
+            )
+            classify_model = "advanced"
+        _set_nested(settings_data, "classification.model", classify_model)
 
     if args.classify_min_confidence is not None:
         _set_nested(
@@ -391,13 +399,17 @@ def _configure_logging(level: str) -> None:
     )
 
 
-def _validate_io_paths(input_dir: str, output_dir: str) -> None:
+def _validate_io_paths(input_dir: str, output_dir: str, *, recursive: bool = False) -> None:
     if not input_dir:
         raise ValueError("Input directory is required")
     if not output_dir:
         raise ValueError("Output directory is required")
     if not os.path.isdir(input_dir):
         raise ValueError(f"Input directory does not exist: {input_dir}")
+    if recursive and is_output_inside_input(input_dir, output_dir):
+        raise ValueError(
+            "Recursive batch processing cannot use an output directory inside the input directory"
+        )
 
 
 def _list_presets() -> int:
@@ -419,10 +431,13 @@ def process_batch(args: argparse.Namespace) -> int:
         from photo_cropper.core.batch import BatchProcessor
 
     try:
-        _validate_io_paths(args.input, args.output)
-        os.makedirs(args.output, exist_ok=True)
-
         settings = build_settings_from_args(args)
+        _validate_io_paths(
+            args.input,
+            args.output,
+            recursive=bool(settings.file_management.recursive_search),
+        )
+        os.makedirs(args.output, exist_ok=True)
     except Exception as exc:
         logger.error("Configuration error: %s", exc)
         print(f"ERROR: {exc}", file=sys.stderr)
@@ -460,6 +475,7 @@ def process_batch(args: argparse.Namespace) -> int:
         "Summary: "
         f"processed={progress.processed}, "
         f"success={progress.success}, "
+        f"partial_success={getattr(progress, 'partial_success', 0)}, "
         f"failed={progress.failed}, "
         f"skipped={progress.skipped}"
     )
@@ -467,6 +483,8 @@ def process_batch(args: argparse.Namespace) -> int:
     if cancelled:
         return 130
     if progress.failed > 0:
+        return 1
+    if args.strict_partial and int(getattr(progress, "partial_success", 0) or 0) > 0:
         return 1
     return 0
 
@@ -498,6 +516,11 @@ def create_parser() -> argparse.ArgumentParser:
     # General processing
     parser.add_argument("--recursive", action="store_true", help="Enable recursive input search")
     parser.add_argument("--skip-processed", action="store_true", help="Skip already processed files")
+    parser.add_argument(
+        "--strict-partial",
+        action="store_true",
+        help="Return exit code 1 when any partial_success result occurs",
+    )
     parser.add_argument("--jobs", type=_int_in_range(1, 64), help="Worker thread count")
     parser.add_argument(
         "--detect-mode",
@@ -583,7 +606,7 @@ def create_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--classify-model",
         choices=["basic", "advanced", "custom"],
-        help="Classification model",
+        help="Classification model ('custom' is a deprecated alias of 'advanced')",
     )
     parser.add_argument(
         "--classify-min-confidence",
