@@ -10,6 +10,7 @@ from PyQt6.QtCore import QThread
 from PyQt6.QtGui import QCloseEvent
 from PyQt6.QtWidgets import QMessageBox
 
+from ....i18n.catalog import t
 from ..models import WindowRefs, WindowServices, WindowState
 from ..preview_worker import PreviewWorker
 
@@ -72,8 +73,8 @@ class LifecycleActions:
         if batch_running or manual_running:
             reply = QMessageBox.question(
                 self.services.host_window,
-                "종료 확인",
-                "작업이 진행 중입니다. 정말 종료하시겠습니까?\n종료 시 진행 중인 작업은 중단됩니다.",
+                t("lifecycle.close.title"),
+                t("lifecycle.close.body"),
                 QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
                 QMessageBox.StandardButton.No,
             )

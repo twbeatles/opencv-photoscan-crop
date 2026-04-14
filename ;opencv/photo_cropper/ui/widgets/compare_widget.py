@@ -22,6 +22,8 @@ from PyQt6.QtGui import (
     QWheelEvent, QMouseEvent, QPainterPath, QKeyEvent
 )
 
+from ...i18n.catalog import t
+
 
 def numpy_to_qpixmap(image: np.ndarray) -> QPixmap:
     """Convert numpy array to QPixmap."""
@@ -159,7 +161,7 @@ class SliderCompareWidget(QWidget):
         if self._before_image is None and self._after_image is None:
             painter.fillRect(rect, QColor(40, 40, 40))
             painter.setPen(QColor(150, 150, 150))
-            painter.drawText(rect, Qt.AlignmentFlag.AlignCenter, "이미지를 불러와주세요")
+            painter.drawText(rect, Qt.AlignmentFlag.AlignCenter, t("compare.placeholder"))
             return
         
         # Scale images to fit widget while maintaining aspect ratio
@@ -252,11 +254,11 @@ class SliderCompareWidget(QWidget):
         painter.setPen(QColor(255, 255, 255))
         
         # Before label
-        before_label = "원본 (Before)"
+        before_label = t("compare.before")
         painter.drawText(offset_x + 10, offset_y + 25, before_label)
-        
+
         # After label
-        after_label = "결과 (After)"
+        after_label = t("compare.after")
         if self._vertical_mode:
             painter.drawText(offset_x + 10, offset_y + scaled_h - 10, after_label)
         else:
@@ -370,7 +372,7 @@ class OverlayCompareWidget(QWidget):
         # Reset opacity and draw label
         painter.setOpacity(1.0)
         painter.setPen(QColor(255, 255, 255))
-        label = f"투명도: {int(self._opacity * 100)}%"
+        label = f"{t('compare.opacity')} {int(self._opacity * 100)}%"
         painter.drawText(10, 20, label)
 
 
@@ -394,23 +396,17 @@ class BeforeAfterCompareWidget(QWidget):
         # Mode selection toolbar
         toolbar = QHBoxLayout()
         
-        toolbar.addWidget(QLabel("비교 모드:"))
-        
+        self._mode_label = QLabel(t("compare.mode"))
+        toolbar.addWidget(self._mode_label)
+
         self._mode_combo = QComboBox()
-        self._mode_combo.addItems([
-            "슬라이더 (좌우)",
-            "슬라이더 (상하)",
-            "나란히 보기",
-            "오버레이 (투명도)",
-            "토글 (전환)"
-        ])
         self._mode_combo.currentIndexChanged.connect(self._on_mode_changed)
         toolbar.addWidget(self._mode_combo)
         
         toolbar.addStretch()
         
         # Opacity slider (for overlay mode)
-        self._opacity_label = QLabel("투명도:")
+        self._opacity_label = QLabel(t("compare.opacity"))
         self._opacity_label.setVisible(False)
         toolbar.addWidget(self._opacity_label)
         
@@ -423,7 +419,7 @@ class BeforeAfterCompareWidget(QWidget):
         toolbar.addWidget(self._opacity_slider)
         
         # Toggle button (for toggle mode)
-        self._toggle_btn = QPushButton("전환 (Space)")
+        self._toggle_btn = QPushButton(t("compare.toggle"))
         self._toggle_btn.setVisible(False)
         self._toggle_btn.clicked.connect(self._toggle_image)
         toolbar.addWidget(self._toggle_btn)
@@ -455,8 +451,9 @@ class BeforeAfterCompareWidget(QWidget):
         self._toggle_widget = CompareGraphicsView()
         self._toggle_showing_after = True
         self._stack.addWidget(self._toggle_widget)
-        
+
         layout.addWidget(self._stack, 1)
+        self.retranslate_ui()
     
     def set_images(self, before: np.ndarray, after: np.ndarray):
         """Set before and after images."""
@@ -508,11 +505,11 @@ class BeforeAfterCompareWidget(QWidget):
         
         if self._toggle_showing_after:
             self._toggle_widget.set_image(self._after_image)
-            self._toggle_btn.setText("현재: 결과 (After)")
+            self._toggle_btn.setText(t("compare.toggle.after"))
         else:
             self._toggle_widget.set_image(self._before_image)
-            self._toggle_btn.setText("현재: 원본 (Before)")
-        
+            self._toggle_btn.setText(t("compare.toggle.before"))
+
         self._toggle_widget.fit_in_view()
     
     def keyPressEvent(self, event: QKeyEvent):
@@ -522,3 +519,24 @@ class BeforeAfterCompareWidget(QWidget):
                 self._toggle_image()
         else:
             super().keyPressEvent(event)
+
+    def retranslate_ui(self):
+        self._mode_label.setText(t("compare.mode"))
+        items = (
+            t("compare.mode.slider_h"),
+            t("compare.mode.slider_v"),
+            t("compare.mode.side"),
+            t("compare.mode.overlay"),
+            t("compare.mode.toggle"),
+        )
+        current_index = self._mode_combo.currentIndex()
+        self._mode_combo.blockSignals(True)
+        self._mode_combo.clear()
+        self._mode_combo.addItems(list(items))
+        self._mode_combo.setCurrentIndex(max(0, current_index))
+        self._mode_combo.blockSignals(False)
+        self._opacity_label.setText(t("compare.opacity"))
+        if self._toggle_showing_after:
+            self._toggle_btn.setText(t("compare.toggle.after"))
+        else:
+            self._toggle_btn.setText(t("compare.toggle.before"))

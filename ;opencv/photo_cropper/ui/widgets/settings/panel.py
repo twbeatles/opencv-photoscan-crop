@@ -33,6 +33,7 @@ from PyQt6.QtGui import QWheelEvent
 from ....core.settings_model import (
     AppSettings,
     AlgorithmSettings,
+    CLASSIFICATION_CATEGORY_KEYS,
     DebugSettings,
     ProcessingSettings,
     OutputSettings,
@@ -49,6 +50,10 @@ from ....core.settings_model import (
     FaceDetectionSettings,
     SmartEnhancementSettings,
     NotificationSettings,
+)
+from ....i18n.catalog import get_category_folder_defaults, get_translator, t
+from ....utils.path_validation import (
+    validate_single_path_segment,
 )
 from ..toggle_switch import ModernToggleSwitch
 from ..collapsible_section import CollapsibleSection
@@ -101,8 +106,13 @@ class SettingsPanel(QWidget):
         super().__init__(parent)
         self._settings = settings or AppSettings()
         self._block_signals = False
+        self._is_form_valid = True
+        self._translator = get_translator()
         self._setup_ui()
         self._load_settings(self._settings)
+        self.retranslate_ui()
+        self._translator.add_language_change_listener(self._on_runtime_language_changed)
+        self.destroyed.connect(self._remove_language_listener)
 
     def _setup_ui(self):
         """Setup the UI components with 5 consolidated tabs."""
@@ -140,7 +150,7 @@ class SettingsPanel(QWidget):
         layout.setSpacing(10)
 
         # === Post-processing section ===
-        post_section = CollapsibleSection("✨ 후처리 옵션")
+        self.post_section = CollapsibleSection("✨ 후처리 옵션")
         post_group = QWidget()
         post_layout = QVBoxLayout(post_group)
         post_layout.setContentsMargins(0, 0, 0, 0)
@@ -178,56 +188,56 @@ class SettingsPanel(QWidget):
         self.denoise_check.stateChanged.connect(self._on_setting_changed)
         post_layout.addWidget(self.denoise_check)
 
-        post_section.add_widget(post_group)
-        layout.addWidget(post_section)
+        self.post_section.add_widget(post_group)
+        layout.addWidget(self.post_section)
 
         # === Output section ===
-        out_section = CollapsibleSection("💾 출력 설정", initially_expanded=False)
+        self.output_section = CollapsibleSection("💾 출력 설정", initially_expanded=False)
         out_group = QWidget()
-        out_layout = QFormLayout(out_group)
-        out_layout.setContentsMargins(0, 0, 0, 0)
+        self.output_form = QFormLayout(out_group)
+        self.output_form.setContentsMargins(0, 0, 0, 0)
 
         self.format_combo = NoScrollComboBox()
         self.format_combo.addItems(["JPG", "PNG", "WEBP"])
         self.format_combo.currentTextChanged.connect(self._on_format_changed)
-        out_layout.addRow("파일 형식:", self.format_combo)
+        self.output_form.addRow("파일 형식:", self.format_combo)
 
         self.quality_spin = NoScrollSpinBox()
         self.quality_spin.setRange(1, 100)
         self.quality_spin.setValue(95)
         self.quality_spin.valueChanged.connect(self._on_setting_changed)
-        out_layout.addRow("JPG/WEBP 품질:", self.quality_spin)
+        self.output_form.addRow("JPG/WEBP 품질:", self.quality_spin)
 
         self.png_compression_spin = NoScrollSpinBox()
         self.png_compression_spin.setRange(0, 9)
         self.png_compression_spin.setValue(6)
         self.png_compression_spin.setEnabled(False)
         self.png_compression_spin.valueChanged.connect(self._on_setting_changed)
-        out_layout.addRow("PNG 압축 레벨:", self.png_compression_spin)
+        self.output_form.addRow("PNG 압축 레벨:", self.png_compression_spin)
 
         self.timestamp_check = QCheckBox("타임스탬프 추가")
         self.timestamp_check.stateChanged.connect(self._on_setting_changed)
-        out_layout.addRow(self.timestamp_check)
+        self.output_form.addRow(self.timestamp_check)
 
         self.preserve_metadata_check = QCheckBox("메타데이터 보존 (가능한 경우)")
         self.preserve_metadata_check.setToolTip(
             "EXIF/ICC 메타데이터를 best-effort로 복사합니다. 실패해도 저장은 계속됩니다."
         )
         self.preserve_metadata_check.stateChanged.connect(self._on_setting_changed)
-        out_layout.addRow(self.preserve_metadata_check)
+        self.output_form.addRow(self.preserve_metadata_check)
 
         self.backup_original_check = QCheckBox("원본 백업")
         self.backup_original_check.setToolTip(
             "처리 전 원본 파일을 backup 폴더에 복사합니다"
         )
         self.backup_original_check.stateChanged.connect(self._on_setting_changed)
-        out_layout.addRow(self.backup_original_check)
+        self.output_form.addRow(self.backup_original_check)
 
-        out_section.add_widget(out_group)
-        layout.addWidget(out_section)
+        self.output_section.add_widget(out_group)
+        layout.addWidget(self.output_section)
 
         # === Filter section ===
-        filter_section = CollapsibleSection("📏 필터", initially_expanded=False)
+        self.filter_section = CollapsibleSection("📏 필터", initially_expanded=False)
         filter_group = QWidget()
         filter_layout = QVBoxLayout(filter_group)
         filter_layout.setContentsMargins(0, 0, 0, 0)
@@ -252,32 +262,32 @@ class SettingsPanel(QWidget):
         self.skip_processed_check.stateChanged.connect(self._on_setting_changed)
         filter_layout.addWidget(self.skip_processed_check)
 
-        filter_section.add_widget(filter_group)
-        layout.addWidget(filter_section)
+        self.filter_section.add_widget(filter_group)
+        layout.addWidget(self.filter_section)
 
         # === UI section ===
-        ui_section = CollapsibleSection("🎨 인터페이스", initially_expanded=False)
+        self.ui_section = CollapsibleSection("🎨 인터페이스", initially_expanded=False)
         ui_group = QWidget()
-        ui_layout = QFormLayout(ui_group)
-        ui_layout.setContentsMargins(0, 0, 0, 0)
+        self.ui_form = QFormLayout(ui_group)
+        self.ui_form.setContentsMargins(0, 0, 0, 0)
 
         self.theme_combo = NoScrollComboBox()
         self.theme_combo.addItems(["dark", "light"])
         self.theme_combo.currentTextChanged.connect(self._on_setting_changed)
-        ui_layout.addRow("테마:", self.theme_combo)
+        self.ui_form.addRow("테마:", self.theme_combo)
 
         self.auto_preview_check = ModernToggleSwitch("설정 변경 시 자동 미리보기")
         self.auto_preview_check.setChecked(True)
         self.auto_preview_check.toggled.connect(self._on_setting_changed)
-        ui_layout.addRow(self.auto_preview_check)
+        self.ui_form.addRow(self.auto_preview_check)
 
         self.contour_overlay_check = ModernToggleSwitch("검출 영역 오버레이 표시")
         self.contour_overlay_check.setChecked(True)
         self.contour_overlay_check.toggled.connect(self._on_setting_changed)
-        ui_layout.addRow(self.contour_overlay_check)
+        self.ui_form.addRow(self.contour_overlay_check)
 
-        ui_section.add_widget(ui_group)
-        layout.addWidget(ui_section)
+        self.ui_section.add_widget(ui_group)
+        layout.addWidget(self.ui_section)
 
         layout.addStretch()
 
@@ -794,7 +804,7 @@ class SettingsPanel(QWidget):
         layout.addWidget(mp_section)
 
         # === File management section ===
-        fm_section = CollapsibleSection("📂 파일 관리", initially_expanded=False)
+        self.file_management_section = CollapsibleSection("📂 파일 관리", initially_expanded=False)
         fm_group = QWidget()
         fm_layout = QVBoxLayout(fm_group)
         fm_layout.setContentsMargins(0, 0, 0, 0)
@@ -804,30 +814,36 @@ class SettingsPanel(QWidget):
         self.recursive_check.stateChanged.connect(self._on_setting_changed)
         fm_layout.addWidget(self.recursive_check)
 
-        fm_form = QFormLayout()
+        self.file_management_form = QFormLayout()
         self.use_naming_rules_check = QCheckBox()
         self.use_naming_rules_check.stateChanged.connect(self._on_setting_changed)
-        fm_form.addRow("파일명 규칙 사용:", self.use_naming_rules_check)
+        self.file_management_form.addRow("파일명 규칙 사용:", self.use_naming_rules_check)
 
         self.naming_prefix_edit = QLineEdit()
         self.naming_prefix_edit.setPlaceholderText("예: scan_")
         self.naming_prefix_edit.textChanged.connect(self._on_setting_changed)
-        fm_form.addRow("접두사:", self.naming_prefix_edit)
+        self.file_management_form.addRow("접두사:", self.naming_prefix_edit)
 
         self.naming_suffix_edit = QLineEdit()
         self.naming_suffix_edit.setPlaceholderText("예: _cropped")
         self.naming_suffix_edit.setText("_cropped")
         self.naming_suffix_edit.textChanged.connect(self._on_setting_changed)
-        fm_form.addRow("접미사:", self.naming_suffix_edit)
+        self.file_management_form.addRow("접미사:", self.naming_suffix_edit)
 
         self.naming_counter_check = QCheckBox("일련번호 추가")
         self.naming_counter_check.stateChanged.connect(self._on_setting_changed)
-        fm_form.addRow(self.naming_counter_check)
+        self.file_management_form.addRow(self.naming_counter_check)
 
         self.naming_date_check = QCheckBox("날짜 추가")
         self.naming_date_check.stateChanged.connect(self._on_setting_changed)
-        fm_form.addRow(self.naming_date_check)
-        fm_layout.addLayout(fm_form)
+        self.file_management_form.addRow(self.naming_date_check)
+        fm_layout.addLayout(self.file_management_form)
+
+        self.naming_validation_label = QLabel()
+        self.naming_validation_label.setObjectName("subtitleLabel")
+        self.naming_validation_label.setWordWrap(True)
+        self.naming_validation_label.hide()
+        fm_layout.addWidget(self.naming_validation_label)
 
         self.move_failed_check = QCheckBox("실패 파일 별도 폴더로 이동")
         self.move_failed_check.stateChanged.connect(self._on_setting_changed)
@@ -837,17 +853,17 @@ class SettingsPanel(QWidget):
         self.copy_failed_check.stateChanged.connect(self._on_setting_changed)
         fm_layout.addWidget(self.copy_failed_check)
 
-        log_form = QFormLayout()
+        self.log_form = QFormLayout()
         self.enable_log_check = QCheckBox()
         self.enable_log_check.setChecked(True)
         self.enable_log_check.stateChanged.connect(self._on_setting_changed)
-        log_form.addRow("처리 로그 저장:", self.enable_log_check)
+        self.log_form.addRow("처리 로그 저장:", self.enable_log_check)
 
         self.log_format_combo = NoScrollComboBox()
         self.log_format_combo.addItems(["json", "csv"])
         self.log_format_combo.currentTextChanged.connect(self._on_setting_changed)
-        log_form.addRow("로그 형식:", self.log_format_combo)
-        fm_layout.addLayout(log_form)
+        self.log_form.addRow("로그 형식:", self.log_format_combo)
+        fm_layout.addLayout(self.log_form)
 
         self.conflict_combo = NoScrollComboBox()
         self.conflict_combo.addItems(["rename", "overwrite", "skip"])
@@ -877,11 +893,11 @@ class SettingsPanel(QWidget):
         self.detect_dups_check.toggled.connect(self._on_setting_changed)
         fm_layout.addWidget(self.detect_dups_check)
 
-        fm_section.add_widget(fm_group)
-        layout.addWidget(fm_section)
+        self.file_management_section.add_widget(fm_group)
+        layout.addWidget(self.file_management_section)
 
         # === Performance section ===
-        perf_section = CollapsibleSection("⚡ 성능", initially_expanded=False)
+        self.performance_section = CollapsibleSection("⚡ 성능", initially_expanded=False)
         perf_group = QWidget()
         perf_layout = QVBoxLayout(perf_group)
         perf_layout.setContentsMargins(0, 0, 0, 0)
@@ -900,14 +916,14 @@ class SettingsPanel(QWidget):
         self.low_mem_check.stateChanged.connect(self._on_setting_changed)
         perf_layout.addWidget(self.low_mem_check)
 
-        perf_section.add_widget(perf_group)
-        layout.addWidget(perf_section)
+        self.performance_section.add_widget(perf_group)
+        layout.addWidget(self.performance_section)
 
         # === Language section ===
-        lang_section = CollapsibleSection("🌐 언어 설정", initially_expanded=False)
+        self.language_section = CollapsibleSection("🌐 언어 설정", initially_expanded=False)
         lang_group = QWidget()
-        lang_layout = QFormLayout(lang_group)
-        lang_layout.setContentsMargins(0, 0, 0, 0)
+        self.language_form = QFormLayout(lang_group)
+        self.language_form.setContentsMargins(0, 0, 0, 0)
 
         self.language_combo = NoScrollComboBox()
         self.language_combo.addItem("한국어", "ko")
@@ -916,18 +932,66 @@ class SettingsPanel(QWidget):
         self.language_combo.addItem("简体中文", "zh")
         self.language_combo.addItem("Español", "es")
         self.language_combo.currentIndexChanged.connect(self._on_language_changed)
-        lang_layout.addRow("언어:", self.language_combo)
+        self.language_form.addRow("언어:", self.language_combo)
 
-        lang_info = QLabel("💡 언어 변경은 앱 재시작 후 완전히 적용됩니다.")
-        lang_info.setWordWrap(True)
-        lang_info.setObjectName("subtitleLabel")
-        lang_layout.addRow(lang_info)
+        self.language_info_label = QLabel("💡 언어 변경은 앱 재시작 후 완전히 적용됩니다.")
+        self.language_info_label.setWordWrap(True)
+        self.language_info_label.setObjectName("subtitleLabel")
+        self.language_form.addRow(self.language_info_label)
 
-        lang_section.add_widget(lang_group)
-        layout.addWidget(lang_section)
+        self.language_section.add_widget(lang_group)
+        layout.addWidget(self.language_section)
 
         layout.addStretch()
         self.tab_widget.addTab(self._make_scrollable_tab(content), "📂 관리")
+
+    def _remove_language_listener(self, *_args):
+        try:
+            self._translator.remove_language_change_listener(
+                self._on_runtime_language_changed
+            )
+        except Exception:
+            pass
+
+    def _on_runtime_language_changed(self, _language: str):
+        self.retranslate_ui()
+        self._refresh_category_folder_defaults()
+        self._apply_validation_state()
+
+    def _set_line_edit_error(self, widget: QLineEdit, is_invalid: bool) -> None:
+        if is_invalid:
+            widget.setStyleSheet(
+                "QLineEdit { border: 1px solid #cf222e; border-radius: 4px; }"
+            )
+        else:
+            widget.setStyleSheet("")
+
+    def _validate_form_inputs(self) -> bool:
+        naming_invalid = False
+        classification_invalid = False
+
+        for widget in (self.naming_prefix_edit, self.naming_suffix_edit):
+            valid, _ = validate_single_path_segment(widget.text(), allow_empty=True)
+            naming_invalid = naming_invalid or not valid
+            self._set_line_edit_error(widget, not valid)
+
+        for key in CLASSIFICATION_CATEGORY_KEYS:
+            widget = self.classification_folder_inputs.get(key)
+            if widget is None:
+                continue
+            valid, _ = validate_single_path_segment(widget.text(), allow_empty=True)
+            classification_invalid = classification_invalid or not valid
+            self._set_line_edit_error(widget, not valid)
+
+        self.naming_validation_label.setVisible(naming_invalid)
+        self.classification_validation_label.setVisible(classification_invalid)
+        self._is_form_valid = not (naming_invalid or classification_invalid)
+        return self._is_form_valid
+
+    def _apply_validation_state(self) -> None:
+        self.naming_validation_label.setText(t("settings.validation.naming"))
+        self.classification_validation_label.setText(t("settings.validation.classification"))
+        self._validate_form_inputs()
 
     def _on_setting_changed(self):
         """Handle any setting change."""
@@ -963,6 +1027,8 @@ class SettingsPanel(QWidget):
 
     def _emit_settings(self):
         """Build and emit current settings."""
+        if not self._validate_form_inputs():
+            return
         settings = self._build_settings()
         self._settings = settings
         self.settings_changed.emit(settings)
@@ -1165,15 +1231,14 @@ class SettingsPanel(QWidget):
         classification = ClassificationSettings()
         if hasattr(self, "classification_enable_check"):
             category_folders = dict(getattr(prev_cls, "category_folders", {}) or {})
-            default_folders = ClassificationSettings().category_folders
             folder_inputs = getattr(self, "classification_folder_inputs", {}) or {}
             if isinstance(folder_inputs, dict):
-                for key in ("portrait", "landscape", "document", "blackwhite", "other"):
+                for key in CLASSIFICATION_CATEGORY_KEYS:
                     widget = folder_inputs.get(key)
                     if widget is None:
                         continue
                     value = str(widget.text() if hasattr(widget, "text") else "").strip()
-                    category_folders[key] = value or str(default_folders.get(key, key))
+                    category_folders[key] = value
             classification = ClassificationSettings(
                 enabled=self.classification_enable_check.isChecked(),
                 model=self.classification_model_combo.currentText()
@@ -1437,12 +1502,11 @@ class SettingsPanel(QWidget):
                     self.classification_model_combo.setCurrentIndex(idx)
             folder_inputs = getattr(self, "classification_folder_inputs", {}) or {}
             folder_map = dict(getattr(cs, "category_folders", {}) or {})
-            defaults = ClassificationSettings().category_folders
-            for key in ("portrait", "landscape", "document", "blackwhite", "other"):
+            for key in CLASSIFICATION_CATEGORY_KEYS:
                 widget = folder_inputs.get(key) if isinstance(folder_inputs, dict) else None
                 if widget is None:
                     continue
-                widget.setText(str(folder_map.get(key, defaults.get(key, key))))
+                widget.setText(str(folder_map.get(key, "") or ""))
 
         if hasattr(settings, "face_detection"):
             fd = settings.face_detection
@@ -1487,6 +1551,8 @@ class SettingsPanel(QWidget):
             self.low_mem_check.setChecked(low_mem_mode)
 
         self._block_signals = False
+        self._refresh_category_folder_defaults()
+        self._apply_validation_state()
 
 
     def _browse_watermark_font(self):
@@ -1541,7 +1607,122 @@ class SettingsPanel(QWidget):
 
             pass
 
+    def _refresh_category_folder_defaults(self):
+        defaults = get_category_folder_defaults()
+        labels = {
+            "portrait": t("settings.classification_folder.portrait"),
+            "landscape": t("settings.classification_folder.landscape"),
+            "document": t("settings.classification_folder.document"),
+            "blackwhite": t("settings.classification_folder.blackwhite"),
+            "other": t("settings.classification_folder.other"),
+        }
+        for key in CLASSIFICATION_CATEGORY_KEYS:
+            widget = self.classification_folder_inputs.get(key)
+            if widget is None:
+                continue
+            widget.setPlaceholderText(str(defaults.get(key, key)))
+            label_widget = self.classification_folder_form.labelForField(widget)
+            if label_widget is not None:
+                label_widget.setText(labels.get(key, key))
 
+    def retranslate_ui(self):
+        self.tab_widget.setTabText(0, t("settings.tab.basic"))
+        self.tab_widget.setTabText(1, t("settings.tab.algorithm"))
+        self.tab_widget.setTabText(2, t("settings.tab.processing"))
+        self.tab_widget.setTabText(3, t("settings.tab.management"))
+        self.tab_widget.setTabText(4, t("settings.tab.ai"))
+
+        self.post_section._title_label.setText(t("settings.section.post"))
+        self.output_section._title_label.setText(t("settings.section.output"))
+        self.filter_section._title_label.setText(t("settings.section.filter"))
+        self.ui_section._title_label.setText(t("settings.section.ui"))
+        self.file_management_section._title_label.setText(
+            t("settings.section.file_management")
+        )
+        self.performance_section._title_label.setText(t("settings.section.performance"))
+        self.language_section._title_label.setText(t("settings.section.language"))
+
+        for form, widget, key in (
+            (self.output_form, self.format_combo, "settings.output_format"),
+            (self.output_form, self.quality_spin, "settings.jpg_quality"),
+            (self.output_form, self.png_compression_spin, "settings.png_compression"),
+            (self.ui_form, self.theme_combo, "settings.theme"),
+            (self.file_management_form, self.use_naming_rules_check, "settings.naming_rules"),
+            (self.file_management_form, self.naming_prefix_edit, "settings.naming_prefix"),
+            (self.file_management_form, self.naming_suffix_edit, "settings.naming_suffix"),
+            (self.log_form, self.enable_log_check, "settings.enable_log"),
+            (self.log_form, self.log_format_combo, "settings.log_format"),
+            (self.language_form, self.language_combo, "settings.language"),
+        ):
+            label_widget = form.labelForField(widget)
+            if label_widget is not None:
+                label_widget.setText(t(key))
+
+        self.auto_contrast_check.setText(t("settings.auto_contrast"))
+        self.grayscale_check.setText(t("settings.grayscale"))
+        self.sharpening_check.setText(t("settings.sharpen"))
+        self.denoise_check.setText(t("settings.denoise"))
+        self.timestamp_check.setText(t("settings.add_timestamp"))
+        self.preserve_metadata_check.setText(t("settings.preserve_metadata"))
+        self.backup_original_check.setText(t("settings.backup_original"))
+        self.skip_small_check.setText(t("settings.skip_small"))
+        self.skip_processed_check.setText(t("settings.skip_processed"))
+        self.auto_preview_check.setText(t("settings.auto_preview"))
+        self.contour_overlay_check.setText(t("settings.contour_overlay"))
+        self.recursive_check.setText(t("settings.recursive"))
+        self.naming_counter_check.setText(t("settings.naming_counter"))
+        self.naming_date_check.setText(t("settings.naming_date"))
+        self.move_failed_check.setText(t("settings.move_failed"))
+        self.copy_failed_check.setText(t("settings.copy_failed"))
+        self.low_mem_check.setText(t("settings.low_mem"))
+
+        self.classification_group.setTitle(t("settings.section.classification"))
+        self.classification_enable_check.setText(t("settings.classification_enable"))
+        self.classification_enable_check.setToolTip(
+            t("settings.classification_enable.tooltip")
+        )
+        self.classification_model_label.setText(t("settings.classification_model"))
+        self.classification_subfolders_check.setText(
+            t("settings.classification_subfolders")
+        )
+        self.classification_help_label.setText(t("settings.classification_folder.help"))
+        self.face_group.setTitle(t("settings.section.face"))
+        self.face_detect_enable_check.setText(t("settings.face_enable"))
+        self.face_detect_enable_check.setToolTip(t("settings.face_enable.tooltip"))
+        if hasattr(self, "face_use_dnn_check"):
+            self.face_use_dnn_check.setText(t("settings.face_use_dnn"))
+        self.face_auto_orient_check.setText(t("settings.face_auto_orient"))
+        self.face_enhance_check.setText(t("settings.face_enhance"))
+        self.smart_group.setTitle(t("settings.section.smart"))
+        self.smart_enhance_enable_check.setText(t("settings.smart_enable"))
+        self.smart_enhance_enable_check.setToolTip(t("settings.smart_enable.tooltip"))
+        if hasattr(self, "smart_exposure_check"):
+            self.smart_exposure_check.setText(t("settings.smart_exposure"))
+        if hasattr(self, "smart_color_balance_check"):
+            self.smart_color_balance_check.setText(t("settings.smart_color_balance"))
+        self.notification_group.setTitle(t("settings.section.notification"))
+        self.notification_enable_check.setText(t("settings.notification_enable"))
+        self.notification_enable_check.setToolTip(t("settings.notification_enable.tooltip"))
+        self.notification_sound_check.setText(t("settings.notification_sound"))
+        self.notification_error_only_check.setText(t("settings.notification_error_only"))
+        self.language_info_label.setText(f"💡 {t('settings.language.info')}")
+
+        self.naming_prefix_edit.setPlaceholderText(t("settings.naming_prefix.placeholder"))
+        self.naming_suffix_edit.setPlaceholderText(t("settings.naming_suffix.placeholder"))
+
+        current_code = self.language_combo.itemData(self.language_combo.currentIndex())
+        self.language_combo.blockSignals(True)
+        for index, code in enumerate(("ko", "en", "ja", "zh", "es")):
+            self.language_combo.setItemText(index, self._translator.get_language_name(code))
+        if current_code is not None:
+            for index in range(self.language_combo.count()):
+                if self.language_combo.itemData(index) == current_code:
+                    self.language_combo.setCurrentIndex(index)
+                    break
+        self.language_combo.blockSignals(False)
+
+        self._refresh_category_folder_defaults()
+        self._apply_validation_state()
 
     def _on_language_changed(self, index: int):
 
@@ -1553,10 +1734,8 @@ class SettingsPanel(QWidget):
 
             from ....i18n.catalog import set_language
 
-
-
             set_language(lang_code)
-
+            self.retranslate_ui()
             self._on_setting_changed()
 
 
@@ -1568,8 +1747,8 @@ class SettingsPanel(QWidget):
         layout.setSpacing(15)
 
         # Classification settings
-        class_group = QGroupBox("📊 이미지 자동 분류")
-        class_layout = QVBoxLayout(class_group)
+        self.classification_group = QGroupBox("📊 이미지 자동 분류")
+        class_layout = QVBoxLayout(self.classification_group)
 
         self.classification_enable_check = ModernToggleSwitch("자동 분류 사용")
         self.classification_enable_check.setToolTip(
@@ -1579,7 +1758,8 @@ class SettingsPanel(QWidget):
         class_layout.addWidget(self.classification_enable_check)
 
         model_row = QHBoxLayout()
-        model_row.addWidget(QLabel("분류 모델:"))
+        self.classification_model_label = QLabel("분류 모델:")
+        model_row.addWidget(self.classification_model_label)
         self.classification_model_combo = NoScrollComboBox()
         self.classification_model_combo.addItems(["basic", "advanced"])
         self.classification_model_combo.currentTextChanged.connect(
@@ -1594,29 +1774,33 @@ class SettingsPanel(QWidget):
         )
         class_layout.addWidget(self.classification_subfolders_check)
 
-        folder_form = QFormLayout()
+        self.classification_folder_form = QFormLayout()
         self.classification_folder_inputs = {}
-        folder_labels = [
-            ("portrait", "인물 폴더명:"),
-            ("landscape", "풍경 폴더명:"),
-            ("document", "문서 폴더명:"),
-            ("blackwhite", "흑백 폴더명:"),
-            ("other", "기타 폴더명:"),
-        ]
-        defaults = ClassificationSettings().category_folders
-        for key, label in folder_labels:
+        defaults = get_category_folder_defaults()
+        for key in CLASSIFICATION_CATEGORY_KEYS:
             folder_edit = QLineEdit()
             folder_edit.setPlaceholderText(str(defaults.get(key, key)))
             folder_edit.textChanged.connect(self._on_setting_changed)
             self.classification_folder_inputs[key] = folder_edit
-            folder_form.addRow(label, folder_edit)
-        class_layout.addLayout(folder_form)
+            self.classification_folder_form.addRow(f"{key}:", folder_edit)
+        class_layout.addLayout(self.classification_folder_form)
 
-        layout.addWidget(class_group)
+        self.classification_help_label = QLabel()
+        self.classification_help_label.setObjectName("subtitleLabel")
+        self.classification_help_label.setWordWrap(True)
+        class_layout.addWidget(self.classification_help_label)
+
+        self.classification_validation_label = QLabel()
+        self.classification_validation_label.setObjectName("subtitleLabel")
+        self.classification_validation_label.setWordWrap(True)
+        self.classification_validation_label.hide()
+        class_layout.addWidget(self.classification_validation_label)
+
+        layout.addWidget(self.classification_group)
 
         # Face detection settings
-        face_group = QGroupBox("👤 얼굴 감지")
-        face_layout = QVBoxLayout(face_group)
+        self.face_group = QGroupBox("👤 얼굴 감지")
+        face_layout = QVBoxLayout(self.face_group)
 
         self.face_detect_enable_check = ModernToggleSwitch("얼굴 감지 사용")
         self.face_detect_enable_check.setToolTip("인물 사진에서 얼굴을 감지하여 최적화")
@@ -1647,11 +1831,11 @@ class SettingsPanel(QWidget):
         min_size_row.addWidget(self.face_min_size_spin)
         face_layout.addLayout(min_size_row)
 
-        layout.addWidget(face_group)
+        layout.addWidget(self.face_group)
 
         # Smart enhancement settings
-        smart_group = QGroupBox("✨ 스마트 보정")
-        smart_layout = QVBoxLayout(smart_group)
+        self.smart_group = QGroupBox("✨ 스마트 보정")
+        smart_layout = QVBoxLayout(self.smart_group)
 
         self.smart_enhance_enable_check = ModernToggleSwitch("스마트 보정 사용")
         self.smart_enhance_enable_check.setToolTip("이미지 특성에 맞는 자동 보정 적용")
@@ -1675,11 +1859,11 @@ class SettingsPanel(QWidget):
         strength_row.addWidget(self.smart_strength_spin)
         smart_layout.addLayout(strength_row)
 
-        layout.addWidget(smart_group)
+        layout.addWidget(self.smart_group)
 
         # Notification settings
-        notif_group = QGroupBox("🔔 알림 설정")
-        notif_layout = QVBoxLayout(notif_group)
+        self.notification_group = QGroupBox("🔔 알림 설정")
+        notif_layout = QVBoxLayout(self.notification_group)
 
         self.notification_enable_check = ModernToggleSwitch("시스템 알림 사용")
         self.notification_enable_check.setToolTip("배치 처리 완료 시 시스템 알림 표시")
@@ -1696,7 +1880,7 @@ class SettingsPanel(QWidget):
         )
         notif_layout.addWidget(self.notification_error_only_check)
 
-        layout.addWidget(notif_group)
+        layout.addWidget(self.notification_group)
         layout.addStretch()
 
         self.tab_widget.addTab(self._make_scrollable_tab(content), "🤖 AI")

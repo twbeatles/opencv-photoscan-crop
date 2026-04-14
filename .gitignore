@@ -46,6 +46,7 @@ pyright_report*.json
 
 # Test / type-check / coverage caches
 .pytest_cache/
+.pytest_tmp/
 .mypy_cache/
 .nox/
 .tox/

@@ -8,7 +8,9 @@ import os
 
 from PyQt6.QtWidgets import QDialog
 
+from ....i18n.catalog import t
 from ...widgets.toast_notification import ToastManager
+from ..services import UiMessageFactory
 from ..models import WindowRefs, WindowServices, WindowState
 
 
@@ -24,6 +26,7 @@ class FeatureActions:
         self.state = state
         self.refs = refs
         self.services = services
+        self.messages = UiMessageFactory()
 
     def show_fullscreen(self) -> None:
         images: list[str] = []
@@ -38,7 +41,7 @@ class FeatureActions:
 
         if not images:
             if self.refs.status_label is not None:
-                self.refs.status_label.setText("전체화면으로 표시할 이미지가 없습니다")
+                self.refs.status_label.setText(t("feature.fullscreen.empty"))
             return
 
         current_index = 0
@@ -55,27 +58,27 @@ class FeatureActions:
             return
         if self.services.history_manager.can_undo:
             if self.services.history_manager.undo():
-                self.refs.status_label.setText("실행 취소됨")
-                ToastManager.info("↩️ 실행 취소")
+                self.refs.status_label.setText(t("feature.undo.done"))
+                ToastManager.info(t("feature.undo.toast"))
         else:
-            self.refs.status_label.setText("실행 취소할 항목이 없습니다")
+            self.refs.status_label.setText(t("feature.undo.empty"))
 
     def redo(self) -> None:
         if self.refs.status_label is None:
             return
         if self.services.history_manager.can_redo:
             if self.services.history_manager.redo():
-                self.refs.status_label.setText("다시 실행됨")
-                ToastManager.info("↪️ 다시 실행")
+                self.refs.status_label.setText(t("feature.redo.done"))
+                ToastManager.info(t("feature.redo.toast"))
         else:
-            self.refs.status_label.setText("다시 실행할 항목이 없습니다")
+            self.refs.status_label.setText(t("feature.redo.empty"))
 
     def on_crop_applied(self, cropped_image, dialog: QDialog | None = None) -> None:
         if self.refs.preview_widget is not None:
             self.refs.preview_widget.set_processed_image(cropped_image)
         self.state.last_processed = cropped_image.copy()
         if self.refs.status_label is not None:
-            self.refs.status_label.setText("수동 크롭이 적용되었습니다")
+            self.refs.status_label.setText(t("feature.manual_crop.done"))
         if dialog is not None:
             dialog.close()
-        ToastManager.success("✂️ 수동 크롭 적용됨")
+        ToastManager.success(t("feature.manual_crop.toast"))

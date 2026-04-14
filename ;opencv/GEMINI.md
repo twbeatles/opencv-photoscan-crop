@@ -57,12 +57,18 @@
 | 파일 | 역할 |
 |------|------|
 | `image/processor.py` | 핵심 크롭 알고리즘 (Canny, CLAHE, Sobel) |
+| `image/types.py` | 크롭/미리보기 결과 타입 |
 | `batch/processor.py` | 다중 이미지 배치 처리 |
+| `batch/types.py` | 배치 진행/결과 타입 |
 | `settings_model/app_settings.py` | 모든 설정 dataclass 정의 |
+| `settings_model/manager.py` | 설정 저장/로드 진입점 |
+| `settings_model/migration.py` | 레거시 설정/분류 폴더 기본값 마이그레이션 |
+| `settings_model/validation.py` | 실행 전 설정 검증 요약 |
 | `multi_photo_detector.py` | 한 스캔에서 여러 사진 분리 |
 | `watermark_processor.py` | 텍스트/이미지 워터마크 |
 | `resize_processor.py` | 이미지 리사이즈 |
 | `processed_index.py` | `skip_processed` 로컬 처리 이력 인덱스 |
+| `utils/path_validation.py` | 안전한 경로/파일명 segment validator |
 
 ### Stability-Critical Flow
 
@@ -91,9 +97,25 @@
 | `main/window.py` | 메인 윈도우 composition root |
 | `main/actions/` | preview/batch/input/watch/tools/settings/lifecycle 계층 |
 | `main/builders/` | menu/toolbar/central/statusbar/fab 빌더 |
+| `main/services/` | runtime flow/message helper 계층 |
 | `settings/panel.py` | 모든 설정 UI 패널 |
 | `preview_widget.py` | 이미지 미리보기 위젯 |
 | `toast_notification.py` | 토스트 알림 시스템 |
+
+## 2026-04-14 Refactor Status
+
+- 완료:
+  - i18n manager가 Python locale catalog(`i18n/catalog/locales/*.py`)를 직접 로드
+  - 장수명 UI용 runtime retranslate 경로와 `ui/main/services` 계층 추가
+  - 분류 폴더명/prefix/suffix 공용 validator 도입
+  - settings persistence/migration/validation 책임 분리
+- 남은 대형 파일:
+  - `ui/widgets/settings/panel.py`
+  - `core/image/processor.py`
+  - `core/batch/processor.py`
+  - `selftest.py`
+- packaging note:
+  - PyInstaller spec는 `photo_cropper.i18n.catalog.locales.*` hidden import를 유지해야 함
 
 ## Detection Algorithm Pipeline
 

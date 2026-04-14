@@ -21,8 +21,6 @@ import numpy as np
 from concurrent.futures import ThreadPoolExecutor, wait, FIRST_COMPLETED, CancelledError
 from datetime import datetime
 from typing import Optional, List, Dict, Any, Callable, Tuple
-from dataclasses import dataclass, field
-from enum import Enum
 from queue import Queue
 
 from ..image import ImageProcessor, CropResult
@@ -53,78 +51,16 @@ from ...utils.file_helpers import (
 )
 from ...utils.processing_log import ProcessingLogger, get_processing_logger
 from ...utils.naming_rules import NamingRule, NamingRuleEngine
+from ...utils.path_validation import resolve_category_folder_map
 from ..processed_index import (
     ProcessedIndexStore,
     RECORD_STATUS_PARTIAL,
     RECORD_STATUS_SUCCESS,
     build_pipeline_signature,
 )
+from .types import BatchProgress, FileResult, ProcessStatus
 
 logger = logging.getLogger(__name__)
-
-
-class ProcessStatus(Enum):
-    """Processing status enumeration."""
-
-    PENDING = "pending"
-    PROCESSING = "processing"
-    SUCCESS = "success"
-    PARTIAL_SUCCESS = "partial_success"
-    FAILED = "failed"
-    SKIPPED = "skipped"
-    CANCELLED = "cancelled"
-
-
-@dataclass
-class FileResult:
-    """Result for individual file processing."""
-
-    filename: str
-    status: ProcessStatus
-    message: str = ""
-    output_path: str = ""
-    output_paths: List[str] = field(default_factory=list)
-    file_size_kb: float = 0.0
-    processing_time_ms: float = 0.0
-
-
-@dataclass
-class BatchProgress:
-    """Batch processing progress information."""
-
-    total: int = 0
-    processed: int = 0
-    success: int = 0
-    partial_success: int = 0
-    failed: int = 0
-    skipped: int = 0
-    current_file: str = ""
-    is_running: bool = False
-    is_cancelled: bool = False
-    avg_time_per_file_ms: float = 0.0
-    total_time_ms: float = 0.0
-
-    @property
-    def percent(self) -> float:
-        """Get progress percentage."""
-        if self.total == 0:
-            return 0.0
-        return (self.processed / self.total) * 100
-
-    @property
-    def success_rate(self) -> float:
-        """Get success rate percentage."""
-        if self.processed == 0:
-            return 0.0
-        return ((self.success + self.partial_success) / self.processed) * 100
-
-    @property
-    def eta_seconds(self) -> float:
-        """Estimated time remaining in seconds."""
-        if self.processed == 0 or self.avg_time_per_file_ms == 0:
-            return 0.0
-        remaining = self.total - self.processed
-        return (remaining * self.avg_time_per_file_ms) / 1000
 
 
 class BatchProcessor:
@@ -965,8 +901,11 @@ class BatchProcessor:
 
     def _resolve_category_folder_name(self, category: ImageCategory) -> str:
         cls_settings = self.settings.classification
-        folder_map = getattr(cls_settings, "category_folders", {}) or {}
         key = getattr(category, "value", str(category or "")).lower()
+        folder_map = resolve_category_folder_map(
+            getattr(cls_settings, "category_folders", {}) or {},
+            language=getattr(self.settings.ui, "language", None),
+        )
         mapped_name = str(folder_map.get(key, "") or "").strip()
         if mapped_name:
             return mapped_name

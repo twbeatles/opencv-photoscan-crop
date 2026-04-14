@@ -22,6 +22,8 @@ from PyQt6.QtGui import QPixmap, QImage, QPainter, QColor, QIcon
 import cv2
 import numpy as np
 
+from ...i18n.catalog import t
+
 logger = logging.getLogger(__name__)
 
 
@@ -267,7 +269,7 @@ class ThumbnailGridWidget(QWidget):
         # View mode buttons
         self.grid_btn = QToolButton()
         self.grid_btn.setText("▦")
-        self.grid_btn.setToolTip("그리드 보기")
+        self.grid_btn.setToolTip(t("menu.view"))
         self.grid_btn.setCheckable(True)
         self.grid_btn.setChecked(True)
         self.grid_btn.clicked.connect(lambda: self._set_view_mode("grid"))
@@ -275,7 +277,7 @@ class ThumbnailGridWidget(QWidget):
         
         self.list_btn = QToolButton()
         self.list_btn.setText("☰")
-        self.list_btn.setToolTip("리스트 보기")
+        self.list_btn.setToolTip(t("menu.view"))
         self.list_btn.setCheckable(True)
         self.list_btn.clicked.connect(lambda: self._set_view_mode("list"))
         toolbar.addWidget(self.list_btn)
@@ -285,19 +287,19 @@ class ThumbnailGridWidget(QWidget):
         # Size slider (simplified)
         self.size_small_btn = QToolButton()
         self.size_small_btn.setText("S")
-        self.size_small_btn.setToolTip("작은 썸네일")
+        self.size_small_btn.setToolTip("S")
         self.size_small_btn.clicked.connect(lambda: self.set_thumbnail_size(100))
         toolbar.addWidget(self.size_small_btn)
         
         self.size_medium_btn = QToolButton()
         self.size_medium_btn.setText("M")
-        self.size_medium_btn.setToolTip("중간 썸네일")
+        self.size_medium_btn.setToolTip("M")
         self.size_medium_btn.clicked.connect(lambda: self.set_thumbnail_size(150))
         toolbar.addWidget(self.size_medium_btn)
         
         self.size_large_btn = QToolButton()
         self.size_large_btn.setText("L")
-        self.size_large_btn.setToolTip("큰 썸네일")
+        self.size_large_btn.setToolTip("L")
         self.size_large_btn.clicked.connect(lambda: self.set_thumbnail_size(200))
         toolbar.addWidget(self.size_large_btn)
         
@@ -331,6 +333,7 @@ class ThumbnailGridWidget(QWidget):
         self.list_widget.itemDoubleClicked.connect(self._on_list_item_double_clicked)
         
         self.view_stack.addWidget(self.list_widget)
+        self.retranslate_ui()
         
         layout.addWidget(self.view_stack)
     
@@ -364,7 +367,7 @@ class ThumbnailGridWidget(QWidget):
         self._populate_grid()
         self._populate_list()
         
-        self.info_label.setText(f"{len(filepaths)} 파일")
+        self.info_label.setText(t("status.file_count", count=len(filepaths)).strip())
     
     def _clear_grid(self):
         """Clear grid layout."""
@@ -439,13 +442,13 @@ class ThumbnailGridWidget(QWidget):
         """Handle context menu request."""
         menu = QMenu(self)
         
-        open_action = menu.addAction("열기")
+        open_action = menu.addAction(t("dialog.open"))
         if open_action is not None:
             open_action.triggered.connect(lambda: self.file_double_clicked.emit(filepath))
         
         menu.addSeparator()
         
-        explorer_action = menu.addAction("파일 위치 열기")
+        explorer_action = menu.addAction(t("menu.file.open_output_folder"))
         if explorer_action is not None:
             explorer_action.triggered.connect(lambda: self._open_in_explorer(filepath))
         
@@ -493,3 +496,7 @@ class ThumbnailGridWidget(QWidget):
         """Handle resize - reflow grid."""
         super().resizeEvent(event)
         # Could trigger grid recalculation here if needed
+
+    def retranslate_ui(self):
+        self.grid_btn.setToolTip(t("compare.mode.side"))
+        self.list_btn.setToolTip(t("menu.view"))

@@ -9,6 +9,7 @@ from typing import Callable, Optional
 from PyQt6.QtCore import QSettings, QTimer
 from PyQt6.QtWidgets import QMessageBox
 
+from ....i18n.catalog import t
 from ...styles.themes import get_theme
 from ..models import WindowRefs, WindowServices, WindowState
 
@@ -113,13 +114,15 @@ class SettingsActions:
     def do_auto_save(self) -> None:
         saved = self.persist_paths()
         if self.refs.status_label is not None:
-            self.refs.status_label.setText("✓ 설정 자동 저장됨" if saved else "⚠ 설정 저장 실패")
+            self.refs.status_label.setText(
+                "✓ " + t("dialog.save") if saved else "⚠ " + t("dialog.warning")
+            )
 
     def reset_settings(self) -> None:
         reply = QMessageBox.question(
             self.services.host_window,
-            "설정 초기화",
-            "모든 설정을 기본값으로 초기화하시겠습니까?",
+            t("menu.edit.reset_settings"),
+            t("menu.edit.reset_settings"),
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
         )
         if reply == QMessageBox.StandardButton.Yes:
@@ -128,7 +131,7 @@ class SettingsActions:
                 self.refs.settings_panel.settings = default_settings
             self.apply_loaded_settings(default_settings)
             if self.refs.statusbar is not None:
-                self.refs.statusbar.showMessage("설정이 초기화되었습니다", 3000)
+                self.refs.statusbar.showMessage(t("menu.edit.reset_settings"), 3000)
 
     def save_window_state(self) -> None:
         settings = QSettings("PhotoCropper", "MainWindow")

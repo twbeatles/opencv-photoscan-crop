@@ -18,6 +18,7 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
+from ....i18n.catalog import t
 from ...widgets.histogram_widget import HistogramWidget
 from ...widgets.preview_widget import ImagePreviewWidget
 from ...widgets.settings import SettingsPanel
@@ -72,51 +73,56 @@ def build_central_widget(
     path_grid.setContentsMargins(0, 0, 0, 0)
     path_grid.setColumnStretch(1, 1)
 
-    input_label = QLabel("입력 폴더:")
+    input_label = QLabel(t("central.input_folder"))
     input_label.setStyleSheet("font-weight: bold;")
     path_grid.addWidget(input_label, 0, 0)
+    refs.labels["central.input_label"] = input_label
 
     refs.input_path_edit = QLineEdit()
-    refs.input_path_edit.setPlaceholderText("이미지가 있는 폴더를 선택하거나 드래그하세요...")
+    refs.input_path_edit.setPlaceholderText(t("central.input_placeholder"))
     refs.input_path_edit.setMinimumHeight(32)
     refs.input_path_edit.setTextMargins(8, 0, 8, 0)
     refs.input_path_edit.textChanged.connect(input_actions.on_input_path_changed)
     path_grid.addWidget(refs.input_path_edit, 0, 1)
 
-    input_browse_btn = QPushButton("찾아보기")
+    input_browse_btn = QPushButton(t("central.browse"))
     input_browse_btn.setCursor(Qt.CursorShape.PointingHandCursor)
     input_browse_btn.setMinimumHeight(32)
     input_browse_btn.clicked.connect(input_actions.select_input_folder)
     path_grid.addWidget(input_browse_btn, 0, 2)
+    refs.buttons["central.input_browse"] = input_browse_btn
 
-    output_label = QLabel("출력 폴더:")
+    output_label = QLabel(t("central.output_folder"))
     output_label.setStyleSheet("font-weight: bold;")
     path_grid.addWidget(output_label, 1, 0)
+    refs.labels["central.output_label"] = output_label
 
     refs.output_path_edit = QLineEdit()
-    refs.output_path_edit.setPlaceholderText("결과물이 저장될 폴더 (자동 설정됨)")
+    refs.output_path_edit.setPlaceholderText(t("central.output_placeholder"))
     refs.output_path_edit.setMinimumHeight(32)
     refs.output_path_edit.setTextMargins(8, 0, 8, 0)
     refs.output_path_edit.textChanged.connect(input_actions.on_output_path_changed)
     path_grid.addWidget(refs.output_path_edit, 1, 1)
 
-    output_browse_btn = QPushButton("변경")
+    output_browse_btn = QPushButton(t("central.change"))
     output_browse_btn.setCursor(Qt.CursorShape.PointingHandCursor)
     output_browse_btn.setMinimumHeight(32)
     output_browse_btn.clicked.connect(input_actions.select_output_folder)
     path_grid.addWidget(output_browse_btn, 1, 2)
+    refs.buttons["central.output_browse"] = output_browse_btn
 
-    output_open_btn = QPushButton("변환 폴더 열기")
+    output_open_btn = QPushButton(t("central.open_output_folder"))
     output_open_btn.setCursor(Qt.CursorShape.PointingHandCursor)
     output_open_btn.setMinimumHeight(32)
     output_open_btn.clicked.connect(input_actions.open_output_folder)
     path_grid.addWidget(output_open_btn, 1, 3)
+    refs.buttons["central.output_open"] = output_open_btn
     folder_card_layout.addLayout(path_grid)
 
     hint_layout = QHBoxLayout()
     hint_layout.setContentsMargins(0, 0, 0, 0)
     hint_icon = QLabel("💡")
-    hint_text = QLabel("팁: 폴더를 이 영역으로 드래그하여 바로 열 수 있습니다.")
+    hint_text = QLabel(t("central.drag_hint"))
     hint_text.setObjectName("subtitleLabel")
     hint_layout.addWidget(hint_icon)
     hint_layout.addWidget(hint_text)
@@ -126,41 +132,47 @@ def build_central_widget(
     edit_nav_layout = QHBoxLayout()
     edit_nav_layout.setContentsMargins(0, 2, 0, 0)
 
-    refs.batch_load_btn = QPushButton("폴더 일괄 불러오기")
+    refs.batch_load_btn = QPushButton(t("central.load_batch"))
     refs.batch_load_btn.setCursor(Qt.CursorShape.PointingHandCursor)
     refs.batch_load_btn.setMinimumHeight(30)
     refs.batch_load_btn.clicked.connect(batch_actions.load_batch_images_for_edit)
     edit_nav_layout.addWidget(refs.batch_load_btn)
 
-    refs.batch_failed_btn = QPushButton("실패 파일 수동 보정")
+    refs.batch_failed_btn = QPushButton(t("central.load_failed"))
     refs.batch_failed_btn.setCursor(Qt.CursorShape.PointingHandCursor)
     refs.batch_failed_btn.setMinimumHeight(30)
     refs.batch_failed_btn.clicked.connect(batch_actions.load_failed_boundary_images_for_edit)
     edit_nav_layout.addWidget(refs.batch_failed_btn)
 
-    refs.batch_prev_btn = QPushButton("← 이전")
+    refs.batch_prev_btn = QPushButton(t("central.prev"))
     refs.batch_prev_btn.setCursor(Qt.CursorShape.PointingHandCursor)
     refs.batch_prev_btn.setMinimumHeight(30)
     refs.batch_prev_btn.clicked.connect(navigation_actions.navigate_prev)
     edit_nav_layout.addWidget(refs.batch_prev_btn)
 
-    refs.batch_next_btn = QPushButton("다음 →")
+    refs.batch_next_btn = QPushButton(t("central.next"))
     refs.batch_next_btn.setCursor(Qt.CursorShape.PointingHandCursor)
     refs.batch_next_btn.setMinimumHeight(30)
     refs.batch_next_btn.clicked.connect(navigation_actions.navigate_next)
     edit_nav_layout.addWidget(refs.batch_next_btn)
 
-    refs.batch_save_edits_btn = QPushButton("편집 저장 추출")
+    refs.batch_save_edits_btn = QPushButton(t("central.save_edits"))
     refs.batch_save_edits_btn.setCursor(Qt.CursorShape.PointingHandCursor)
     refs.batch_save_edits_btn.setMinimumHeight(30)
     refs.batch_save_edits_btn.clicked.connect(batch_actions.save_batch_edited_crops)
     edit_nav_layout.addWidget(refs.batch_save_edits_btn)
 
-    refs.batch_edit_status_label = QLabel("편집 0/0 | 수정 0")
+    refs.batch_edit_status_label = QLabel(t("central.batch_status", current=0, total=0, edited=0, failed=0))
     refs.batch_edit_status_label.setObjectName("subtitleLabel")
     edit_nav_layout.addWidget(refs.batch_edit_status_label)
     edit_nav_layout.addStretch()
     folder_card_layout.addLayout(edit_nav_layout)
+    refs.buttons["central.batch_load"] = refs.batch_load_btn
+    refs.buttons["central.batch_failed"] = refs.batch_failed_btn
+    refs.buttons["central.batch_prev"] = refs.batch_prev_btn
+    refs.buttons["central.batch_next"] = refs.batch_next_btn
+    refs.buttons["central.batch_save"] = refs.batch_save_edits_btn
+    refs.labels["central.drag_hint"] = hint_text
 
     outer_splitter.addWidget(folder_card)
 

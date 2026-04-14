@@ -11,6 +11,7 @@ from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QDragEnterEvent, QDropEvent, QKeyEvent
 from PyQt6.QtWidgets import QFileDialog, QMessageBox
 
+from ....i18n.catalog import t
 from ....utils.file_helpers import SUPPORTED_IMAGE_FORMATS, get_image_files, open_file_explorer
 from ..models import WindowRefs, WindowServices, WindowState
 
@@ -71,7 +72,11 @@ class InputActions:
 
     def select_input_folder(self) -> None:
         start_dir = self.refs.input_path_edit.text() if self.refs.input_path_edit else ""
-        path = QFileDialog.getExistingDirectory(self.services.host_window, "입력 폴더 선택", start_dir)
+        path = QFileDialog.getExistingDirectory(
+            self.services.host_window,
+            t("menu.file.open_input"),
+            start_dir,
+        )
         if path and self.refs.input_path_edit is not None:
             self.refs.input_path_edit.setText(path)
             if self.refs.output_path_edit is not None and not self.refs.output_path_edit.text():
@@ -79,7 +84,11 @@ class InputActions:
 
     def select_output_folder(self) -> None:
         start_dir = self.refs.output_path_edit.text() if self.refs.output_path_edit else ""
-        path = QFileDialog.getExistingDirectory(self.services.host_window, "출력 폴더 선택", start_dir)
+        path = QFileDialog.getExistingDirectory(
+            self.services.host_window,
+            t("menu.file.open_output"),
+            start_dir,
+        )
         if path and self.refs.output_path_edit is not None:
             self.refs.output_path_edit.setText(path)
 
@@ -106,7 +115,7 @@ class InputActions:
                 self.state.last_detected_contour = None
             files = get_image_files(path)
             if self.refs.file_count_badge is not None:
-                self.refs.file_count_badge.setText(f" 파일: {len(files)}개 ")
+                self.refs.file_count_badge.setText(t("status.file_count", count=len(files)))
                 self.refs.file_count_badge.setStyleSheet(
                     """
                 background-color: rgba(46, 160, 67, 0.2);
@@ -121,7 +130,7 @@ class InputActions:
                 self._update_image_list()
         else:
             if self.refs.file_count_badge is not None:
-                self.refs.file_count_badge.setText(" 파일: 0개 ")
+                self.refs.file_count_badge.setText(t("status.file_empty"))
                 self.refs.file_count_badge.setStyleSheet(
                     """
                 background-color: rgba(128, 128, 128, 0.2);
@@ -144,14 +153,18 @@ class InputActions:
         if path and os.path.exists(path):
             open_file_explorer(path)
         else:
-            QMessageBox.warning(self.services.host_window, "경고", "출력 폴더가 존재하지 않습니다.")
+            QMessageBox.warning(
+                self.services.host_window,
+                t("dialog.warning"),
+                t("validation.output_missing"),
+            )
 
     def open_single_image(self) -> None:
         path, _ = QFileDialog.getOpenFileName(
             self.services.host_window,
-            "이미지 선택",
+            t("input.select_image"),
             "",
-            "이미지 파일 (*.jpg *.jpeg *.png *.bmp *.gif *.tiff *.webp);;모든 파일 (*.*)",
+            t("input.image_filter"),
         )
         if path:
             self.state.current_image_path = path
@@ -163,9 +176,11 @@ class InputActions:
         if input_path and os.path.isdir(input_path):
             files = get_image_files(input_path)
             if self.refs.file_count_badge is not None:
-                self.refs.file_count_badge.setText(f" 파일: {len(files)}개 ")
+                self.refs.file_count_badge.setText(t("status.file_count", count=len(files)))
             if self.refs.status_label is not None:
-                self.refs.status_label.setText(f"파일 목록 새로고침 완료: {len(files)}개 파일")
+                self.refs.status_label.setText(
+                    t("input.refresh.done", count=len(files))
+                )
             if files:
                 self.state.current_image_path = files[0]
                 if self._request_preview is not None:

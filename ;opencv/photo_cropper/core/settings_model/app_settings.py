@@ -8,15 +8,27 @@ Provides dataclasses and managers for application settings persistence.
 
 from __future__ import annotations
 
-import json
-import os
-import logging
-import platform
 from dataclasses import dataclass, field, asdict, fields
 from typing import Dict, Any, Optional
 from enum import Enum
 
-logger = logging.getLogger(__name__)
+from .migration import normalize_category_folder_map
+
+CLASSIFICATION_CATEGORY_KEYS = (
+    "portrait",
+    "landscape",
+    "document",
+    "blackwhite",
+    "other",
+)
+
+LEGACY_CATEGORY_FOLDER_DEFAULTS = {
+    "portrait": "인물",
+    "landscape": "풍경",
+    "document": "문서",
+    "blackwhite": "흑백",
+    "other": "기타",
+}
 
 def _filter_dataclass_kwargs(dataclass_type, value: Any) -> Dict[str, Any]:
     """
@@ -364,13 +376,9 @@ class ClassificationSettings:
         "blackwhite": True,
         "other": True
     })
-    category_folders: dict[str, str] = field(default_factory=lambda: {
-        "portrait": "인물",
-        "landscape": "풍경",
-        "document": "문서",
-        "blackwhite": "흑백",
-        "other": "기타",
-    })
+    category_folders: dict[str, str] = field(
+        default_factory=lambda: {key: "" for key in CLASSIFICATION_CATEGORY_KEYS}
+    )
     min_confidence: float = 0.5
 
     def __post_init__(self):
@@ -382,13 +390,7 @@ class ClassificationSettings:
             model = "basic"
         self.model = model
 
-        default_enabled = {
-            "portrait": True,
-            "landscape": True,
-            "document": True,
-            "blackwhite": True,
-            "other": True,
-        }
+        default_enabled = {key: True for key in CLASSIFICATION_CATEGORY_KEYS}
         incoming_enabled = (
             self.categories_enabled if isinstance(self.categories_enabled, dict) else {}
         )
@@ -397,21 +399,14 @@ class ClassificationSettings:
             for key, default_value in default_enabled.items()
         }
 
-        default_folders = {
-            "portrait": "인물",
-            "landscape": "풍경",
-            "document": "문서",
-            "blackwhite": "흑백",
-            "other": "기타",
-        }
         incoming_folders = (
             self.category_folders if isinstance(self.category_folders, dict) else {}
         )
-        normalized_folders: dict[str, str] = {}
-        for key, default_name in default_folders.items():
-            raw_name = str(incoming_folders.get(key, "")).strip()
-            normalized_folders[key] = raw_name or default_name
-        self.category_folders = normalized_folders
+        self.category_folders = normalize_category_folder_map(
+            incoming_folders,
+            category_keys=CLASSIFICATION_CATEGORY_KEYS,
+            legacy_defaults=LEGACY_CATEGORY_FOLDER_DEFAULTS,
+        )
 
 
 @dataclass
@@ -675,181 +670,3 @@ class AppSettings:
             last_output_path=data.get("last_output_path", ""),
             create_backup=data.get("create_backup", False),
         )
-
-
-class SettingsManager:
-    """Manages loading and saving of application settings."""
-
-    LEGACY_CONFIG_DIR = ".photo_cropper"
-    LEGACY_CONFIG_FILE = "photo_cropper_settings.json"
-
-    WINDOWS_CONFIG_DIR = "PhotoCropper"
-    WINDOWS_CONFIG_FILE = "settings.json"
-    
-    def __init__(self, config_file: Optional[str] = None):
-        """
-        Initialize settings manager.
-        
-        Args:
-            config_file: Path to config file. Uses default if None.
-        """
-        if config_file is None:
-            self.config_file = self._get_default_config_file()
-        else:
-            self.config_file = config_file
-
-        self._legacy_config_files = self._get_legacy_config_files()
-        
-        self._settings: Optional[AppSettings] = None
-
-    def _get_default_config_file(self) -> str:
-        """Resolve the default settings file path for this OS."""
-        system = platform.system()
-        if system == "Windows":
-            base = (
-                os.environ.get("APPDATA")
-                or os.environ.get("LOCALAPPDATA")
-                or os.path.expanduser("~")
-            )
-            config_dir = os.path.join(base, self.WINDOWS_CONFIG_DIR)
-            os.makedirs(config_dir, exist_ok=True)
-            return os.path.join(config_dir, self.WINDOWS_CONFIG_FILE)
-
-        # Non-Windows: keep legacy location under home directory
-        home_dir = os.path.expanduser("~")
-        config_dir = os.path.join(home_dir, self.LEGACY_CONFIG_DIR)
-        os.makedirs(config_dir, exist_ok=True)
-        return os.path.join(config_dir, self.LEGACY_CONFIG_FILE)
-
-    def _get_legacy_config_files(self) -> list[str]:
-        """Possible legacy config paths to migrate from."""
-        paths: list[str] = []
-
-        # Legacy path used by previous versions: ~/.photo_cropper/photo_cropper_settings.json
-        home_dir = os.path.expanduser("~")
-        legacy_dir = os.path.join(home_dir, self.LEGACY_CONFIG_DIR)
-        paths.append(os.path.join(legacy_dir, self.LEGACY_CONFIG_FILE))
-
-        # Some docs referenced %APPDATA%\\PhotoCropper\\settings.json; consider alternate legacy names.
-        appdata = os.environ.get("APPDATA")
-        if appdata:
-            paths.append(os.path.join(appdata, self.WINDOWS_CONFIG_DIR, self.LEGACY_CONFIG_FILE))
-
-        # De-duplicate and remove the current target file.
-        normalized = []
-        for p in paths:
-            try:
-                if os.path.abspath(p) == os.path.abspath(self.config_file):
-                    continue
-            except Exception:
-                pass
-            if p not in normalized:
-                normalized.append(p)
-        return normalized
-    
-    @property
-    def settings(self) -> AppSettings:
-        """Get current settings, loading if necessary."""
-        if self._settings is None:
-            self._settings = self.load()
-        return self._settings
-    
-    @settings.setter
-    def settings(self, value: AppSettings):
-        """Set current settings."""
-        self._settings = value
-    
-    def load(self) -> AppSettings:
-        """
-        Load settings from file.
-        
-        Returns:
-            AppSettings instance (defaults if file doesn't exist or is invalid).
-        """
-        try:
-            if os.path.exists(self.config_file):
-                with open(self.config_file, 'r', encoding='utf-8') as f:
-                    data = json.load(f)
-                    logger.info(f"Settings loaded from {self.config_file}")
-                    return AppSettings.from_dict(data)
-
-            # Migration: load from legacy config if present, then save to new path.
-            for legacy_path in self._legacy_config_files:
-                if not legacy_path or not os.path.exists(legacy_path):
-                    continue
-                try:
-                    with open(legacy_path, "r", encoding="utf-8") as f:
-                        data = json.load(f)
-                    settings = AppSettings.from_dict(data)
-                    logger.info(f"Migrating settings from {legacy_path} -> {self.config_file}")
-                    self.save(settings)
-                    return settings
-                except Exception as e:
-                    logger.warning(f"Settings migration failed ({legacy_path}): {e}")
-        except json.JSONDecodeError as e:
-            logger.error(f"Settings file JSON parse error: {e}")
-        except Exception as e:
-            logger.error(f"Settings load error: {e}")
-        
-        logger.info("Using default settings")
-        return AppSettings()
-    
-    def save(self, settings: Optional[AppSettings] = None) -> bool:
-        """
-        Save settings to file.
-        
-        Args:
-            settings: Settings to save. Uses current settings if None.
-            
-        Returns:
-            True if saved successfully, False otherwise.
-        """
-        if settings is None:
-            settings = self._settings
-        
-        if settings is None:
-            logger.warning("No settings to save")
-            return False
-        
-        try:
-            # Ensure directory exists
-            config_dir = os.path.dirname(self.config_file)
-            if config_dir:  # Only makedirs if path is not empty
-                os.makedirs(config_dir, exist_ok=True)
-            
-            with open(self.config_file, 'w', encoding='utf-8') as f:
-                json.dump(settings.to_dict(), f, indent=2, ensure_ascii=False)
-            
-            self._settings = settings
-            logger.info(f"Settings saved to {self.config_file}")
-            return True
-        except Exception as e:
-            logger.error(f"Settings save error: {e}")
-            return False
-    
-    def reset_to_defaults(self) -> AppSettings:
-        """
-        Reset settings to defaults.
-        
-        Returns:
-            Default AppSettings instance.
-        """
-        self._settings = AppSettings()
-        logger.info("Settings reset to defaults")
-        return self._settings
-    
-    def get_default(self) -> AppSettings:
-        """Get default settings without modifying current."""
-        return AppSettings()
-
-
-# Convenience function for quick access
-_default_manager: Optional[SettingsManager] = None
-
-
-def get_settings_manager() -> SettingsManager:
-    """Get the default settings manager singleton."""
-    global _default_manager
-    if _default_manager is None:
-        _default_manager = SettingsManager()
-    return _default_manager

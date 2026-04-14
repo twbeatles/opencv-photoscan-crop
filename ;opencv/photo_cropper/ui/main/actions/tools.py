@@ -11,10 +11,12 @@ from PyQt6.QtWidgets import QInputDialog, QMessageBox
 
 from ....core.batch_profile_manager import get_batch_profile_manager
 from ....core.smart_enhancer import EnhancementPreset, get_smart_enhancer
+from ....i18n.catalog import t
 from ....utils.file_helpers import build_recursive_excluded_roots, get_image_files
 from ...widgets.preset_manager import get_preset_manager
 from ...widgets.toast_notification import ToastManager
 from ..models import WindowRefs, WindowServices, WindowState
+from ..services import UiMessageFactory
 
 
 class ToolActions:
@@ -29,6 +31,7 @@ class ToolActions:
         self.state = state
         self.refs = refs
         self.services = services
+        self.messages = UiMessageFactory()
         self._request_preview: Optional[Callable[[], None]] = None
         self._schedule_auto_save: Optional[Callable[[], None]] = None
         self._sync_current_settings: Optional[Callable[..., None]] = None
@@ -47,13 +50,13 @@ class ToolActions:
     def rotate_preview(self) -> None:
         if not self.state.current_image_path or not os.path.exists(self.state.current_image_path):
             if self.refs.status_label is not None:
-                self.refs.status_label.setText("회전할 이미지가 없습니다")
+                self.refs.status_label.setText(t("tools.rotate.empty"))
             return
 
         image = self.services.image_processor.load_image(self.state.current_image_path)
         if image is None:
             if self.refs.status_label is not None:
-                self.refs.status_label.setText("이미지를 불러올 수 없습니다")
+                self.refs.status_label.setText(t("tools.rotate.load_failed"))
             return
 
         rotated = self.services.image_processor.rotate_image(image, 90)
@@ -61,16 +64,20 @@ class ToolActions:
             self.refs.preview_widget.set_original_image(rotated)
             self.refs.preview_widget.set_processed_image(None)
         if self.refs.status_label is not None:
-            self.refs.status_label.setText("이미지를 시계방향 90도 회전했습니다")
+            self.refs.status_label.setText(t("tools.rotate.done"))
 
     def detect_duplicates(self) -> None:
         input_path = self.refs.input_path_edit.text() if self.refs.input_path_edit else ""
         if not input_path or not os.path.isdir(input_path):
-            QMessageBox.warning(self.services.host_window, "경고", "유효한 입력 폴더를 선택하세요.")
+            QMessageBox.warning(
+                self.services.host_window,
+                self.messages.warning_title,
+                t("validation.input_invalid"),
+            )
             return
 
         if self.refs.status_label is not None:
-            self.refs.status_label.setText("중복 파일 검색 중...")
+            self.refs.status_label.setText(t("tools.duplicates.running"))
 
         from ....utils.file_helpers import detect_duplicates
 
@@ -94,27 +101,34 @@ class ToolActions:
             excluded_roots=excluded_roots,
         )
         if not files:
-            QMessageBox.information(self.services.host_window, "결과", "검색할 이미지 파일이 없습니다.")
+            QMessageBox.information(
+                self.services.host_window,
+                self.messages.result_title,
+                t("tools.duplicates.empty_files"),
+            )
             return
 
         duplicates = detect_duplicates(files, method="size+hash")
         if not duplicates:
-            QMessageBox.information(self.services.host_window, "결과", "중복 파일이 발견되지 않았습니다.")
+            QMessageBox.information(
+                self.services.host_window,
+                self.messages.result_title,
+                t("tools.duplicates.none"),
+            )
             if self.refs.status_label is not None:
-                self.refs.status_label.setText("중복 파일 없음")
+                self.refs.status_label.setText(t("tools.duplicates.none_status"))
             return
 
-        dup_count = sum(len(v) - 1 for v in duplicates.values() if len(v) > 1)
-        msg = f"총 {dup_count}개의 중복 파일이 발견되었습니다.\n\n"
-        for _hash_key, paths in list(duplicates.items())[:5]:
-            if len(paths) > 1:
-                msg += f"• {os.path.basename(paths[0])} ({len(paths)}개 중복)\n"
-        if len(duplicates) > 5:
-            msg += f"\n... 외 {len(duplicates) - 5}개 그룹"
-
-        QMessageBox.information(self.services.host_window, "중복 검색 결과", msg)
+        dup_count, msg = self.messages.duplicate_summary(duplicates)
+        QMessageBox.information(
+            self.services.host_window,
+            t("tools.duplicates.result_title"),
+            msg,
+        )
         if self.refs.status_label is not None:
-            self.refs.status_label.setText(f"중복 파일 {dup_count}개 발견")
+            self.refs.status_label.setText(
+                t("tools.duplicates.found_status", count=dup_count)
+            )
 
     def toggle_classification_settings(self) -> None:
         enabled = not self.state.settings.classification.enabled
@@ -123,13 +137,13 @@ class ToolActions:
             self._sync_current_settings(sync_panel=True, reconfigure_scheduler=False)
 
         if enabled:
-            ToastManager.success("🤖 AI 분류 활성화됨 - 배치 처리 시 이미지가 자동 분류됩니다")
+            ToastManager.success(t("tools.classification.toast_enabled"))
             if self.refs.status_label is not None:
-                self.refs.status_label.setText("AI 분류 활성화됨")
+                self.refs.status_label.setText(t("tools.classification.enabled"))
         else:
-            ToastManager.info("AI 분류 비활성화됨")
+            ToastManager.info(t("tools.classification.toast_disabled"))
             if self.refs.status_label is not None:
-                self.refs.status_label.setText("AI 분류 비활성화됨")
+                self.refs.status_label.setText(t("tools.classification.disabled"))
 
         if self._schedule_auto_save is not None:
             self._schedule_auto_save()
@@ -141,15 +155,15 @@ class ToolActions:
             self._sync_current_settings(sync_panel=True, reconfigure_scheduler=False)
 
         if enabled:
-            ToastManager.success("👤 얼굴 감지 활성화됨 - 인물 사진 자동 크롭 조정")
+            ToastManager.success(t("tools.face.toast_enabled"))
             if self.refs.status_label is not None:
-                self.refs.status_label.setText("얼굴 감지 활성화됨")
+                self.refs.status_label.setText(t("tools.face.enabled"))
             if self.state.current_image_path:
                 self.do_preview_with_faces()
         else:
-            ToastManager.info("얼굴 감지 비활성화됨")
+            ToastManager.info(t("tools.face.toast_disabled"))
             if self.refs.status_label is not None:
-                self.refs.status_label.setText("얼굴 감지 비활성화됨")
+                self.refs.status_label.setText(t("tools.face.disabled"))
 
         if self._schedule_auto_save is not None:
             self._schedule_auto_save()
@@ -180,15 +194,17 @@ class ToolActions:
             if self.refs.preview_widget is not None:
                 self.refs.preview_widget.set_original_image(image, overlay)
             if self.refs.status_label is not None:
-                self.refs.status_label.setText(f"👤 {len(result.faces)}개 얼굴 감지됨")
-            ToastManager.info(f"👤 {len(result.faces)}개 얼굴 감지")
+                self.refs.status_label.setText(
+                    t("tools.face.detected", count=len(result.faces))
+                )
+            ToastManager.info(t("tools.face.detected", count=len(result.faces)))
         elif self.refs.status_label is not None:
-            self.refs.status_label.setText("얼굴을 감지하지 못했습니다")
+            self.refs.status_label.setText(t("tools.face.none"))
 
     def show_smart_enhancement(self) -> None:
         if self.state.last_original is None:
             if self.refs.status_label is not None:
-                self.refs.status_label.setText("먼저 이미지를 로드하세요")
+                self.refs.status_label.setText(t("tools.load_image_first"))
             return
 
         enhancer = get_smart_enhancer()
@@ -196,8 +212,8 @@ class ToolActions:
         presets = [name for preset, name in preset_names.items() if preset != EnhancementPreset.NONE]
         preset, ok = QInputDialog.getItem(
             self.services.host_window,
-            "스마트 보정",
-            "적용할 프리셋을 선택하세요:",
+            t("tools.smart.dialog_title"),
+            t("tools.smart.dialog_body"),
             presets,
             0,
             False,
@@ -219,9 +235,11 @@ class ToolActions:
             self.refs.preview_widget.set_processed_image(result.image)
 
         effects = ", ".join(result.applied_effects[:3])
-        ToastManager.success(f"✨ {preset} 적용됨: {effects}")
+        ToastManager.success(t("tools.smart.toast", preset=preset, effects=effects))
         if self.refs.status_label is not None:
-            self.refs.status_label.setText(f"스마트 보정 적용: {preset}")
+            self.refs.status_label.setText(
+                t("tools.smart.status", preset=preset)
+            )
 
     def show_multi_compare(self) -> None:
         from ...widgets.multi_compare_window import MultiCompareWindow
@@ -230,9 +248,17 @@ class ToolActions:
             self.state.multi_compare_window = MultiCompareWindow(self.services.host_window)
 
         if self.state.last_original is not None:
-            self.state.multi_compare_window.add_image(self.state.last_original, "원본", slot=0)
+            self.state.multi_compare_window.add_image(
+                self.state.last_original,
+                t("multi_compare.original"),
+                slot=0,
+            )
         if self.state.last_processed is not None:
-            self.state.multi_compare_window.add_image(self.state.last_processed, "처리됨", slot=1)
+            self.state.multi_compare_window.add_image(
+                self.state.last_processed,
+                t("compare.after"),
+                slot=1,
+            )
 
         self.state.multi_compare_window.show()
         self.state.multi_compare_window.raise_()
@@ -242,13 +268,13 @@ class ToolActions:
         manager = get_batch_profile_manager()
         profiles = manager.list_profiles()
         if not profiles:
-            ToastManager.warning("저장된 프로파일이 없습니다")
+            ToastManager.warning(t("tools.profile.none"))
             return
 
         profile, ok = QInputDialog.getItem(
             self.services.host_window,
-            "프로파일 선택",
-            "적용할 프로파일:",
+            t("tools.profile.dialog_title"),
+            t("tools.profile.dialog_body"),
             profiles,
             0,
             False,
@@ -260,9 +286,9 @@ class ToolActions:
 
         if self._sync_current_settings is not None:
             self._sync_current_settings(sync_panel=True, reconfigure_scheduler=True)
-        ToastManager.success(f"📋 '{profile}' 프로파일 적용됨")
+        ToastManager.success(t("tools.profile.toast", profile=profile))
         if self.refs.status_label is not None:
-            self.refs.status_label.setText(f"프로파일 적용: {profile}")
+            self.refs.status_label.setText(t("tools.profile.status", profile=profile))
         if self.state.settings.ui.auto_preview and self._request_preview is not None:
             self._request_preview()
 
@@ -277,7 +303,9 @@ class ToolActions:
         if self._sync_current_settings is not None:
             self._sync_current_settings(sync_panel=True, reconfigure_scheduler=True)
         if self.refs.status_label is not None:
-            self.refs.status_label.setText(f"'{preset_name}' 프리셋 적용됨")
-        ToastManager.success(f"🎨 {preset_name} 프리셋 적용")
+            self.refs.status_label.setText(
+                t("tools.preset.status", preset=preset_name)
+            )
+        ToastManager.success(t("tools.preset.toast", preset=preset_name))
         if self.state.settings.ui.auto_preview and self._request_preview is not None:
             self._request_preview()

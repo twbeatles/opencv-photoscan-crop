@@ -60,6 +60,10 @@ A Python application that automatically detects and accurately crops scanned pho
 - **CLI `--strict-partial` added**: partial results remain success-like by default, but become exit code `1` in strict mode
 - **Classification model normalization**: legacy `custom` is kept as a deprecated alias of `advanced`, and the UI now exposes only `basic/advanced`
 - **Scheduler `once` wording clarified**: it means "run once at the next upcoming HH:MM" without a date field
+- **Python locale catalogs**: translation sources are now centralized in `photo_cropper/i18n/catalog/locales/*.py`
+- **Runtime UI retranslation**: the saved language is applied before initial UI construction, and long-lived widgets/menus/toolbars update immediately on language changes
+- **Safe path-segment validation**: classification folders and naming prefix/suffix are validated as single safe path segments before emit/run
+- **Locale-aware classification defaults**: blank classification folder values now resolve to the current UI language default, with legacy Korean defaults migrated automatically
 
 ### 🌐 Multi-Language Support
 - Automatic system locale detection
@@ -86,6 +90,7 @@ A Python application that automatically detects and accurately crops scanned pho
 
 ### UI/UX
 - **Modern PyQt6-based UI**: Dark/Light themes, gradient effects
+- **Runtime language switching**: Korean, English, Japanese, Chinese, and Spanish can be applied to major UI surfaces without restarting
 - **Toast Notifications**: Slide-in animation notifications on completion
 - **Real-time Preview**: Mouse wheel zoom, zoom slider (10%~500%)
 - **Manual Boundary Editing**: Drag contour points in the Original tab, or click 4 points when auto-detection fails
@@ -201,6 +206,12 @@ python -m photo_cropper.cli --help
 #### Automation Settings
 - **Folder Watch**: Auto-process new files
 - **Scheduler**: Scheduled batch processing
+
+#### Language and Safe Naming
+- **Live language updates**: changing the language in settings refreshes the main menu, toolbar, status bar, and other long-lived widgets immediately.
+- **Safe classification folders**: classification folder names reject separators, `..`, drive/UNC patterns, Windows reserved names, trailing dots/spaces, and control characters.
+- **Safe naming rules**: prefix/suffix use the same validator, and invalid form state blocks settings emit plus auto-preview.
+- **Locale-default sentinel**: leaving a classification folder blank means "use the current UI language default folder name."
 
 > Note: in recursive Watch Mode, the output directory must live outside the input root. If you want to keep the default `<input>/output_cropped`, disable recursive watch or choose an external output directory.
 > Note: schedule type `once` means "run once at the next upcoming HH:MM" rather than a date-based one-shot schedule.

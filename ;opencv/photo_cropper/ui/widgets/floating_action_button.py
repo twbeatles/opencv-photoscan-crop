@@ -20,6 +20,8 @@ from PyQt6.QtCore import (
 )
 from PyQt6.QtGui import QColor
 
+from ...i18n.catalog import get_translator, t
+
 logger = logging.getLogger(__name__)
 
 
@@ -129,12 +131,15 @@ class QuickActionFAB(QWidget):
         
         self._is_expanded = False
         self._menu_items: List[FABMenuRow] = []
+        self._translator = get_translator()
         
         # Make transparent but clickable
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
         
         self._setup_ui()
         self._create_menu_items()
+        self._translator.add_language_change_listener(self._on_language_changed)
+        self.destroyed.connect(self._remove_language_listener)
         
         # Install event filter on parent for repositioning
         if parent:
@@ -194,10 +199,10 @@ class QuickActionFAB(QWidget):
     def _create_menu_items(self):
         """Create the menu items."""
         items = [
-            ("👁", "미리보기", "#238636", self.preview_requested),
-            ("▶", "변환 시작", "#1f6feb", self.process_requested),
-            ("↻", "회전", "#8957e5", self.rotate_requested),
-            ("⛶", "전체화면", "#f0883e", self.fullscreen_requested),
+            ("👁", t("fab.preview"), "#238636", self.preview_requested),
+            ("▶", t("fab.process"), "#1f6feb", self.process_requested),
+            ("↻", t("fab.rotate"), "#8957e5", self.rotate_requested),
+            ("⛶", t("fab.fullscreen"), "#f0883e", self.fullscreen_requested),
         ]
         
         for icon, label, color, signal in items:
@@ -272,6 +277,26 @@ class QuickActionFAB(QWidget):
         """Handle resize."""
         super().resizeEvent(event)
         self._update_position()
+
+    def _remove_language_listener(self, *_args):
+        try:
+            self._translator.remove_language_change_listener(self._on_language_changed)
+        except Exception:
+            pass
+
+    def _on_language_changed(self, _language: str):
+        self.retranslate_ui()
+
+    def retranslate_ui(self):
+        labels = [
+            t("fab.preview"),
+            t("fab.process"),
+            t("fab.rotate"),
+            t("fab.fullscreen"),
+        ]
+        for row, label in zip(self._menu_items, labels):
+            row.label.setText(label)
+            row.button.setToolTip(label)
 
 
 # Keep old class name for compatibility

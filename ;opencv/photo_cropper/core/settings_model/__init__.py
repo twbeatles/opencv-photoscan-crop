@@ -1,4 +1,6 @@
 from .app_settings import (
+    CLASSIFICATION_CATEGORY_KEYS,
+    LEGACY_CATEGORY_FOLDER_DEFAULTS,
     ContourScoringMethod,
     OutputFormat,
     AlgorithmSettings,
@@ -19,11 +21,12 @@ from .app_settings import (
     SmartEnhancementSettings,
     NotificationSettings,
     AppSettings,
-    SettingsManager,
-    get_settings_manager,
 )
+from .manager import SettingsManager, get_settings_manager
 
 __all__ = [
+    'CLASSIFICATION_CATEGORY_KEYS',
+    'LEGACY_CATEGORY_FOLDER_DEFAULTS',
     'ContourScoringMethod',
     'OutputFormat',
     'AlgorithmSettings',

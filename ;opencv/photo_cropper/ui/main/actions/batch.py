@@ -13,6 +13,7 @@ import numpy as np
 from PyQt6.QtWidgets import QMessageBox
 
 from ....core.batch import BatchProgress
+from ....i18n.catalog import t
 from ....core.manual_extract import (
     ManualExtractSessionRunner,
     collect_boundary_failed_files,
@@ -20,13 +21,13 @@ from ....core.manual_extract import (
 from ....utils.file_helpers import (
     build_recursive_excluded_roots,
     get_image_files,
-    is_output_inside_input,
     open_file_explorer,
     validate_directory,
 )
 from ...widgets.progress_dialog import ProgressDialog
 from ...widgets.toast_notification import ToastManager
 from ..models import WindowRefs, WindowServices, WindowSignals, WindowState
+from ..services import BatchRuntimeFlow, UiMessageFactory
 
 logger = logging.getLogger(__name__)
 
@@ -46,6 +47,8 @@ class BatchActions:
         self.services = services
         self.signals = signals
         self._manual_runner = ManualExtractSessionRunner()
+        self.runtime_flow = BatchRuntimeFlow()
+        self.messages = UiMessageFactory()
         self._request_preview: Optional[Callable[[], None]] = None
         self._update_navigation_status: Optional[Callable[[], None]] = None
         self._update_image_list: Optional[Callable[[], None]] = None
@@ -86,16 +89,27 @@ class BatchActions:
     def _show_batch_running_warning(self) -> None:
         QMessageBox.warning(
             self.services.host_window,
-            "경고",
-            "배치 처리가 이미 진행 중입니다. 현재 작업이 끝나거나 취소된 뒤 다시 시도하세요.",
+            self.messages.warning_title,
+            t("batch.running_warning"),
         )
 
     def _show_watch_running_warning(self) -> None:
         QMessageBox.warning(
             self.services.host_window,
-            "경고",
-            "폴더 감시 모드가 활성화되어 있습니다. 먼저 중지한 뒤 다시 시도하세요.",
+            self.messages.warning_title,
+            t("batch.watch_running_warning"),
         )
+
+    def _validate_runtime_settings(self) -> bool:
+        result = self.runtime_flow.validate_settings(self.state.settings)
+        if result.ok:
+            return True
+        QMessageBox.warning(
+            self.services.host_window,
+            result.title,
+            result.message,
+        )
+        return False
 
     def _resolve_batch_io_paths(self) -> Optional[tuple[str, str]]:
         input_edit = self.refs.input_path_edit
@@ -104,41 +118,26 @@ class BatchActions:
             return None
 
         input_path = input_edit.text().strip()
-        valid, error = validate_directory(input_path)
-        if not valid:
-            QMessageBox.warning(self.services.host_window, "경고", f"입력 폴더 오류: {error}")
-            return None
-
         output_path = output_edit.text().strip()
-        if not output_path:
-            output_path = os.path.join(input_path, "output_cropped")
-            output_edit.setText(output_path)
-
-        try:
-            os.makedirs(output_path, exist_ok=True)
-        except Exception as exc:
-            QMessageBox.warning(
-                self.services.host_window,
-                "경고",
-                f"출력 폴더 오류: {exc}",
-            )
-            return None
-
         recursive = bool(
             getattr(self.state.settings.file_management, "recursive_search", False)
         )
-        if recursive and is_output_inside_input(input_path, output_path):
+        resolved = self.runtime_flow.resolve_io_paths(
+            input_path=input_path,
+            output_path=output_path,
+            recursive=recursive,
+            failed_folder_name=self.state.settings.file_management.failed_folder_name,
+        )
+        if not resolved.ok:
             QMessageBox.warning(
                 self.services.host_window,
-                "경고",
-                (
-                    "재귀 배치 처리에서는 출력 폴더를 입력 폴더 내부에 둘 수 없습니다.\n"
-                    f"입력: {input_path}\n출력: {output_path}"
-                ),
+                resolved.title,
+                resolved.message,
             )
             return None
-
-        return input_path, output_path
+        if resolved.output_path != output_path:
+            output_edit.setText(resolved.output_path)
+        return resolved.input_path, resolved.output_path
 
     def update_batch_edit_controls(self) -> None:
         total = len(self.state.image_list) if self.state.image_list else 0
@@ -152,7 +151,13 @@ class BatchActions:
         failed = len(self.state.failed_boundary_files)
         if self.refs.batch_edit_status_label is not None:
             self.refs.batch_edit_status_label.setText(
-                f"편집 {current}/{total} | 수정 {edited} | 실패 {failed}"
+                t(
+                    "central.batch_status",
+                    current=current,
+                    total=total,
+                    edited=edited,
+                    failed=failed,
+                )
             )
 
         busy = bool(
@@ -195,8 +200,8 @@ class BatchActions:
         if self.state.manual_extract_running:
             QMessageBox.warning(
                 self.services.host_window,
-                "경고",
-                "편집 저장 추출이 진행 중입니다. 먼저 해당 작업을 취소하거나 완료하세요.",
+                self.messages.warning_title,
+                t("batch.manual_extract_running"),
             )
             return
 
@@ -206,6 +211,8 @@ class BatchActions:
 
         if self._is_watch_running():
             self._show_watch_running_warning()
+            return
+        if not self._validate_runtime_settings():
             return
 
         paths = self._resolve_batch_io_paths()
@@ -233,8 +240,8 @@ class BatchActions:
         if not files:
             QMessageBox.information(
                 self.services.host_window,
-                "알림",
-                "처리할 이미지 파일이 없습니다.",
+                self.messages.info_title,
+                t("batch.no_files"),
             )
             return
 
@@ -246,7 +253,7 @@ class BatchActions:
                 on_complete=self.signals.batch_complete_received.emit,
             )
         except RuntimeError as exc:
-            QMessageBox.warning(self.services.host_window, "경고", str(exc))
+            QMessageBox.warning(self.services.host_window, self.messages.warning_title, str(exc))
             return
         self._create_progress_dialog(output_path)
         processor = self.batch_processor
@@ -258,7 +265,7 @@ class BatchActions:
         if self.state.manual_extract_running:
             self.state.manual_extract_stop_event.set()
             if self.refs.status_label is not None:
-                self.refs.status_label.setText("편집 저장 추출 중단 요청됨")
+                self.refs.status_label.setText(t("batch.manual_extract.stop_requested"))
             return
         self.services.batch_session.request_stop()
 
@@ -315,9 +322,11 @@ class BatchActions:
     def on_batch_complete(self, progress: BatchProgress, results: list) -> None:
         partial_count = int(getattr(progress, "partial_success", 0) or 0)
         full_success_count = int(progress.success)
-        summary_message = (
-            f"처리 완료: 정상 성공 {full_success_count}개, 부분 성공 {partial_count}개, "
-            f"실패 {progress.failed}개, 건너뜀 {progress.skipped}개"
+        summary_message = self.messages.batch_summary(
+            full_success_count=full_success_count,
+            partial_count=partial_count,
+            failed_count=progress.failed,
+            skipped_count=progress.skipped,
         )
         summary_level = (
             "warning" if progress.failed > 0 else "partial" if partial_count > 0 else "success"
@@ -333,16 +342,27 @@ class BatchActions:
         if self.refs.status_label is not None:
             if progress.is_cancelled:
                 self.refs.status_label.setText(
-                    f"작업 취소됨: 정상 성공 {full_success_count}개, 부분 성공 {partial_count}개, 실패 {progress.failed}개"
+                    self.messages.batch_cancelled_summary(
+                        full_success_count=full_success_count,
+                        partial_count=partial_count,
+                        failed_count=progress.failed,
+                    )
                 )
-                ToastManager.info("⏹️ 작업이 취소되었습니다")
+                ToastManager.info(t("batch.cancelled.toast"))
             else:
                 self.refs.status_label.setText(summary_message)
                 if progress.failed == 0 and partial_count == 0:
-                    ToastManager.success(f"✅ {full_success_count}개 파일 처리 완료!")
+                    ToastManager.success(
+                        t("batch.complete.toast_success", count=full_success_count)
+                    )
                 else:
                     ToastManager.warning(
-                        f"⚠️ 정상 성공 {full_success_count}개, 부분 성공 {partial_count}개, 실패 {progress.failed}개"
+                        t(
+                            "batch.complete.toast_warning",
+                            success=full_success_count,
+                            partial=partial_count,
+                            failed=progress.failed,
+                        )
                     )
 
         self.state.failed_boundary_files = self.collect_boundary_failed_files(results)
@@ -350,12 +370,8 @@ class BatchActions:
             failed_count = len(self.state.failed_boundary_files)
             reply = QMessageBox.question(
                 self.services.host_window,
-                "경계 실패 파일 감지",
-                (
-                    f"경계 자동 탐지 실패 파일 {failed_count}개가 있습니다.\n"
-                    "해당 파일만 따로 불러와 수동으로 경계를 지정할 수 있습니다.\n\n"
-                    "지금 실패 파일 수동 보정 모드로 이동하시겠습니까?"
-                ),
+                t("batch.failed_boundary.title"),
+                t("batch.failed_boundary.body", count=failed_count),
                 QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
                 QMessageBox.StandardButton.Yes,
             )
@@ -372,16 +388,18 @@ class BatchActions:
                 notifier = get_system_notification()
                 if progress.failed == 0 and partial_count == 0:
                     notifier.notify(
-                        "배치 처리 완료",
-                        f"{full_success_count}개 파일 처리 완료!",
+                        t("batch.notification.title"),
+                        t("batch.notification.body_success", count=full_success_count),
                         NotificationType.SUCCESS,
                     )
                 else:
                     notifier.notify(
-                        "배치 처리 완료",
-                        (
-                            f"정상 성공 {full_success_count}개, 부분 성공 {partial_count}개, "
-                            f"실패 {progress.failed}개"
+                        t("batch.notification.title"),
+                        t(
+                            "batch.notification.body_warning",
+                            success=full_success_count,
+                            partial=partial_count,
+                            failed=progress.failed,
                         ),
                         NotificationType.WARNING,
                     )
@@ -403,16 +421,22 @@ class BatchActions:
         if self._is_watch_running():
             self._show_watch_running_warning()
             return
+        if not self._validate_runtime_settings():
+            return
 
         failed = self.services.batch_session.failed_files
         if not failed:
-            QMessageBox.information(self.services.host_window, "알림", "재처리할 실패 파일이 없습니다.")
+            QMessageBox.information(
+                self.services.host_window,
+                self.messages.info_title,
+                t("batch.retry.none"),
+            )
             return
 
         reply = QMessageBox.question(
             self.services.host_window,
-            "재처리",
-            f"{len(failed)}개의 실패한 파일을 재처리하시겠습니까?",
+            t("batch.retry.title"),
+            t("batch.retry.body", count=len(failed)),
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
         )
         if reply != QMessageBox.StandardButton.Yes:
@@ -431,7 +455,7 @@ class BatchActions:
                 on_complete=self.signals.batch_complete_received.emit,
             )
         except RuntimeError as exc:
-            QMessageBox.warning(self.services.host_window, "경고", str(exc))
+            QMessageBox.warning(self.services.host_window, self.messages.warning_title, str(exc))
             return
         self._create_progress_dialog(output_path)
         processor = self.batch_processor
@@ -443,7 +467,11 @@ class BatchActions:
         input_path = self.refs.input_path_edit.text() if self.refs.input_path_edit else ""
         valid, error = validate_directory(input_path)
         if not valid:
-            QMessageBox.warning(self.services.host_window, "경고", f"입력 폴더 오류: {error}")
+            QMessageBox.warning(
+                self.services.host_window,
+                self.messages.warning_title,
+                t("validation.input_dir_error", error=error),
+            )
             return
 
         if self.refs.output_path_edit is not None and not self.refs.output_path_edit.text():
@@ -452,7 +480,11 @@ class BatchActions:
         if self._update_image_list is not None:
             self._update_image_list()
         if not self.state.image_list:
-            QMessageBox.information(self.services.host_window, "알림", "불러올 이미지가 없습니다.")
+            QMessageBox.information(
+                self.services.host_window,
+                self.messages.info_title,
+                t("batch.load_edit.none"),
+            )
             self.update_batch_edit_controls()
             return
 
@@ -468,11 +500,19 @@ class BatchActions:
         if self.state.manual_extract_running or (
             self.batch_processor and self.batch_processor.is_running
         ):
-            QMessageBox.warning(self.services.host_window, "경고", "처리 작업이 진행 중입니다. 완료/취소 후 실행하세요.")
+            QMessageBox.warning(
+                self.services.host_window,
+                self.messages.warning_title,
+                t("batch.failed_edit.busy"),
+            )
             return
 
         if not self.state.failed_boundary_files:
-            QMessageBox.information(self.services.host_window, "알림", "수동 보정할 경계 실패 파일이 없습니다.")
+            QMessageBox.information(
+                self.services.host_window,
+                self.messages.info_title,
+                t("batch.failed_edit.none"),
+            )
             return
 
         files = [path for path in self.state.failed_boundary_files if os.path.exists(path)]
@@ -480,8 +520,8 @@ class BatchActions:
             self.state.failed_boundary_files = []
             QMessageBox.information(
                 self.services.host_window,
-                "알림",
-                "경계 실패 파일을 찾지 못했습니다. 폴더 경로를 다시 확인해주세요.",
+                self.messages.info_title,
+                t("batch.failed_edit.missing"),
             )
             self.update_batch_edit_controls()
             return
@@ -491,9 +531,9 @@ class BatchActions:
         self.state.current_image_path = files[0]
         if self.refs.status_label is not None:
             self.refs.status_label.setText(
-                f"경계 실패 파일 수동 보정 모드: {len(files)}개 (4점 클릭 또는 점 드래그)"
+                t("batch.failed_edit.loaded_status", count=len(files))
             )
-        ToastManager.info(f"경계 실패 {len(files)}개 파일만 불러왔습니다")
+        ToastManager.info(t("batch.failed_edit.toast", count=len(files)))
         if self._request_preview is not None:
             self._request_preview()
         if self._update_navigation_status is not None:
@@ -502,22 +542,40 @@ class BatchActions:
 
     def save_batch_edited_crops(self) -> None:
         if self.state.manual_extract_running:
-            QMessageBox.information(self.services.host_window, "알림", "편집 저장 추출이 이미 진행 중입니다.")
+            QMessageBox.information(
+                self.services.host_window,
+                self.messages.info_title,
+                t("batch.manual_extract.already_running"),
+            )
             return
         if self.batch_processor and self.batch_processor.is_running:
-            QMessageBox.warning(self.services.host_window, "경고", "기존 배치 작업이 진행 중입니다.")
+            QMessageBox.warning(
+                self.services.host_window,
+                self.messages.warning_title,
+                t("batch.manual_extract.batch_running"),
+            )
+            return
+        if not self._validate_runtime_settings():
             return
 
         input_path = self.refs.input_path_edit.text() if self.refs.input_path_edit else ""
         valid, error = validate_directory(input_path)
         if not valid:
-            QMessageBox.warning(self.services.host_window, "경고", f"입력 폴더 오류: {error}")
+            QMessageBox.warning(
+                self.services.host_window,
+                self.messages.warning_title,
+                t("validation.input_dir_error", error=error),
+            )
             return
 
         if not self.state.image_list and self._update_image_list is not None:
             self._update_image_list()
         if not self.state.image_list:
-            QMessageBox.information(self.services.host_window, "알림", "추출할 이미지가 없습니다.")
+            QMessageBox.information(
+                self.services.host_window,
+                self.messages.info_title,
+                t("batch.manual_extract.no_images"),
+            )
             return
 
         output_path = self.refs.output_path_edit.text().strip() if self.refs.output_path_edit else ""
@@ -532,11 +590,11 @@ class BatchActions:
         )
         reply = QMessageBox.question(
             self.services.host_window,
-            "편집 저장 추출",
-            (
-                f"총 {len(self.state.image_list)}장 추출을 시작합니다.\n"
-                f"수정된 외곽선 {edited_count}장, 나머지는 자동 탐색 결과를 사용합니다.\n\n"
-                "진행하시겠습니까?"
+            t("batch.manual_extract.title"),
+            t(
+                "batch.manual_extract.confirm",
+                total=len(self.state.image_list),
+                edited=edited_count,
             ),
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
             QMessageBox.StandardButton.Yes,

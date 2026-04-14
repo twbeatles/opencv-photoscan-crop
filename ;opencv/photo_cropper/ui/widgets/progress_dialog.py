@@ -18,6 +18,7 @@ import os
 import time
 
 from ...core.batch import BatchProgress, FileResult, ProcessStatus
+from ...i18n.catalog import t
 
 
 class StatCard(QFrame):
@@ -27,6 +28,7 @@ class StatCard(QFrame):
         super().__init__(parent)
         self._color = color
         self._value = 0
+        self._label_text_value = label
         
         self.setObjectName("statsFrame")
         self.setMinimumWidth(90)
@@ -65,6 +67,10 @@ class StatCard(QFrame):
         """Set custom value text."""
         self.value_label.setText(text)
 
+    def set_label_text(self, text: str):
+        self._label_text_value = text
+        self.label_text.setText(text)
+
 
 class StatsWidget(QFrame):
     """Widget to display processing statistics with enhanced design."""
@@ -96,6 +102,13 @@ class StatsWidget(QFrame):
         self.failed_card.set_value(progress.failed)
         self.skipped_card.set_value(progress.skipped)
         self.rate_card.set_value_text(f"{progress.success_rate:.1f}%")
+
+    def retranslate_ui(self):
+        self.total_card.set_label_text(t("progress.stats.total"))
+        self.success_card.set_label_text(t("progress.stats.success"))
+        self.failed_card.set_label_text(t("progress.stats.failed"))
+        self.skipped_card.set_label_text(t("progress.stats.skipped"))
+        self.rate_card.set_label_text(t("progress.stats.rate"))
 
 
 class ProgressDialog(QDialog):
@@ -145,10 +158,10 @@ class ProgressDialog(QDialog):
         header_layout.setContentsMargins(20, 20, 20, 20)
         header_layout.setSpacing(10)
         
-        title_label = QLabel("🚀 일괄 처리 진행 중")
-        title_label.setObjectName("titleLabel")
-        title_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        header_layout.addWidget(title_label)
+        self.title_label = QLabel("🚀 일괄 처리 진행 중")
+        self.title_label.setObjectName("titleLabel")
+        self.title_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        header_layout.addWidget(self.title_label)
         
         self.current_file_label = QLabel("준비 중...")
         self.current_file_label.setFont(QFont("Segoe UI", 11))
@@ -193,8 +206,8 @@ class ProgressDialog(QDialog):
         layout.addWidget(self.stats_widget)
         
         # 4. Logs (Collapsible look)
-        log_group = QGroupBox("📋 처리 로그")
-        log_layout = QVBoxLayout(log_group)
+        self.log_group = QGroupBox("📋 처리 로그")
+        log_layout = QVBoxLayout(self.log_group)
         log_layout.setContentsMargins(12, 24, 12, 12)
         
         self.log_text = QTextEdit()
@@ -203,7 +216,7 @@ class ProgressDialog(QDialog):
         self.log_text.setStyleSheet("border: none; background-color: transparent;")
         log_layout.addWidget(self.log_text)
         
-        layout.addWidget(log_group, 1) # Give it stretch
+        layout.addWidget(self.log_group, 1) # Give it stretch
         
         # 5. Buttons
         button_layout = QHBoxLayout()
@@ -231,8 +244,9 @@ class ProgressDialog(QDialog):
         self.close_button.setEnabled(False)
         self.close_button.hide() # Hide until complete
         button_layout.addWidget(self.close_button)
-        
+
         layout.addLayout(button_layout)
+        self.retranslate_ui()
     
     def update_progress(self, progress: BatchProgress):
         """
@@ -271,7 +285,9 @@ class ProgressDialog(QDialog):
         
         # Update current file with icon
         if progress.current_file:
-            self.current_file_label.setText(f"🔄 처리 중: {progress.current_file}")
+            self.current_file_label.setText(
+                t("progress.current_file", filename=progress.current_file)
+            )
         
         # Update stats
         self.stats_widget.update_stats(progress)
@@ -283,7 +299,7 @@ class ProgressDialog(QDialog):
     def _update_eta(self, progress: BatchProgress):
         """Calculate and update estimated time remaining."""
         if self._start_time is None or progress.processed == 0:
-            self.eta_label.setText("⏱️ 예상 남은 시간: 계산 중...")
+            self.eta_label.setText(f"⏱️ {t('progress.eta.pending')}")
             return
         
         elapsed = time.time() - self._start_time
@@ -309,7 +325,7 @@ class ProgressDialog(QDialog):
         
         # Calculate processing speed
         speed = progress.processed / elapsed
-        self.eta_label.setText(f"⏱️ 예상 남은 시간: {eta_str} ({speed:.1f} 파일/초)")
+        self.eta_label.setText(t("progress.eta", eta=eta_str, speed=speed))
     
     def log_message(self, message: str, level: str = "info"):
         """
@@ -364,7 +380,7 @@ class ProgressDialog(QDialog):
             return
         self._is_cancelled = True
         self.cancel_button.setEnabled(False)
-        self.cancel_button.setText("⏳ 취소 중...")
+        self.cancel_button.setText(t("progress.cancelling"))
         self.close_button.setVisible(True)
         self.close_button.setEnabled(True)
         self.open_output_button.setVisible(False)
@@ -396,16 +412,16 @@ class ProgressDialog(QDialog):
         self.open_output_button.setEnabled(can_open_output)
         
         if progress.is_cancelled:
-            self.setWindowTitle("⛔ 처리 중단됨")
-            self.current_file_label.setText("⛔ 작업이 취소되었습니다")
+            self.setWindowTitle(t("progress.window.cancelled"))
+            self.current_file_label.setText(t("progress.cancelled_message"))
             self.current_file_label.setStyleSheet("color: #f87171; font-weight: bold;")
         else:
-            self.setWindowTitle("✅ 처리 완료")
-            self.current_file_label.setText("🎉 모든 작업이 완료되었습니다!")
+            self.setWindowTitle(t("progress.window.complete"))
+            self.current_file_label.setText(t("progress.completed_message"))
             self.current_file_label.setStyleSheet("color: #34d399; font-weight: bold;")
-        
+
         self.progress_bar.setValue(100)
-        self.percent_label.setText("완료! ✨")
+        self.percent_label.setText(t("progress.done"))
         self.eta_label.setText("")
         
         # Calculate total time
@@ -417,7 +433,7 @@ class ProgressDialog(QDialog):
                 time_str = f"{int(total_time // 60)}분 {int(total_time % 60)}초"
             else:
                 time_str = f"{int(total_time // 3600)}시간 {int((total_time % 3600) // 60)}분"
-            self.eta_label.setText(f"⏱️ 총 소요 시간: {time_str}")
+            self.eta_label.setText(t("progress.total_time", time_str=time_str))
     
     def closeEvent(self, event):
         """Handle close event."""
@@ -451,23 +467,44 @@ class ProgressDialog(QDialog):
         self._is_running = True
         self._start_time = None
         
-        self.setWindowTitle("🔄 처리 중...")
-        self.current_file_label.setText("⏳ 대기 중...")
+        self.setWindowTitle(t("progress.window.running"))
+        self.current_file_label.setText(t("progress.waiting"))
         self.current_file_label.setStyleSheet("color: #8b949e;")
-        
+
         self.progress_bar.setValue(0)
         self.percent_label.setText("0%")
-        self.eta_label.setText("⏱️ 예상 남은 시간: 계산 중...")
+        self.eta_label.setText(t("progress.eta.pending"))
         self.log_text.clear()
-        
+
         # Reset buttons
         self.cancel_button.setVisible(True)
         self.cancel_button.setEnabled(True)
-        self.cancel_button.setText("❌ 취소")
+        self.cancel_button.setText(t("progress.cancel"))
         self.open_output_button.setVisible(False)
         self.open_output_button.setEnabled(False)
         self.close_button.setVisible(False)
         self.close_button.setEnabled(False)
-        
+
         # Reset stats
         self.stats_widget.update_stats(BatchProgress())
+
+    def retranslate_ui(self):
+        self.setWindowTitle(
+            t("progress.window.complete")
+            if self._is_complete
+            else t("progress.window.cancelled")
+            if self._is_cancelled and not self._is_running
+            else t("progress.window.running")
+        )
+        self.title_label.setText(f"🚀 {t('progress.header')}")
+        if not self._pending_progress and not self._is_complete and not self._is_cancelled:
+            self.current_file_label.setText(t("progress.preparing"))
+        if not self.eta_label.text():
+            self.eta_label.setText(t("progress.eta.pending"))
+        self.log_group.setTitle(f"📋 {t('progress.log_group')}")
+        self.cancel_button.setText(
+            t("progress.cancelling") if self._is_cancelled and not self._is_complete else t("progress.cancel")
+        )
+        self.open_output_button.setText(t("progress.open_output"))
+        self.close_button.setText(t("progress.close"))
+        self.stats_widget.retranslate_ui()

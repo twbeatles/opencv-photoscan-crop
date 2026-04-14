@@ -21,6 +21,7 @@ from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtGui import QIcon, QAction
 
 from ...core.settings_model import AppSettings, get_settings_manager
+from ...i18n.catalog import t
 
 logger = logging.getLogger(__name__)
 
@@ -351,8 +352,8 @@ class PresetManagerWidget(QWidget):
         layout.setContentsMargins(5, 5, 5, 5)
         
         # Preset list
-        list_group = QGroupBox("설정 프리셋")
-        list_layout = QVBoxLayout(list_group)
+        self._list_group = QGroupBox(t("toolbar.preset"))
+        list_layout = QVBoxLayout(self._list_group)
         
         self._preset_list = QListWidget()
         self._preset_list.itemSelectionChanged.connect(self._on_selection_changed)
@@ -365,26 +366,27 @@ class PresetManagerWidget(QWidget):
         self._desc_label.setStyleSheet("color: gray; font-style: italic;")
         list_layout.addWidget(self._desc_label)
         
-        layout.addWidget(list_group)
+        layout.addWidget(self._list_group)
         
         # Buttons
         btn_layout = QHBoxLayout()
         
-        self._apply_btn = QPushButton("적용")
+        self._apply_btn = QPushButton(t("dialog.ok"))
         self._apply_btn.setEnabled(False)
         self._apply_btn.clicked.connect(self._on_apply)
         btn_layout.addWidget(self._apply_btn)
         
-        self._save_btn = QPushButton("현재 설정 저장")
+        self._save_btn = QPushButton(t("dialog.save"))
         self._save_btn.clicked.connect(self._on_save)
         btn_layout.addWidget(self._save_btn)
         
-        self._delete_btn = QPushButton("삭제")
+        self._delete_btn = QPushButton(t("dialog.delete"))
         self._delete_btn.setEnabled(False)
         self._delete_btn.clicked.connect(self._on_delete)
         btn_layout.addWidget(self._delete_btn)
-        
+
         layout.addLayout(btn_layout)
+        self.retranslate_ui()
     
     def _refresh_list(self):
         """Refresh preset list."""
@@ -489,6 +491,12 @@ class PresetManagerWidget(QWidget):
         """Get preset manager instance."""
         return self._manager
 
+    def retranslate_ui(self):
+        self._list_group.setTitle(t("toolbar.preset"))
+        self._apply_btn.setText(t("dialog.ok"))
+        self._save_btn.setText(t("dialog.save"))
+        self._delete_btn.setText(t("dialog.delete"))
+
 
 class PresetComboBox(QComboBox):
     """Combo box for quick preset selection."""
@@ -506,7 +514,7 @@ class PresetComboBox(QComboBox):
     def _refresh(self):
         """Refresh preset list."""
         self.clear()
-        self.addItem("-- 프리셋 선택 --")
+        self.addItem(f"-- {t('toolbar.preset')} --")
         self.addItems(self._manager.list_presets())
     
     def _on_changed(self, text: str):
@@ -520,6 +528,13 @@ class PresetComboBox(QComboBox):
         if text and not text.startswith("--"):
             return self._manager.apply_preset(text, settings)
         return False
+
+    def retranslate_ui(self):
+        current_text = self.currentText()
+        self._refresh()
+        index = self.findText(current_text)
+        if index >= 0:
+            self.setCurrentIndex(index)
 
 
 # Singleton instance

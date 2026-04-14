@@ -10,6 +10,7 @@ from typing import Callable, Optional
 import numpy as np
 
 from ....core.image import PreviewProcessResult
+from ....i18n.catalog import t
 from ....core.manual_extract import (
     crop_manual_contour,
     denormalize_contour_points,
@@ -75,7 +76,7 @@ class PreviewActions:
                 return
         except Exception:
             pass
-        self.refs.image_info_badge.setText("이미지: -")
+        self.refs.image_info_badge.setText(t("status.image_empty"))
 
     def scale_contour_to_preview(self, preview_image, crop_result):
         return scale_contour_to_preview(preview_image, crop_result)
@@ -139,19 +140,21 @@ class PreviewActions:
                     self.refs.preview_widget.set_processed_image(preview_image)
                 self.state.last_processed = preview_image.copy()
                 if self.refs.status_label is not None:
-                    self.refs.status_label.setText("외곽선 수동 편집 반영됨")
+                    self.refs.status_label.setText(t("preview.contour_edit.done"))
             else:
                 self.state.last_processed = None
                 if self.refs.preview_widget is not None:
                     self.refs.preview_widget.set_processed_image(None)
                 if self.refs.status_label is not None:
-                    self.refs.status_label.setText("외곽선 편집 반영 실패")
+                    self.refs.status_label.setText(t("preview.contour_edit.failed"))
         except Exception as exc:
             self.state.last_processed = None
             if self.refs.preview_widget is not None:
                 self.refs.preview_widget.set_processed_image(None)
             if self.refs.status_label is not None:
-                self.refs.status_label.setText(f"외곽선 편집 오류: {exc}")
+                self.refs.status_label.setText(
+                    t("preview.contour_edit.error", error=exc)
+                )
 
     def do_preview(self) -> None:
         image_path = self.resolve_preview_path()
@@ -169,7 +172,7 @@ class PreviewActions:
 
         if self.refs.status_label is not None:
             self.refs.status_label.setText(
-                f"미리보기 처리 중: {os.path.basename(image_path)}"
+                t("preview.processing", filename=os.path.basename(image_path))
             )
         self.update_image_info_badge(image_path)
         self.signals.preview_process_requested.emit(
@@ -188,11 +191,11 @@ class PreviewActions:
 
         if preview_result is None:
             if self.refs.status_label is not None:
-                self.refs.status_label.setText("미리보기 실패: 결과 없음")
+                self.refs.status_label.setText(t("preview.failed.empty"))
             return
         if not isinstance(preview_result, PreviewProcessResult):
             if self.refs.status_label is not None:
-                self.refs.status_label.setText("미리보기 실패: 결과 형식 오류")
+                self.refs.status_label.setText(t("preview.failed.invalid_result"))
             return
 
         preview_contour = None
@@ -247,13 +250,17 @@ class PreviewActions:
                 else "Unknown"
             )
             if self.refs.status_label is not None:
-                self.refs.status_label.setText(f"미리보기 성공 ({stage})")
+                self.refs.status_label.setText(
+                    t("preview.success", stage=stage)
+                )
         else:
             if self.refs.preview_widget is not None:
                 self.refs.preview_widget.set_processed_image(None)
             self.state.last_processed = None
             if self.refs.status_label is not None:
-                self.refs.status_label.setText(f"미리보기 실패: {crop_result.message}")
+                self.refs.status_label.setText(
+                    t("preview.failed.message", message=crop_result.message)
+                )
 
         self.state.applied_preview_request_id = request_id
         if self._update_batch_edit_controls is not None:
@@ -268,6 +275,6 @@ class PreviewActions:
         self.state.last_processed = None
         self.state.last_detected_contour = None
         if self.refs.status_label is not None:
-            self.refs.status_label.setText(f"미리보기 오류: {message}")
+            self.refs.status_label.setText(t("preview.error", error=message))
         if self._update_batch_edit_controls is not None:
             self._update_batch_edit_controls()

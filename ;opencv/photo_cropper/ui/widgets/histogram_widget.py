@@ -12,6 +12,8 @@ from PyQt6.QtWidgets import QWidget, QVBoxLayout, QLabel
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QPainter, QPen, QColor, QPainterPath
 
+from ...i18n.catalog import t
+
 
 class HistogramWidget(QWidget):
     """
@@ -80,7 +82,11 @@ class HistogramWidget(QWidget):
         if not self._histograms:
             # Draw placeholder text
             painter.setPen(QPen(QColor(100, 100, 100)))
-            painter.drawText(self.rect(), Qt.AlignmentFlag.AlignCenter, "히스토그램")
+            painter.drawText(
+                self.rect(),
+                Qt.AlignmentFlag.AlignCenter,
+                t("histogram.placeholder"),
+            )
             return
         
         # Dimensions

@@ -19,7 +19,9 @@ from PyQt6.QtWidgets import (
 )
 
 from ....core.manual_extract import scale_contour_to_preview
+from ....i18n.catalog import t
 from ..models import WindowRefs, WindowServices, WindowState
+from ..services import build_editor_position_label, build_editor_title
 from ...widgets.compare_widget import BeforeAfterCompareWidget
 from ...widgets.crop_editor_widget import CropEditorWidget
 
@@ -55,12 +57,12 @@ class DialogActions:
         if self.state.last_original is None or self.state.last_processed is None:
             if self.refs.status_label is not None:
                 self.refs.status_label.setText(
-                    "비교할 이미지가 없습니다. 먼저 미리보기를 실행하세요."
+                    t("msg.no_compare_image")
                 )
             return
 
         dialog = QDialog(self.services.host_window)
-        dialog.setWindowTitle("Before/After 비교")
+        dialog.setWindowTitle(t("menu.tools.compare"))
         dialog.setMinimumSize(800, 600)
 
         layout = QVBoxLayout(dialog)
@@ -97,7 +99,7 @@ class DialogActions:
         if source_path is None and self.state.last_original is None:
             if self.refs.status_label is not None:
                 self.refs.status_label.setText(
-                    "편집할 이미지가 없습니다. 먼저 이미지를 불러오세요."
+                    t("msg.no_edit_image")
                 )
             return
 
@@ -105,14 +107,14 @@ class DialogActions:
             self._update_image_list()
 
         dialog = QDialog(self.services.host_window)
-        dialog.setWindowTitle("수동 영역 편집")
+        dialog.setWindowTitle(t("menu.tools.crop_editor"))
         dialog.setMinimumSize(900, 700)
 
         layout = QVBoxLayout(dialog)
         nav_layout = QHBoxLayout()
-        prev_btn = QPushButton("← 이전 사진")
-        next_btn = QPushButton("다음 사진 →")
-        nav_hint = QLabel("외곽선 점을 드래그해 조정하세요 (←/→ 이동)")
+        prev_btn = QPushButton(t("dialog.crop_editor.prev"))
+        next_btn = QPushButton(t("dialog.crop_editor.next"))
+        nav_hint = QLabel(t("dialog.crop_editor.hint"))
         nav_hint.setObjectName("subtitleLabel")
         nav_pos_label = QLabel("")
         nav_layout.addWidget(prev_btn)
@@ -134,12 +136,16 @@ class DialogActions:
         state = {"index": self.state.current_image_index}
 
         def update_editor_title(path: Optional[str]) -> None:
-            filename = os.path.basename(path) if path else "현재 이미지"
+            filename = os.path.basename(path) if path else t("dialog.crop_editor.current_image")
             if self.state.image_list and state["index"] >= 0:
-                nav_pos_label.setText(f"{state['index'] + 1}/{len(self.state.image_list)}")
+                nav_pos_label.setText(
+                    build_editor_position_label(
+                        state["index"] + 1, len(self.state.image_list)
+                    )
+                )
             else:
-                nav_pos_label.setText("단일")
-            dialog.setWindowTitle(f"수동 영역 편집 - {filename}")
+                nav_pos_label.setText(build_editor_position_label(0, 0))
+            dialog.setWindowTitle(build_editor_title(filename))
 
         def load_editor_image(path: Optional[str]) -> bool:
             if not path or not os.path.exists(path):
@@ -153,8 +159,12 @@ class DialogActions:
             except Exception as exc:
                 QMessageBox.warning(
                     dialog,
-                    "경고",
-                    f"이미지를 불러올 수 없습니다.\n{os.path.basename(path)}\n\n{exc}",
+                    t("dialog.warning"),
+                    t(
+                        "msg.cannot_load_image",
+                        filename=os.path.basename(path),
+                        error=exc,
+                    ),
                 )
                 return False
 
@@ -239,44 +249,18 @@ class DialogActions:
     def show_help(self) -> None:
         QMessageBox.information(
             self.services.host_window,
-            "사용 방법",
-            """🔧 사용 방법
-
-1. 입력 폴더 선택: 처리할 이미지가 있는 폴더
-2. 출력 폴더 선택: 결과를 저장할 폴더 (선택사항)
-3. 설정 조정: 오른쪽 패널에서 설정 변경
-4. 미리보기: Ctrl+P로 한 장 테스트
-5. 변환 시작: 전체 이미지 처리
-
-💡 팁
-• 이미지를 드래그 앤 드롭으로 열 수 있습니다
-• 마우스 휠로 미리보기 확대/축소
-• Ctrl+클릭 드래그로 미리보기 이동
-
-⚙️ 3단계+ 탐색 알고리즘
-1단계: 다중 스케일 Canny Edge
-2단계: Adaptive Threshold
-3단계: Gradient Analysis (Sobel)
-4단계: Harris Corner Detection (선택)""",
+            t("msg.help.title"),
+            t("msg.help.body"),
         )
 
     def show_about(self) -> None:
         version = getattr(self.services.host_window, "VERSION", "9.0")
         QMessageBox.about(
             self.services.host_window,
-            "정보",
-            f"""사진 자동 자르기 v{version}
-
-3단계+ 지능형 CV 알고리즘으로
-다양한 배경에서 사진을 자동으로 검출하고 자릅니다.
-
-주요 기능:
-• 다중 스케일 적응형 검출 알고리즘
-• CLAHE 대비 향상
-• 실시간 미리보기 (확대/축소 지원)
-• 다크/라이트 테마
-• 드래그 앤 드롭 지원
-• 배치 처리 및 진행 상황 추적
-
-기술: OpenCV, NumPy, PyQt6""",
+            t("msg.about.title"),
+            t(
+                "msg.about.body",
+                app_name=t("app.name"),
+                version=version,
+            ),
         )

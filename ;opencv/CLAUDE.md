@@ -26,8 +26,13 @@ photo_cropper/
 ├── cli.py
 ├── core/
 │   ├── image/processor.py
+│   ├── image/types.py
 │   ├── batch/processor.py
+│   ├── batch/types.py
 │   ├── settings_model/app_settings.py
+│   ├── settings_model/manager.py
+│   ├── settings_model/migration.py
+│   ├── settings_model/validation.py
 │   ├── multi_photo_detector.py
 │   ├── watermark_processor.py
 │   ├── resize_processor.py
@@ -39,12 +44,15 @@ photo_cropper/
 │   ├── main/actions/        # UI action 계층
 │   ├── main/builders/       # menu/toolbar/central/statusbar/fab 빌더
 │   ├── main/models.py       # window state/refs/services/signals
+│   ├── main/services/       # runtime flow/message helpers
 │   ├── main/*.py            # 호환용 re-export shim
 │   ├── styles/
 │   └── widgets/
 ├── i18n/
 │   └── catalog/
+│       └── locales/*.py
 └── utils/
+    └── path_validation.py
 ```
 
 ## 핵심 클래스/역할
@@ -85,6 +93,7 @@ UI composition root입니다.
 - `WatermarkSettings`, `ResizeSettings`, `WatchModeSettings`, `MultiPhotoSettings`
 - `ClassificationSettings`, `FaceDetectionSettings`, `SmartEnhancementSettings`
 - 루트: `AppSettings`
+- persistence/마이그레이션/실행 전 검증은 각각 `manager.py`, `migration.py`, `validation.py`로 분리되었습니다.
 
 ## 주요 처리 흐름
 
@@ -138,6 +147,8 @@ UI composition root입니다.
 - Watch 처리 경로는 settings snapshot에서 `move_failed_files=False`를 강제해 `_failed` 루프를 막음
 - `FolderWatcher.fileChanged`는 overwrite된 동일 경로도 size/mtime signature가 바뀐 경우에만 재큐잉
 - UI 직접 실행 경로에서도 watch/batch/manual 상호 배제를 강제
+- GUI 입력 검증과 batch/watch/manual preflight는 모두 `utils.path_validation` + `core.settings_model.validation`의 공용 API를 사용
+- 분류 폴더 빈 문자열은 "현재 UI 언어 기본값 사용" sentinel 의미이며, 구 기본 한글값은 마이그레이션 시 sentinel로 정규화
 
 ## 빌드
 
@@ -258,6 +269,18 @@ pyinstaller photo_cropper.spec --clean
 - `WatchModeCoordinator.start()` now rejects recursive watch when output is inside input, and `WatchActions` / `BatchActions` block direct starts while watch/batch/manual work is already active.
 - Watch-mode processing uses an `AppSettings` snapshot with `file_management.move_failed_files=False`, preventing `_failed` subtree feedback loops without mutating the global settings object.
 - `FolderWatcher.fileChanged` now participates in reprocessing, but only queues when the file's size/mtime signature actually changed.
+
+## 2026-04-14 Refactor Status
+
+- 완료:
+  - Python locale 카탈로그 기반 i18n manager 정리
+  - 런타임 UI 재번역 경로 및 action/service message factory 추가
+  - 공용 path validation + settings model migration/validation 분리
+  - `core.{image,batch}.types` 분리와 `ui.main.services` 패키지 추가
+- 미완료:
+  - `ui/widgets/settings/panel.py`, `core/image/processor.py`, `core/batch/processor.py`, `selftest.py`는 여전히 대형 파일이며 추가 분할 대상
+- 패키징 주의:
+  - frozen build에서는 `photo_cropper.i18n.catalog.locales.*`를 hidden import로 유지해야 함
 - `ProcessedIndexStore` moved to schema v2 with backward-compatible `status` normalization; legacy records default to `success`, partial records do not force full skip.
 - `retry_failed_files()` now reuses the same output-path normalization/validation as regular batch start (`<input>/output_cropped` fallback).
 

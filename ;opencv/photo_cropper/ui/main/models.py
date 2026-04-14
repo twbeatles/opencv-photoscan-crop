@@ -94,6 +94,10 @@ class WindowRefs:
     watch_mode_action: Optional[QAction] = None
     theme_actions: dict[str, QAction] = field(default_factory=dict)
     profile_menu: Optional[QMenu] = None
+    menus: dict[str, QMenu] = field(default_factory=dict)
+    actions: dict[str, QAction] = field(default_factory=dict)
+    labels: dict[str, QLabel] = field(default_factory=dict)
+    buttons: dict[str, QPushButton] = field(default_factory=dict)
 
 
 @dataclass

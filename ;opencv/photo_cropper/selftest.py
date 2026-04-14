@@ -2408,6 +2408,7 @@ def _test_batch_actions_block_when_watch_running() -> None:
     from PyQt6.QtWidgets import QLineEdit, QMainWindow, QMessageBox
 
     from .core.settings_model import AppSettings
+    from .i18n.catalog import t
     from .ui.main.actions.batch import BatchActions
 
     class FakeProcessor:
@@ -2485,6 +2486,7 @@ def _test_retry_failed_files_normalizes_empty_output_path() -> None:
     from PyQt6.QtWidgets import QLineEdit, QMainWindow, QMessageBox
 
     from .core.settings_model import AppSettings
+    from .i18n.catalog import t
     from .ui.main.actions.batch import BatchActions
 
     class FakeProcessor:
@@ -2596,6 +2598,7 @@ def _test_batch_actions_recursive_output_guard() -> None:
     from PyQt6.QtWidgets import QLineEdit, QMainWindow, QMessageBox
 
     from .core.settings_model import AppSettings
+    from .i18n.catalog import t
     from .ui.main.actions.batch import BatchActions
 
     class FakeProcessor:
@@ -2664,7 +2667,12 @@ def _test_batch_actions_recursive_output_guard() -> None:
 
             assert len(warnings) == 2
             assert services.batch_session.create_calls == 0
-            assert all("출력 폴더를 입력 폴더 내부" in args[2] for args, _kwargs in warnings)
+            expected_message = t(
+                "validation.recursive_output_guard",
+                input=input_dir,
+                output=output_dir,
+            )
+            assert all(args[2] == expected_message for args, _kwargs in warnings)
     finally:
         QMessageBox.question = original_question
         QMessageBox.warning = original_warning
@@ -2732,11 +2740,53 @@ def _test_settings_panel_classification_folder_roundtrip() -> None:
     panel.classification_folder_inputs["other"].setText("")
     out = panel._build_settings()
     assert out.classification.category_folders["portrait"] == "인물새폴더"
-    assert out.classification.category_folders["other"] == "기타"
+    assert out.classification.category_folders["other"] == ""
 
     panel.deleteLater()
     if owned_app:
         app.quit()
+
+
+def _test_classification_folder_default_sentinel_migration() -> None:
+    from .core.settings_model import AppSettings
+    from .utils.path_validation import resolve_category_folder_map
+
+    settings = AppSettings.from_dict(
+        {
+            "ui": {"language": "en"},
+            "classification": {
+                "category_folders": {
+                    "portrait": "인물",
+                    "landscape": "풍경",
+                    "document": "문서",
+                    "blackwhite": "흑백",
+                    "other": "기타",
+                }
+            },
+        }
+    )
+
+    assert settings.classification.category_folders["portrait"] == ""
+    resolved = resolve_category_folder_map(
+        settings.classification.category_folders,
+        language=settings.ui.language,
+    )
+    assert resolved["portrait"] == "Portrait"
+    assert resolved["other"] == "Other"
+
+
+def _test_settings_path_validation_blocks_invalid_segments() -> None:
+    from .core.settings_model import AppSettings
+    from .utils.path_validation import validate_settings_path_segments
+
+    settings = AppSettings()
+    settings.file_management.naming_prefix = "scan/2026"
+    settings.classification.category_folders["portrait"] = "CON"
+
+    issues = validate_settings_path_segments(settings)
+    fields = {issue.field for issue in issues}
+    assert "file_management.naming_prefix" in fields
+    assert "classification.category_folders.portrait" in fields
 
 
 def _test_settings_panel_legacy_custom_alias_and_schedule_once_hint() -> None:
@@ -3293,6 +3343,8 @@ def main() -> int:
         _test_batch_actions_recursive_output_guard()
         _test_profile_apply_rebuild_validation()
         _test_settings_panel_classification_folder_roundtrip()
+        _test_classification_folder_default_sentinel_migration()
+        _test_settings_path_validation_blocks_invalid_segments()
         _test_settings_panel_legacy_custom_alias_and_schedule_once_hint()
         _test_cli_cancel_exit_code_130()
         _test_cli_partial_exit_code_rules()

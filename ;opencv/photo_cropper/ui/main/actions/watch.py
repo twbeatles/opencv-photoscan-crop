@@ -12,14 +12,18 @@ from PyQt6.QtCore import QTime
 from PyQt6.QtWidgets import QMessageBox
 
 from ....core.scheduler import ScheduleTask, ScheduleType
+from ....core.settings_model.validation import (
+    build_validation_summary,
+    validate_settings,
+)
+from ....i18n.catalog import t
 from ....utils.file_helpers import (
     build_recursive_excluded_roots,
     get_image_files,
-    is_output_inside_input,
-    validate_directory,
 )
 from ...widgets.toast_notification import ToastManager
 from ..models import WindowRefs, WindowServices, WindowState
+from ..services import BatchRuntimeFlow, UiMessageFactory, WatchRuntimeFlow
 
 logger = logging.getLogger(__name__)
 
@@ -36,6 +40,9 @@ class WatchActions:
         self.state = state
         self.refs = refs
         self.services = services
+        self.batch_runtime = BatchRuntimeFlow()
+        self.watch_runtime = WatchRuntimeFlow()
+        self.messages = UiMessageFactory()
         self._start_processing: Optional[Callable[[], None]] = None
         self._scheduler_task_id: Optional[str] = None
 
@@ -71,7 +78,9 @@ class WatchActions:
         if schedule_type in (ScheduleType.DAILY, ScheduleType.ONCE) and not schedule_time.isValid():
             logger.warning("Scheduler time is invalid: %s", schedule_time_text)
             if self.refs.status_label is not None:
-                self.refs.status_label.setText(f"⏰ 스케줄러 시간 형식 오류: {schedule_time_text}")
+                self.refs.status_label.setText(
+                    t("watch.scheduler.invalid_time", value=schedule_time_text)
+                )
             return
 
         interval_minutes = int(getattr(watch_settings, "schedule_interval_minutes", 60) or 60)
@@ -121,49 +130,44 @@ class WatchActions:
     def on_scheduled_batch_trigger(self, _input_dir: str, _output_dir: str) -> bool:
         busy_reason = self.busy_reason_for_scheduled_batch()
         if busy_reason:
-            message = f"⏰ 스케줄 실행 건너뜀: {busy_reason} 작업 진행 중"
+            message = t(
+                "watch.scheduler.skip_busy",
+                reason=self.watch_runtime.busy_reason_label(busy_reason),
+            )
             logger.info(message)
             if self.refs.status_label is not None:
                 self.refs.status_label.setText(message)
             ToastManager.info(message)
             return False
+        issues = validate_settings(self.state.settings)
+        if issues:
+            message = build_validation_summary(issues)
+            if self.refs.status_label is not None:
+                self.refs.status_label.setText(message)
+            ToastManager.warning(message)
+            return False
 
         input_path = self.refs.input_path_edit.text().strip() if self.refs.input_path_edit else ""
         output_path = self.refs.output_path_edit.text().strip() if self.refs.output_path_edit else ""
-        valid, error = validate_directory(input_path)
-        if not valid:
-            message = f"⏰ 스케줄 실행 실패(입력 폴더): {error}"
+        resolved = self.batch_runtime.resolve_io_paths(
+            input_path=input_path,
+            output_path=output_path,
+            recursive=bool(getattr(self.state.settings.file_management, "recursive_search", False)),
+            failed_folder_name=self.state.settings.file_management.failed_folder_name,
+        )
+        if not resolved.ok:
+            message = t("watch.scheduler.failed", error=resolved.message)
             logger.warning(message)
             if self.refs.status_label is not None:
                 self.refs.status_label.setText(message)
             ToastManager.warning(message)
             return False
-
-        if not output_path:
-            output_path = os.path.join(input_path, "output_cropped")
-            if self.refs.output_path_edit is not None:
-                self.refs.output_path_edit.setText(output_path)
-
-        try:
-            os.makedirs(output_path, exist_ok=True)
-        except Exception as exc:
-            message = f"⏰ 스케줄 실행 실패(출력 폴더): {exc}"
-            logger.warning(message)
-            if self.refs.status_label is not None:
-                self.refs.status_label.setText(message)
-            ToastManager.warning(message)
-            return False
+        input_path = resolved.input_path
+        output_path = resolved.output_path
+        if self.refs.output_path_edit is not None and self.refs.output_path_edit.text().strip() != output_path:
+            self.refs.output_path_edit.setText(output_path)
 
         recursive = bool(getattr(self.state.settings.file_management, "recursive_search", False))
-        if recursive and is_output_inside_input(input_path, output_path):
-            message = (
-                "⏰ 스케줄 실행 실패: 재귀 배치에서는 출력 폴더를 입력 폴더 내부에 둘 수 없습니다"
-            )
-            logger.warning("%s (input=%s, output=%s)", message, input_path, output_path)
-            if self.refs.status_label is not None:
-                self.refs.status_label.setText(message)
-            ToastManager.warning(message)
-            return False
 
         excluded_roots = (
             build_recursive_excluded_roots(
@@ -180,7 +184,7 @@ class WatchActions:
             excluded_roots=excluded_roots,
         )
         if not files:
-            message = "⏰ 스케줄 실행 건너뜀: 처리할 이미지가 없습니다"
+            message = t("watch.scheduler.skip_no_files")
             logger.info(message)
             if self.refs.status_label is not None:
                 self.refs.status_label.setText(message)
@@ -192,7 +196,7 @@ class WatchActions:
         processor = self.services.batch_session.processor
         started = bool(processor and processor.is_running)
         if started:
-            message = f"⏰ 스케줄 배치 시작: {len(files)}개 파일"
+            message = t("watch.scheduler.started", count=len(files))
             logger.info(message)
             if self.refs.status_label is not None:
                 self.refs.status_label.setText(message)
@@ -218,7 +222,7 @@ class WatchActions:
     def on_processing_started(self, filepath: str) -> None:
         if self.refs.status_label is not None:
             self.refs.status_label.setText(
-                f"👁️ 감시 중... 처리 시작: {os.path.basename(filepath)}"
+                t("watch.processing_started", filename=os.path.basename(filepath))
             )
 
     def start_watch_mode(self) -> None:
@@ -228,8 +232,24 @@ class WatchActions:
                 self.refs.watch_mode_action.setChecked(False)
             QMessageBox.warning(
                 self.services.host_window,
-                "경고",
-                f"{busy_reason} 작업이 진행 중입니다. 먼저 중지하거나 완료한 뒤 폴더 감시를 시작하세요.",
+                self.messages.warning_title,
+                t(
+                    "watch.start.busy",
+                    reason=self.watch_runtime.busy_reason_label(busy_reason),
+                ),
+            )
+            return
+        issues = validate_settings(self.state.settings)
+        if issues:
+            if self.refs.watch_mode_action is not None:
+                self.refs.watch_mode_action.setChecked(False)
+            QMessageBox.warning(
+                self.services.host_window,
+                t("validation.config_invalid_title"),
+                t(
+                    "validation.config_invalid_body",
+                    summary=build_validation_summary(issues),
+                ),
             )
             return
 
@@ -251,47 +271,57 @@ class WatchActions:
             if self.refs.watch_mode_action is not None:
                 self.refs.watch_mode_action.setChecked(False)
             if start_result.error_code == "invalid_input":
-                QMessageBox.warning(self.services.host_window, "경고", "유효한 입력 폴더를 선택하세요.")
+                QMessageBox.warning(
+                    self.services.host_window,
+                    self.messages.warning_title,
+                    t("validation.input_invalid"),
+                )
             elif start_result.error_code == "invalid_output":
-                ToastManager.error("출력 폴더 준비 실패")
+                ToastManager.error(t("watch.start.invalid_output"))
                 if start_result.message and self.refs.status_label is not None:
-                    self.refs.status_label.setText(f"폴더 감시 시작 실패: {start_result.message}")
+                    self.refs.status_label.setText(
+                        t("watch.start.failed", error=start_result.message)
+                    )
             elif start_result.error_code == "unsafe_output":
                 QMessageBox.warning(
                     self.services.host_window,
-                    "경고",
+                    self.messages.warning_title,
                     start_result.message
-                    or "재귀 Watch Mode에서는 출력 폴더를 입력 폴더 내부에 둘 수 없습니다.",
+                    or t("watch.start.unsafe_output"),
                 )
                 if start_result.message and self.refs.status_label is not None:
-                    self.refs.status_label.setText(f"폴더 감시 시작 실패: {start_result.message}")
+                    self.refs.status_label.setText(
+                        t("watch.start.failed", error=start_result.message)
+                    )
             else:
-                ToastManager.error("폴더 감시 시작 실패")
+                ToastManager.error(t("watch.start.error"))
             return
 
         watch_root = input_path.strip() or (
             self.refs.input_path_edit.text() if self.refs.input_path_edit else ""
         )
         if self.refs.watch_mode_action is not None:
-            self.refs.watch_mode_action.setText("👁️ 폴더 감시 중지")
-        ToastManager.success(f"👁️ 폴더 감시 모드 시작: {watch_root}")
+            self.refs.watch_mode_action.setText(t("menu.tools.watch_stop"))
+        ToastManager.success(t("watch.start.toast", root=watch_root))
         if self.refs.status_label is not None:
-            self.refs.status_label.setText(f"👁️ 폴더 감시 중: {watch_root}")
+            self.refs.status_label.setText(t("watch.running", root=watch_root))
 
     def stop_watch_mode(self) -> None:
         self.services.watch_mode_coordinator.stop()
         if self.refs.watch_mode_action is not None:
-            self.refs.watch_mode_action.setText("👁️ 폴더 감시 모드")
-        ToastManager.info("폴더 감시 모드 중지됨")
+            self.refs.watch_mode_action.setText(t("menu.tools.watch_mode"))
+        ToastManager.info(t("watch.stop.toast"))
         if self.refs.status_label is not None:
-            self.refs.status_label.setText("폴더 감시 중지됨")
+            self.refs.status_label.setText(t("watch.stop.status"))
 
     def on_watched_file_complete(self, filepath: str, success: bool) -> None:
         if self.refs.status_label is None:
             return
         filename = os.path.basename(filepath)
         self.refs.status_label.setText(
-            f"👁️ 처리 완료: {filename}" if success else f"👁️ 처리 실패: {filename}"
+            t("watch.file_complete.success", filename=filename)
+            if success
+            else t("watch.file_complete.failed", filename=filename)
         )
 
     def on_watched_file_complete_detailed(
@@ -308,37 +338,64 @@ class WatchActions:
 
         if success:
             if status_key == "skipped":
-                detail = message or "skip"
+                detail = message or t("watch.detail.skip")
                 if self.refs.status_label is not None:
                     self.refs.status_label.setText(
-                        f"👁️ 스킵: {filename} ({detail}, 대기 {wait_text})"
+                        t(
+                            "watch.detailed.skipped",
+                            filename=filename,
+                            detail=detail,
+                            wait=wait_text,
+                        )
                     )
-                ToastManager.info(f"ℹ️ 자동 처리 스킵: {filename} ({detail})")
+                ToastManager.info(
+                    t("watch.toast.skipped", filename=filename, detail=detail)
+                )
             elif status_key == "partial_success":
-                detail = message or "partial success"
+                detail = message or t("watch.detail.partial")
                 if self.refs.status_label is not None:
                     self.refs.status_label.setText(
-                        f"👁️ 부분 완료: {filename} ({detail}, 대기 {wait_text})"
+                        t(
+                            "watch.detailed.partial",
+                            filename=filename,
+                            detail=detail,
+                            wait=wait_text,
+                        )
                     )
-                ToastManager.warning(f"⚠️ 자동 처리 부분 완료: {filename} ({detail})")
+                ToastManager.warning(
+                    t("watch.toast.partial", filename=filename, detail=detail)
+                )
             else:
                 if self.refs.status_label is not None:
-                    self.refs.status_label.setText(f"👁️ 처리 완료: {filename} (대기 {wait_text})")
-                ToastManager.success(f"✅ 자동 처리 완료: {filename}")
+                    self.refs.status_label.setText(
+                        t("watch.detailed.success", filename=filename, wait=wait_text)
+                    )
+                ToastManager.success(t("watch.toast.success", filename=filename))
             return
 
-        reason = status_key or "failed"
+        reason = status_key or t("watch.detail.failed")
         detail = message or reason
         if self.refs.status_label is not None:
             self.refs.status_label.setText(
-                f"👁️ 처리 실패: {filename} ({reason}, 대기 {wait_text})"
+                t(
+                    "watch.detailed.failed",
+                    filename=filename,
+                    reason=reason,
+                    wait=wait_text,
+                )
             )
-        ToastManager.warning(f"⚠️ 자동 처리 실패: {filename} - {detail}")
+        ToastManager.warning(
+            t("watch.toast.failed", filename=filename, detail=detail)
+        )
 
     def on_watch_queue_metrics(self, queue_size: int, avg_wait_ms: int) -> None:
         if not self.services.watch_mode_coordinator.is_active:
             return
         if self.refs.status_label is not None:
             self.refs.status_label.setText(
-                f"👁️ 감시 중... 대기열: {int(queue_size)}개, 평균 대기: {int(avg_wait_ms)}ms"
+                t(
+                    "watch.queue_metrics",
+                    queue=int(queue_size),
+                    wait=int(avg_wait_ms),
+                )
             )

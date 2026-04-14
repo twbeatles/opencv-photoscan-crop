@@ -7,6 +7,7 @@ from __future__ import annotations
 import os
 from typing import Callable, Optional
 
+from ....i18n.catalog import t
 from ....utils.file_helpers import build_recursive_excluded_roots, get_image_files
 from ..models import WindowRefs, WindowState
 
@@ -56,7 +57,7 @@ class NavigationActions:
                 excluded_roots=excluded_roots,
             )
             if badge is not None:
-                badge.setText(f" 파일: {len(self.state.image_list)}개 ")
+                badge.setText(t("status.file_count", count=len(self.state.image_list)))
 
             if self.state.image_list:
                 self.state.current_image_index = 0
@@ -79,7 +80,7 @@ class NavigationActions:
             self.update_image_list()
         if not self.state.image_list:
             if self.refs.status_label is not None:
-                self.refs.status_label.setText("탐색할 이미지가 없습니다")
+                self.refs.status_label.setText(t("navigation.empty"))
             return
 
         if self.state.current_image_index > 0:
@@ -103,7 +104,7 @@ class NavigationActions:
             self.update_image_list()
         if not self.state.image_list:
             if self.refs.status_label is not None:
-                self.refs.status_label.setText("탐색할 이미지가 없습니다")
+                self.refs.status_label.setText(t("navigation.empty"))
             return
 
         if self.state.current_image_index < len(self.state.image_list) - 1:
@@ -132,5 +133,10 @@ class NavigationActions:
                 else ""
             )
             self.refs.status_label.setText(
-                f"[{current}/{total}] {filename} (← → 탐색, Enter 미리보기, Space 처리)"
+                t(
+                    "navigation.status",
+                    current=current,
+                    total=total,
+                    filename=filename,
+                )
             )

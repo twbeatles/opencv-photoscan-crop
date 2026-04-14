@@ -20,6 +20,8 @@ from PyQt6.QtGui import QPixmap, QImage, QKeyEvent, QResizeEvent, QPainter, QCol
 import cv2
 import numpy as np
 
+from ...i18n.catalog import t
+
 logger = logging.getLogger(__name__)
 
 
@@ -107,7 +109,7 @@ class FullscreenViewer(QWidget):
         controls_layout.setSpacing(15)
         
         # Previous button
-        self.prev_btn = QPushButton("◀ 이전")
+        self.prev_btn = QPushButton()
         self.prev_btn.clicked.connect(self._show_previous)
         controls_layout.addWidget(self.prev_btn)
         
@@ -116,7 +118,7 @@ class FullscreenViewer(QWidget):
         controls_layout.addWidget(self.counter_label)
         
         # Next button
-        self.next_btn = QPushButton("다음 ▶")
+        self.next_btn = QPushButton()
         self.next_btn.clicked.connect(self._show_next)
         controls_layout.addWidget(self.next_btn)
         
@@ -129,7 +131,7 @@ class FullscreenViewer(QWidget):
         controls_layout.addStretch()
         
         # Close button
-        self.close_btn = QPushButton("✕ 닫기 (ESC)")
+        self.close_btn = QPushButton()
         self.close_btn.clicked.connect(self.close)
         controls_layout.addWidget(self.close_btn)
         
@@ -144,8 +146,8 @@ class FullscreenViewer(QWidget):
                 font-size: 12px;
             }
         """)
-        self.info_label.setText("F11: 전체화면 전환 | ←→: 이동 | ESC: 닫기")
-        
+        self.retranslate_ui()
+
         self.setMouseTracking(True)
     
     def show_fullscreen(self):
@@ -180,7 +182,7 @@ class FullscreenViewer(QWidget):
             # Load image
             image = cv2.imread(filepath)
             if image is None:
-                self.image_label.setText("이미지를 불러올 수 없습니다")
+                self.image_label.setText(t("fullscreen.load_failed"))
                 return
             
             # Convert to QPixmap
@@ -212,7 +214,7 @@ class FullscreenViewer(QWidget):
             
         except Exception as e:
             logger.error(f"Failed to load image: {e}")
-            self.image_label.setText(f"오류: {str(e)}")
+            self.image_label.setText(t("fullscreen.error", error=str(e)))
     
     def _display_scaled_image(self):
         """Display image scaled to fit screen."""
@@ -319,6 +321,12 @@ class FullscreenViewer(QWidget):
         self.closed.emit()
         super().closeEvent(event)
 
+    def retranslate_ui(self):
+        self.prev_btn.setText(t("fullscreen.prev"))
+        self.next_btn.setText(t("fullscreen.next"))
+        self.close_btn.setText(t("fullscreen.close"))
+        self.info_label.setText(t("fullscreen.info"))
+
 
 class FullscreenViewerManager:
     """
@@ -355,6 +363,10 @@ class FullscreenViewerManager:
         """Close viewer if open."""
         if self._viewer:
             self._viewer.close()
+
+    def retranslate_ui(self):
+        if self._viewer is not None:
+            self._viewer.retranslate_ui()
     
     def is_visible(self) -> bool:
         """Check if viewer is visible."""

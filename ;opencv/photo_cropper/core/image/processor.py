@@ -21,8 +21,6 @@ import json
 import time
 import math
 from typing import Optional, Tuple, List, Dict, Any
-from dataclasses import dataclass
-from enum import Enum
 
 from ..settings_model import (
     AlgorithmSettings,
@@ -32,6 +30,7 @@ from ..settings_model import (
     DebugSettings,
 )
 from ..advanced import AdvancedImageProcessor, GPUAccelerator
+from .types import CropResult, DetectionStage, PreviewProcessResult
 from .save_io import (
     resolve_save_codec as _resolve_save_codec_impl,
     copy_metadata_best_effort as _copy_metadata_best_effort_impl,
@@ -39,44 +38,6 @@ from .save_io import (
 )
 
 logger = logging.getLogger(__name__)
-
-
-class DetectionStage(Enum):
-    """Detection stage enumeration for tracking which algorithm succeeded."""
-
-    CANNY = "Canny Edge"
-    MULTI_SCALE_CANNY = "Multi-Scale Canny"
-    BACKGROUND_MASK = "Background Mask"
-    ADAPTIVE_THRESHOLD = "Adaptive Threshold"
-    GRADIENT_SOBEL = "Gradient (Sobel)"
-    CORNER_HARRIS = "Harris Corners"
-    HOUGH_RECT = "Hough Rectangle"
-
-
-@dataclass
-class CropResult:
-    """Result of image cropping operation."""
-
-    success: bool
-    image: Optional[np.ndarray] = None
-    message: str = ""
-    detection_stage: Optional[DetectionStage] = None
-    contour_points: Optional[np.ndarray] = None
-    confidence: float = 0.0
-    debug_dir: Optional[str] = None
-    original_size: Tuple[int, int] = (0, 0)
-    cropped_size: Tuple[int, int] = (0, 0)
-
-
-@dataclass
-class PreviewProcessResult:
-    """Result bundle for preview rendering."""
-
-    original_preview: Optional[np.ndarray]
-    overlay_preview: Optional[np.ndarray]
-    crop_result: CropResult
-    message: str = ""
-
 
 class ImageProcessor:
     """

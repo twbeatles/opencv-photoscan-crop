@@ -24,6 +24,7 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtCore import Qt, pyqtSignal, QRectF, QPointF
 from PyQt6.QtGui import QPixmap, QImage, QWheelEvent, QMouseEvent, QAction, QIcon
 
+from ...i18n.catalog import t
 from ..widgets.toast_notification import ToastManager
 from ...core.smart_enhancer import SmartEnhancer, EnhancementPreset, get_smart_enhancer
 
@@ -225,7 +226,7 @@ class ImagePanel(QFrame):
         # Header with title and controls
         header = QHBoxLayout()
         
-        self.title_label = QLabel(f"이미지 {self.index + 1}")
+        self.title_label = QLabel(t("multi_compare.image", index=self.index + 1))
         self.title_label.setStyleSheet("font-weight: bold; color: #e0e0e0;")
         header.addWidget(self.title_label)
         
@@ -233,7 +234,7 @@ class ImagePanel(QFrame):
         
         # Preset selector
         self.preset_combo = QComboBox()
-        self.preset_combo.addItem("원본", EnhancementPreset.NONE)
+        self.preset_combo.addItem(t("multi_compare.original"), EnhancementPreset.NONE)
         preset_names = self._enhancer.get_preset_names()
         for preset, name in preset_names.items():
             if preset != EnhancementPreset.NONE:
@@ -245,7 +246,7 @@ class ImagePanel(QFrame):
         # Load button
         self.load_btn = QPushButton("📂")
         self.load_btn.setMaximumWidth(30)
-        self.load_btn.setToolTip("이미지 불러오기")
+        self.load_btn.setToolTip(t("multi_compare.load_image"))
         self.load_btn.clicked.connect(self._on_load_clicked)
         header.addWidget(self.load_btn)
         
@@ -271,6 +272,14 @@ class ImagePanel(QFrame):
             self.title_label.setText(title)
         
         self.image_changed.emit()
+
+    def retranslate_ui(self):
+        if not self.title_label.text() or self.title_label.text().startswith("이미지 ") or self.title_label.text().startswith("Image "):
+            self.title_label.setText(t("multi_compare.image", index=self.index + 1))
+        current_data = self.preset_combo.currentData()
+        self.preset_combo.setItemText(0, t("multi_compare.original"))
+        self.load_btn.setToolTip(t("multi_compare.load_image"))
+        self.preset_combo.setCurrentIndex(max(0, self.preset_combo.findData(current_data)))
     
     def get_image(self) -> Optional[np.ndarray]:
         """Get current image."""
@@ -291,9 +300,9 @@ class ImagePanel(QFrame):
     def _on_load_clicked(self):
         """Handle load button click."""
         file_path, _ = QFileDialog.getOpenFileName(
-            self, "이미지 선택",
+            self, t("multi_compare.select_image"),
             "",
-            "이미지 파일 (*.jpg *.jpeg *.png *.webp *.bmp);;모든 파일 (*.*)"
+            t("multi_compare.image_filter")
         )
         
         if file_path:
@@ -333,7 +342,7 @@ class MultiCompareWindow(QMainWindow):
     
     def _setup_window(self):
         """Configure window properties."""
-        self.setWindowTitle("멀티 이미지 비교")
+        self.setWindowTitle(t("multi_compare.window"))
         self.resize(1200, 700)
         
         self.setStyleSheet("""
@@ -372,25 +381,23 @@ class MultiCompareWindow(QMainWindow):
     
     def _setup_toolbar(self):
         """Create toolbar."""
-        toolbar = QToolBar("도구")
+        toolbar = QToolBar(t("multi_compare.toolbar"))
         toolbar.setObjectName("compareToolBar")
         self.addToolBar(toolbar)
-        
+        self._toolbar = toolbar
+
         # Layout selector
-        toolbar.addWidget(QLabel("레이아웃: "))
+        self._layout_label = QLabel(t("multi_compare.layout"))
+        toolbar.addWidget(self._layout_label)
         
         self.layout_combo = QComboBox()
-        self.layout_combo.addItem("2개 가로", CompareLayout.HORIZONTAL_2)
-        self.layout_combo.addItem("2개 세로", CompareLayout.VERTICAL_2)
-        self.layout_combo.addItem("4개 그리드", CompareLayout.GRID_4)
-        self.layout_combo.addItem("4개 가로", CompareLayout.HORIZONTAL_4)
         self.layout_combo.currentIndexChanged.connect(self._on_layout_changed)
         toolbar.addWidget(self.layout_combo)
         
         toolbar.addSeparator()
         
         # Sync checkbox
-        self.sync_checkbox = QCheckBox("동기화")
+        self.sync_checkbox = QCheckBox(t("multi_compare.sync"))
         self.sync_checkbox.setChecked(True)
         self.sync_checkbox.stateChanged.connect(self._on_sync_changed)
         toolbar.addWidget(self.sync_checkbox)
@@ -398,14 +405,17 @@ class MultiCompareWindow(QMainWindow):
         toolbar.addSeparator()
         
         # Fit all button
-        fit_action = QAction("전체 맞춤", self)
+        fit_action = QAction(t("multi_compare.fit_all"), self)
         fit_action.triggered.connect(self._fit_all)
         toolbar.addAction(fit_action)
-        
+        self._fit_action = fit_action
+
         # Reset all button
-        reset_action = QAction("모두 초기화", self)
+        reset_action = QAction(t("multi_compare.reset_all"), self)
         reset_action.triggered.connect(self._reset_all)
         toolbar.addAction(reset_action)
+        self._reset_action = reset_action
+        self.retranslate_ui()
     
     def _setup_central_widget(self):
         """Create central widget with panels."""
@@ -551,4 +561,26 @@ class MultiCompareWindow(QMainWindow):
         """Clear all images."""
         for panel in self._panels:
             panel.set_image(None)
-            panel.title_label.setText(f"이미지 {panel.index + 1}")
+            panel.title_label.setText(t("multi_compare.image", index=panel.index + 1))
+
+    def retranslate_ui(self):
+        self.setWindowTitle(t("multi_compare.window"))
+        if hasattr(self, "_toolbar"):
+            self._toolbar.setWindowTitle(t("multi_compare.toolbar"))
+        if hasattr(self, "_layout_label"):
+            self._layout_label.setText(t("multi_compare.layout"))
+        current = self.layout_combo.currentData()
+        self.layout_combo.blockSignals(True)
+        self.layout_combo.clear()
+        self.layout_combo.addItem(t("multi_compare.layout.h2"), CompareLayout.HORIZONTAL_2)
+        self.layout_combo.addItem(t("multi_compare.layout.v2"), CompareLayout.VERTICAL_2)
+        self.layout_combo.addItem(t("multi_compare.layout.grid4"), CompareLayout.GRID_4)
+        self.layout_combo.addItem(t("multi_compare.layout.h4"), CompareLayout.HORIZONTAL_4)
+        current_index = self.layout_combo.findData(current)
+        self.layout_combo.setCurrentIndex(max(0, current_index))
+        self.layout_combo.blockSignals(False)
+        self.sync_checkbox.setText(t("multi_compare.sync"))
+        self._fit_action.setText(t("multi_compare.fit_all"))
+        self._reset_action.setText(t("multi_compare.reset_all"))
+        for panel in self._panels:
+            panel.retranslate_ui()

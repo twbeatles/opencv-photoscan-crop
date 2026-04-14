@@ -105,8 +105,13 @@ a = Analysis(
         'photo_cropper.core.advanced',
         'photo_cropper.core.face',
         'photo_cropper.core.batch',
+        'photo_cropper.core.batch.types',
         'photo_cropper.core.image',
+        'photo_cropper.core.image.types',
         'photo_cropper.core.settings_model.app_settings',
+        'photo_cropper.core.settings_model.manager',
+        'photo_cropper.core.settings_model.migration',
+        'photo_cropper.core.settings_model.validation',
         'photo_cropper.core.watch_mode',
         'photo_cropper.core.manual_extract',
         'photo_cropper.core.batch.session_service',
@@ -114,6 +119,11 @@ a = Analysis(
         'photo_cropper.ui.main',
         'photo_cropper.ui.main.models',
         'photo_cropper.ui.main.preview_worker',
+        'photo_cropper.ui.main.services',
+        'photo_cropper.ui.main.services.batch_flow',
+        'photo_cropper.ui.main.services.dialog_flow',
+        'photo_cropper.ui.main.services.message_factory',
+        'photo_cropper.ui.main.services.watch_flow',
         'photo_cropper.ui.main.actions',
         'photo_cropper.ui.main.actions.batch',
         'photo_cropper.ui.main.actions.dialog',
@@ -141,6 +151,13 @@ a = Analysis(
         'photo_cropper.ui.main.watch_actions',
         'photo_cropper.ui.widgets.settings',
         'photo_cropper.i18n.catalog',
+        'photo_cropper.i18n.catalog.locales',
+        'photo_cropper.i18n.catalog.locales.en',
+        'photo_cropper.i18n.catalog.locales.ko',
+        'photo_cropper.i18n.catalog.locales.ja',
+        'photo_cropper.i18n.catalog.locales.zh',
+        'photo_cropper.i18n.catalog.locales.es',
+        'photo_cropper.utils.path_validation',
         'PyQt6.QtCore',
         'PyQt6.QtGui', 
         'PyQt6.QtWidgets',
@@ -261,6 +278,14 @@ Tips for further size reduction:
     - Main-window batch edit flow and manual boundary fallback UI were added.
     - No additional third-party dependencies were introduced.
     - Existing hidden imports remain sufficient for frozen builds.
+
+2026-04-14 note:
+    - Runtime i18n now loads Python locale catalog modules dynamically
+      (`photo_cropper.i18n.catalog.locales.*`), so locale submodules are pinned
+      explicitly in hidden imports for frozen builds.
+    - `ui.main.services.*`, `core.settings_model.{manager,migration,validation}`,
+      `core.{image,batch}.types`, and `utils.path_validation` were added to keep
+      split-module discovery stable after the refactor.
 
 2026-03-04 note:
     - Hidden imports were explicitly extended for recent split modules used by
