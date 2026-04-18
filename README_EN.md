@@ -67,6 +67,13 @@ A Python application that automatically detects and accurately crops scanned pho
 - **Safe path-segment validation**: classification folders and naming prefix/suffix are validated as single safe path segments before emit/run
 - **Locale-aware classification defaults**: blank classification folder values now resolve to the current UI language default, with legacy Korean defaults migrated automatically
 
+### 🗂️ Management Shell & Refactor Update (2026-04-19)
+- **Management shell**: the main desktop UX now centers on `Library`, `Workbench`, `Review`, `Duplicates`, `Jobs`, `Collections`, `Recipes`, and `Settings`
+- **Catalog + job history**: SQLite-backed library/review/job tracking now lives under `photo_cropper/core/library/`, `core/jobs/`, and `core/recipes/`
+- **SOLID-oriented split refactor**: former hotspot files were converted into thin facades plus focused internal modules, especially in `core/batch/`, `core/image/`, `core/library/`, `ui/widgets/settings/`, and `ui/widgets/management/`
+- **Packaging hardening**: PyInstaller specs now collect split submodules automatically to keep frozen builds stable as internal modules keep evolving
+- **Validation baseline updated**: `pyright` is now part of the standard consistency check alongside `compileall` and `selftest`
+
 ### 🌐 Multi-Language Support
 - Automatic system locale detection
 - 5 languages: English, Korean, Japanese, Chinese, Spanish
@@ -281,28 +288,34 @@ python -m photo_cropper.cli --help
 ;opencv/
 ├── run.py
 ├── photo_cropper.spec
+├── photo_cropper_onefile.spec
 └── photo_cropper/
     ├── main.py
     ├── cli.py
     ├── benchmark.py
     ├── core/
-    │   ├── image/processor.py
-    │   ├── batch/processor.py
-    │   ├── settings_model/app_settings.py
+    │   ├── app_paths.py
+    │   ├── batch/
+    │   ├── image/
+    │   ├── jobs/
+    │   ├── library/
+    │   ├── recipes/
+    │   ├── settings_model/
+    │   ├── manual_extract/
+    │   ├── watch_mode/
     │   ├── multi_photo_detector.py
-    │   ├── watermark_processor.py
+    │   ├── processed_index.py
     │   ├── resize_processor.py
-    │   ├── folder_watcher.py
     │   ├── scheduler.py
-    │   └── history_manager.py
+    │   └── watermark_processor.py
     ├── ui/
-    │   ├── main/window.py
-    │   ├── main/models.py
-    │   ├── main/actions/
-    │   ├── main/builders/
-    │   └── widgets/settings/panel.py
-    ├── i18n/catalog/manager.py
-    └── utils/file_helpers.py
+    │   ├── main/
+    │   └── widgets/
+    │       ├── management/
+    │       └── settings/
+    ├── i18n/catalog/
+    └── utils/
+        └── path_validation.py
 ```
 
 ## 🔧 Build (PyInstaller)
@@ -313,29 +326,33 @@ python -m photo_cropper.cli --help
 # Install dependencies
 pip install pyinstaller
 
-# Build from repository root
+# Stable Windows build from repository root
 pyinstaller ".\\;opencv\\photo_cropper.spec" --clean
+
+# Experimental single-file build from repository root
+pyinstaller ".\\;opencv\\photo_cropper_onefile.spec" --clean
 ```
 
-Built executable: `dist/PhotoCropper_v9.exe`
+Built executables:
+- Stable onedir: `;opencv/dist/PhotoCropper_v9/PhotoCropper_v9.exe`
+- Experimental onefile: `;opencv/dist/PhotoCropper_v9_single.exe`
 
-### Additional Optimization (UPX)
+### Packaging Notes
 
-Install [UPX](https://github.com/upx/upx/releases) to reduce executable size by ~30-50%:
-
-1. Download and extract UPX
-2. Add `upx.exe` to system PATH
-3. Rebuild: `pyinstaller ".\\;opencv\\photo_cropper.spec" --clean`
+- `photo_cropper.spec` is the recommended build target because it avoids the temp-extraction DLL blocking issue seen in stricter Windows application-control environments.
+- `photo_cropper_onefile.spec` is kept for convenience/testing and still depends on runtime extraction.
+- UPX is intentionally disabled for both specs because uncompressed Qt/PyQt builds were more reliable under Windows policy enforcement.
 
 ### Build Optimizations
 
 | Item | Description |
 |------|-------------|
-| Single File | onefile mode creates single .exe |
+| Stable target | `photo_cropper.spec` builds an onedir app folder |
+| Experimental target | `photo_cropper_onefile.spec` builds a single-file `.exe` |
 | Excluded Modules | matplotlib, scipy, pandas, tkinter, etc. |
+| Split-module collection | package submodules are auto-collected for refactored `core/*` and `ui/*` packages |
 | OpenCV/Qt Trimming | Excludes `cv2.gapi` plus unneeded Qt/OpenCV runtime binaries |
-| NumPy Optimization | Removed test/doc files |
-| UPX Compression | Compressed executable (~40% size reduction) |
+| Compression policy | UPX disabled for App Control / PyQt stability |
 
 ## 📋 Changelog
 
@@ -458,3 +475,17 @@ Please report bugs or feature suggestions in Issues.
 - Widget construction was split into `ui/main/builders/`, and shared window context types live in `ui/main/models.py`.
 - `photo_cropper.spec` hidden imports were updated to include the canonical package paths (`ui.main.actions.*`, `ui.main.builders.*`, `ui.main.models`) plus the compatibility shim modules.
 - Legacy flat imports such as `ui.main.batch_actions` are still available as re-export shims.
+
+## 2026-04-19 Management + Refactor Notes
+
+- Management-app architecture is now first-class: library ingest, review queue, duplicate handling, collections, recipes, and job orchestration live under dedicated `core/library`, `core/jobs`, and `core/recipes` packages.
+- Former hotspot files now act as compatibility facades while the real implementation lives in focused modules:
+  - `core/batch/processor.py`
+  - `core/image/processor.py`
+  - `core/library/repository.py`
+  - `ui/widgets/management_pages.py`
+- `core/batch/single.py`, `core/image/detect.py`, and `core/library/_repository_assets.py` were each further split into smaller internal modules to reduce responsibility overlap.
+- Validation baseline confirmed on this structure:
+  - `cd ";opencv" && python -m compileall -q photo_cropper`
+  - `cd ";opencv" && python -m photo_cropper.selftest`
+  - `pyright --project .\\pyrightconfig.json`

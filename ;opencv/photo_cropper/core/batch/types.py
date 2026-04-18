@@ -22,6 +22,7 @@ class FileResult:
 
     filename: str
     status: ProcessStatus
+    source_path: str = ""
     message: str = ""
     output_path: str = ""
     output_paths: list[str] = field(default_factory=list)

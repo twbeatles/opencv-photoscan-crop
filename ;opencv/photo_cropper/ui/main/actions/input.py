@@ -167,9 +167,13 @@ class InputActions:
             t("input.image_filter"),
         )
         if path:
-            self.state.current_image_path = path
-            if self._request_preview is not None:
-                self._request_preview()
+            open_in_workbench = getattr(self.services.host_window, "open_path_in_workbench", None)
+            if callable(open_in_workbench):
+                open_in_workbench(path)
+            else:
+                self.state.current_image_path = path
+                if self._request_preview is not None:
+                    self._request_preview()
 
     def refresh_file_list(self) -> None:
         input_path = self.refs.input_path_edit.text() if self.refs.input_path_edit else ""
@@ -208,9 +212,13 @@ class InputActions:
         elif os.path.isfile(path):
             ext = os.path.splitext(path)[1].lower()
             if ext in SUPPORTED_IMAGE_FORMATS:
-                self.state.current_image_path = path
-                if self._request_preview is not None:
-                    self._request_preview()
+                open_in_workbench = getattr(self.services.host_window, "open_path_in_workbench", None)
+                if callable(open_in_workbench):
+                    open_in_workbench(path)
+                else:
+                    self.state.current_image_path = path
+                    if self._request_preview is not None:
+                        self._request_preview()
 
     def handle_key_press(self, event: Optional[QKeyEvent]) -> bool:
         if event is None:

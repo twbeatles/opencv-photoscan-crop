@@ -84,6 +84,7 @@ class ManualExtractProcessor:
             skip_result = FileResult(
                 filename=filename,
                 status=ProcessStatus.SKIPPED,
+                source_path=path,
                 message="이미 처리됨(인덱스)",
                 processing_time_ms=(time.time() - started_at) * 1000.0,
             )
@@ -116,6 +117,7 @@ class ManualExtractProcessor:
             skip_result = FileResult(
                 filename=filename,
                 status=ProcessStatus.SKIPPED,
+                source_path=path,
                 message="이미 처리됨",
                 processing_time_ms=(time.time() - started_at) * 1000.0,
             )
@@ -212,6 +214,7 @@ class ManualExtractProcessor:
             result = FileResult(
                 filename=filename,
                 status=ProcessStatus.SUCCESS,
+                source_path=path,
                 message=f"{mode_label} 외곽선 적용",
                 output_path=out_path,
                 output_paths=[out_path],
@@ -228,6 +231,7 @@ class ManualExtractProcessor:
             result = FileResult(
                 filename=filename,
                 status=ProcessStatus.FAILED,
+                source_path=path,
                 message=str(e),
                 processing_time_ms=(time.time() - started_at) * 1000.0,
             )

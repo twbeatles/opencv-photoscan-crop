@@ -65,6 +65,13 @@ A Python application that automatically detects and accurately crops scanned pho
 - **Safe path-segment validation**: classification folders and naming prefix/suffix are validated as single safe path segments before emit/run
 - **Locale-aware classification defaults**: blank classification folder values now resolve to the current UI language default, with legacy Korean defaults migrated automatically
 
+### 🗂️ Management Shell & Refactor Update (2026-04-19)
+- **Management shell**: the desktop UX now centers on `Library`, `Workbench`, `Review`, `Duplicates`, `Jobs`, `Collections`, `Recipes`, and `Settings`
+- **Catalog + job history**: the management-app layer now lives under dedicated `core/library/`, `core/jobs/`, and `core/recipes/` packages
+- **SOLID-oriented split refactor**: former hotspot files were converted into thin facades plus focused internal modules, especially in `core/batch/`, `core/image/`, `core/library/`, `ui/widgets/settings/`, and `ui/widgets/management/`
+- **Packaging hardening**: PyInstaller specs now auto-collect split package submodules so frozen builds track the refactored layout more reliably
+- **Validation baseline updated**: `pyright` is part of the standard consistency check together with `compileall` and `selftest`
+
 ### 🌐 Multi-Language Support
 - Automatic system locale detection
 - 5 languages: English, Korean, Japanese, Chinese, Spanish
@@ -269,34 +276,32 @@ python -m photo_cropper.cli --help
 
 ```
 photo_cropper/
-├── main.py                  # Entry point
-├── cli.py                   # CLI interface (v8.5)
+├── main.py
+├── cli.py
 ├── core/
-│   ├── image/processor.py   # Core image processing
-│   ├── batch/processor.py   # Batch processing
-│   ├── settings_model/app_settings.py          # Settings dataclasses/manager
-│   ├── multi_photo_detector.py  # Multi-photo detection (v8.5)
-│   ├── watermark_processor.py   # Watermark (v8.5)
-│   ├── resize_processor.py      # Resize (v8.5)
-│   ├── folder_watcher.py        # Folder watch (v8.5)
-│   ├── scheduler.py             # Scheduler (v8.5)
-│   ├── processed_index.py       # Local skip_processed index (v9.0)
-│   └── history_manager.py       # History management (v8.5)
+│   ├── app_paths.py
+│   ├── batch/
+│   ├── image/
+│   ├── jobs/
+│   ├── library/
+│   ├── recipes/
+│   ├── settings_model/
+│   ├── manual_extract/
+│   ├── watch_mode/
+│   ├── multi_photo_detector.py
+│   ├── processed_index.py
+│   ├── resize_processor.py
+│   ├── scheduler.py
+│   └── watermark_processor.py
 ├── ui/
-│   ├── main/window.py
-│   ├── main/models.py
-│   ├── main/actions/
-│   ├── main/builders/
+│   ├── main/
 │   └── widgets/
-│       ├── settings/panel.py
-│       ├── preview_widget.py
-│       ├── thumbnail_grid_widget.py  # Thumbnail grid (v8.5)
-│       ├── fullscreen_viewer.py      # Fullscreen viewer (v8.5)
-│       └── floating_action_button.py # FAB (v8.5)
-├── i18n/                    # Internationalization (v8.5)
-│   └── catalog/manager.py
+│       ├── management/
+│       └── settings/
+├── i18n/
+│   └── catalog/
 └── utils/
-    └── file_helpers.py
+    └── path_validation.py
 ```
 
 ## 🔧 Build (PyInstaller)
@@ -307,29 +312,33 @@ photo_cropper/
 # Install dependencies
 pip install pyinstaller
 
-# Build (optimized)
+# Stable Windows build
 pyinstaller photo_cropper.spec --clean
+
+# Experimental single-file build
+pyinstaller photo_cropper_onefile.spec --clean
 ```
 
-Built executable: `dist/PhotoCropper_v9.exe`
+Built executables:
+- Stable onedir: `dist/PhotoCropper_v9/PhotoCropper_v9.exe`
+- Experimental onefile: `dist/PhotoCropper_v9_single.exe`
 
-### Additional Optimization (UPX)
+### Packaging Notes
 
-Install [UPX](https://github.com/upx/upx/releases) to reduce executable size by ~30-50%:
-
-1. Download and extract UPX
-2. Add `upx.exe` to system PATH
-3. Rebuild: `pyinstaller photo_cropper.spec --clean`
+- `photo_cropper.spec` is the recommended build target because it avoids the temp-extraction DLL blocking issue seen in stricter Windows application-control environments.
+- `photo_cropper_onefile.spec` is kept for convenience/testing and still depends on runtime extraction.
+- UPX is intentionally disabled for both specs because uncompressed Qt/PyQt builds were more reliable under Windows policy enforcement.
 
 ### Build Optimizations
 
 | Item | Description |
 |------|-------------|
-| Single File | onefile mode creates single .exe |
+| Stable target | `photo_cropper.spec` builds an onedir app folder |
+| Experimental target | `photo_cropper_onefile.spec` builds a single-file `.exe` |
 | Excluded Modules | matplotlib, scipy, pandas, tkinter, etc. |
+| Split-module collection | package submodules are auto-collected for refactored `core/*` and `ui/*` packages |
 | OpenCV/Qt Trimming | Excludes `cv2.gapi` plus unneeded Qt/OpenCV runtime binaries |
-| NumPy Optimization | Removed test/doc files |
-| UPX Compression | Compressed executable (~40% size reduction) |
+| Compression policy | UPX disabled for App Control / PyQt stability |
 
 ## 📋 Changelog
 
@@ -465,3 +474,17 @@ Please report bugs or feature suggestions in Issues.
 - `ui/main/window.py` is now a composition root, with runtime behavior moved into `ui/main/actions/`.
 - Widget construction now lives in `ui/main/builders/`, and shared context types are defined in `ui/main/models.py`.
 - `photo_cropper.spec` hidden imports now cover the canonical package paths (`ui.main.actions.*`, `ui.main.builders.*`, `ui.main.models`) plus the compatibility shim modules.
+
+## 2026-04-19 Management + Refactor Notes
+
+- Management-app architecture is now first-class: library ingest, review queue, duplicate handling, collections, recipes, and job orchestration live under dedicated `core/library`, `core/jobs`, and `core/recipes` packages.
+- Former hotspot files now act as compatibility facades while the real implementation lives in focused modules:
+  - `core/batch/processor.py`
+  - `core/image/processor.py`
+  - `core/library/repository.py`
+  - `ui/widgets/management_pages.py`
+- `core/batch/single.py`, `core/image/detect.py`, and `core/library/_repository_assets.py` were each further split into smaller internal modules to reduce responsibility overlap.
+- Validation baseline confirmed on this structure:
+  - `python -m compileall -q photo_cropper`
+  - `python -m photo_cropper.selftest`
+  - `pyright --project pyrightconfig.json`

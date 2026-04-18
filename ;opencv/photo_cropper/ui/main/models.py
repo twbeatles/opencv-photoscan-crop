@@ -31,6 +31,16 @@ from ..widgets.settings import SettingsPanel
 from ...core.batch import BatchSessionService
 from ...core.history_manager import HistoryManager
 from ...core.image import ImageProcessor
+from ...core.jobs import JobOrchestrator
+from ...core.library import (
+    DuplicateService,
+    LibraryIngestService,
+    LibraryRepository,
+    QueryService,
+    ReviewService,
+    ThumbnailService,
+)
+from ...core.recipes import RecipeManager
 from ...core.scheduler import Scheduler
 from ...core.settings_model import AppSettings, SettingsManager
 from ...core.watch_mode import WatchModeCoordinator
@@ -64,6 +74,9 @@ class WindowState:
     )
     manual_extract_running: bool = False
     multi_compare_window: Optional[Any] = None
+    active_recipe_name: str = ""
+    active_job_id: Optional[int] = None
+    active_job_kind: str = ""
 
 
 @dataclass
@@ -91,6 +104,8 @@ class WindowRefs:
     batch_edit_status_label: Optional[QLabel] = None
     fab: Optional[QuickActionFAB] = None
     progress_dialog: Optional[ProgressDialog] = None
+    shell_nav: Optional[Any] = None
+    shell_stack: Optional[Any] = None
     watch_mode_action: Optional[QAction] = None
     theme_actions: dict[str, QAction] = field(default_factory=dict)
     profile_menu: Optional[QMenu] = None
@@ -98,6 +113,7 @@ class WindowRefs:
     actions: dict[str, QAction] = field(default_factory=dict)
     labels: dict[str, QLabel] = field(default_factory=dict)
     buttons: dict[str, QPushButton] = field(default_factory=dict)
+    management_pages: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass
@@ -116,6 +132,14 @@ class WindowServices:
     input_path_scan_timer: QTimer
     preview_worker_host: Optional[Any] = None
     auto_save_timer: Optional[QTimer] = None
+    library_repository: Optional[LibraryRepository] = None
+    thumbnail_service: Optional[ThumbnailService] = None
+    library_ingest_service: Optional[LibraryIngestService] = None
+    query_service: Optional[QueryService] = None
+    review_service: Optional[ReviewService] = None
+    duplicate_service: Optional[DuplicateService] = None
+    recipe_manager: Optional[RecipeManager] = None
+    job_orchestrator: Optional[JobOrchestrator] = None
 
 
 @dataclass

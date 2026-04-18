@@ -11,22 +11,33 @@ from PyQt6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QLineEdit,
+    QListWidget,
     QPushButton,
-    QSizePolicy,
     QSplitter,
+    QStackedWidget,
     QVBoxLayout,
     QWidget,
 )
 
 from ....i18n.catalog import t
 from ...widgets.histogram_widget import HistogramWidget
+from ...widgets.management_pages import (
+    CollectionsPage,
+    DuplicatesPage,
+    JobsPage,
+    LibraryPage,
+    RecipesPage,
+    ReviewPage,
+    SettingsInfoPage,
+    UnavailablePage,
+    management_page_label,
+)
 from ...widgets.preview_widget import ImagePreviewWidget
 from ...widgets.settings import SettingsPanel
-from ..models import WindowRefs, WindowState
+from ..models import WindowRefs, WindowServices, WindowState
 
 
-def build_central_widget(
-    window,
+def _build_workbench_page(
     refs: WindowRefs,
     state: WindowState,
     *,
@@ -35,11 +46,9 @@ def build_central_widget(
     batch_actions,
     navigation_actions,
     settings_actions,
-) -> None:
-    central = QWidget()
-    window.setCentralWidget(central)
-
-    main_layout = QVBoxLayout(central)
+) -> QWidget:
+    page = QWidget()
+    main_layout = QVBoxLayout(page)
     main_layout.setContentsMargins(8, 8, 8, 8)
     main_layout.setSpacing(0)
 
@@ -121,7 +130,7 @@ def build_central_widget(
 
     hint_layout = QHBoxLayout()
     hint_layout.setContentsMargins(0, 0, 0, 0)
-    hint_icon = QLabel("💡")
+    hint_icon = QLabel("?뮕")
     hint_text = QLabel(t("central.drag_hint"))
     hint_text.setObjectName("subtitleLabel")
     hint_layout.addWidget(hint_icon)
@@ -162,7 +171,9 @@ def build_central_widget(
     refs.batch_save_edits_btn.clicked.connect(batch_actions.save_batch_edited_crops)
     edit_nav_layout.addWidget(refs.batch_save_edits_btn)
 
-    refs.batch_edit_status_label = QLabel(t("central.batch_status", current=0, total=0, edited=0, failed=0))
+    refs.batch_edit_status_label = QLabel(
+        t("central.batch_status", current=0, total=0, edited=0, failed=0)
+    )
     refs.batch_edit_status_label.setObjectName("subtitleLabel")
     edit_nav_layout.addWidget(refs.batch_edit_status_label)
     edit_nav_layout.addStretch()
@@ -222,3 +233,148 @@ def build_central_widget(
     outer_splitter.setStretchFactor(1, 1)
     outer_splitter.setSizes([110, 700])
     main_layout.addWidget(outer_splitter)
+    return page
+
+
+def _connect_open_signal(page: QWidget, window) -> None:
+    signal = getattr(page, "open_requested", None)
+    if signal is not None:
+        signal.connect(window.open_path_in_workbench)
+
+
+def build_central_widget(
+    window,
+    refs: WindowRefs,
+    state: WindowState,
+    services: WindowServices,
+    *,
+    input_actions,
+    preview_actions,
+    batch_actions,
+    navigation_actions,
+    settings_actions,
+) -> None:
+    central = QWidget()
+    window.setCentralWidget(central)
+
+    shell_layout = QHBoxLayout(central)
+    shell_layout.setContentsMargins(0, 0, 0, 0)
+    shell_layout.setSpacing(0)
+
+    refs.shell_nav = QListWidget()
+    refs.shell_nav.setFixedWidth(180)
+    refs.shell_nav.setSpacing(4)
+    refs.shell_nav.setStyleSheet(
+        """
+        QListWidget {
+            border: none;
+            border-right: 1px solid rgba(128, 128, 128, 0.25);
+            padding: 10px 8px;
+        }
+        QListWidget::item {
+            padding: 10px 12px;
+            border-radius: 8px;
+            margin: 2px 0;
+        }
+        QListWidget::item:selected {
+            background: rgba(88, 166, 255, 0.18);
+            color: #58a6ff;
+            font-weight: bold;
+        }
+        """
+    )
+    shell_layout.addWidget(refs.shell_nav)
+
+    refs.shell_stack = QStackedWidget()
+    shell_layout.addWidget(refs.shell_stack, 1)
+
+    workbench_page = _build_workbench_page(
+        refs,
+        state,
+        input_actions=input_actions,
+        preview_actions=preview_actions,
+        batch_actions=batch_actions,
+        navigation_actions=navigation_actions,
+        settings_actions=settings_actions,
+    )
+
+    if (
+        services.library_repository is not None
+        and services.query_service is not None
+        and services.library_ingest_service is not None
+        and services.thumbnail_service is not None
+        and services.review_service is not None
+        and services.duplicate_service is not None
+        and services.recipe_manager is not None
+    ):
+        library_page = LibraryPage(
+            services.query_service,
+            services.library_ingest_service,
+            services.thumbnail_service,
+            services.library_repository,
+        )
+        review_page = ReviewPage(services.review_service)
+        duplicates_page = DuplicatesPage(services.duplicate_service)
+        jobs_page = JobsPage(services.query_service)
+        collections_page = CollectionsPage(
+            services.query_service,
+            services.library_repository,
+        )
+        recipes_page = RecipesPage(
+            services.recipe_manager,
+            get_settings=lambda: state.settings,
+        )
+        settings_page = SettingsInfoPage(
+            services.library_repository,
+            services.recipe_manager,
+        )
+        _connect_open_signal(library_page, window)
+        _connect_open_signal(review_page, window)
+        _connect_open_signal(duplicates_page, window)
+        _connect_open_signal(collections_page, window)
+        recipes_page.recipe_applied.connect(window.apply_recipe_from_management)
+        review_page.reprocess_requested.connect(window.run_review_reprocess)
+        jobs_page.rerun_requested.connect(
+            lambda job_id, failed_only: window.run_job_rerun(job_id, failed_only=failed_only)
+        )
+        jobs_page.open_review_requested.connect(window.show_review_page_for_job)
+        settings_page.maintenance_requested.connect(window.run_maintenance_job)
+        settings_page.workbench_requested.connect(
+            lambda: refs.shell_nav.setCurrentRow(1) if refs.shell_nav is not None else None
+        )
+    else:
+        unavailable_title = t("management.unavailable.library_title")
+        unavailable_body = t("management.unavailable.library_body")
+        library_page = UnavailablePage(unavailable_title, unavailable_body)
+        review_page = UnavailablePage(unavailable_title, unavailable_body)
+        duplicates_page = UnavailablePage(unavailable_title, unavailable_body)
+        jobs_page = UnavailablePage(unavailable_title, unavailable_body)
+        collections_page = UnavailablePage(unavailable_title, unavailable_body)
+        recipes_page = UnavailablePage(
+            t("management.unavailable.recipes_title"),
+            t("management.unavailable.recipes_body"),
+        )
+        settings_page = UnavailablePage(
+            t("management.unavailable.settings_title"),
+            t("management.unavailable.settings_body"),
+        )
+
+    pages = [
+        ("library", library_page),
+        ("workbench", workbench_page),
+        ("review", review_page),
+        ("duplicates", duplicates_page),
+        ("jobs", jobs_page),
+        ("collections", collections_page),
+        ("recipes", recipes_page),
+        ("settings", settings_page),
+    ]
+
+    refs.management_pages.clear()
+    for page_key, page in pages:
+        refs.shell_nav.addItem(management_page_label(page_key))
+        refs.shell_stack.addWidget(page)
+        refs.management_pages[page_key] = page
+
+    refs.shell_nav.currentRowChanged.connect(refs.shell_stack.setCurrentIndex)
+    refs.shell_nav.setCurrentRow(1)

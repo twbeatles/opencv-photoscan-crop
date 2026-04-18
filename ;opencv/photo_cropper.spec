@@ -4,17 +4,39 @@ Photo Cropper v9.0 - PyInstaller Spec File
 
 Optimized for:
 - Lightweight build (excluding unused packages)
-- Single file executable
-- UPX compression support
+- Windows policy-friendly onedir executable
+- No UPX compression for Qt/PyQt stability under App Control
 """
 
-import sys
-from PyInstaller.utils.hooks import collect_data_files
+from PyInstaller.utils.hooks import collect_data_files, collect_submodules
 
 block_cipher = None
 
 # Include OpenCV data files required at runtime (e.g., haarcascades XML).
 CV2_DATA_FILES = collect_data_files('cv2', includes=['data/*.xml'])
+
+SPLIT_PACKAGES = [
+    'photo_cropper.core.settings_model',
+    'photo_cropper.core.advanced',
+    'photo_cropper.core.face',
+    'photo_cropper.core.batch',
+    'photo_cropper.core.image',
+    'photo_cropper.core.watch_mode',
+    'photo_cropper.core.manual_extract',
+    'photo_cropper.core.library',
+    'photo_cropper.core.jobs',
+    'photo_cropper.core.recipes',
+    'photo_cropper.ui.main.actions',
+    'photo_cropper.ui.main.builders',
+    'photo_cropper.ui.main.services',
+    'photo_cropper.ui.widgets.settings',
+    'photo_cropper.ui.widgets.management',
+    'photo_cropper.i18n.catalog.locales',
+]
+
+COLLECTED_HIDDENIMPORTS = []
+for package_name in SPLIT_PACKAGES:
+    COLLECTED_HIDDENIMPORTS.extend(collect_submodules(package_name))
 
 # ============================================
 # Exclusions for lightweight build
@@ -39,10 +61,6 @@ EXCLUDES = [
     # Unused database / network
     'sqlalchemy', 'aiohttp', 'asyncio', 'tornado', 'flask', 'django',
     'requests', 'urllib3', 'httpx', 'websockets',
-    
-    # Unused formats
-    'xml.dom', 'xml.sax', 'email', 'html', 'http',
-    'ftplib', 'imaplib', 'smtplib', 'telnetlib',
     
     # OpenCV unused submodules (reduces size significantly)
     'cv2.gapi',
@@ -91,7 +109,7 @@ a = Analysis(
         ('photo_cropper/i18n', 'photo_cropper/i18n'),
         *CV2_DATA_FILES,
     ],
-    hiddenimports=[
+    hiddenimports=sorted(set([
         # Ensure these are included
         'cv2',
         'numpy',
@@ -99,8 +117,22 @@ a = Analysis(
         'PIL.ImageOps',
         'photo_cropper.core.settings_model',
         'photo_cropper.core.batch_profile_manager',
+        'photo_cropper.core.app_paths',
         'photo_cropper.core.folder_watcher',
+        'photo_cropper.core.jobs',
+        'photo_cropper.core.jobs.orchestrator',
+        'photo_cropper.core.library',
+        'photo_cropper.core.library.duplicate_service',
+        'photo_cropper.core.library.ingest_service',
+        'photo_cropper.core.library.providers',
+        'photo_cropper.core.library.query_service',
+        'photo_cropper.core.library.repository',
+        'photo_cropper.core.library.review_service',
+        'photo_cropper.core.library.sqlite_store',
+        'photo_cropper.core.library.thumbnail_service',
         'photo_cropper.core.processed_index',
+        'photo_cropper.core.recipes',
+        'photo_cropper.core.recipes.manager',
         'photo_cropper.core.scheduler',
         'photo_cropper.core.advanced',
         'photo_cropper.core.face',
@@ -149,6 +181,7 @@ a = Analysis(
         'photo_cropper.ui.main.preview_actions',
         'photo_cropper.ui.main.settings_actions',
         'photo_cropper.ui.main.watch_actions',
+        'photo_cropper.ui.widgets.management_pages',
         'photo_cropper.ui.widgets.settings',
         'photo_cropper.i18n.catalog',
         'photo_cropper.i18n.catalog.locales',
@@ -161,7 +194,8 @@ a = Analysis(
         'PyQt6.QtCore',
         'PyQt6.QtGui', 
         'PyQt6.QtWidgets',
-    ],
+        *COLLECTED_HIDDENIMPORTS,
+    ])),
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
@@ -199,21 +233,26 @@ pyz = PYZ(
 )
 
 # ============================================
-# EXE Configuration
+# EXE / COLLECT Configuration
 # ============================================
+
+# NOTE:
+# Windows AppLocker / WDAC environments commonly block DLLs unpacked by
+# PyInstaller one-file executables from the per-run temp extraction directory.
+# Building as onedir keeps Qt/PyQt binaries beside the EXE in a stable location
+# and avoids the "DLL load failed ... application control policy blocked this
+# file" startup error seen in the field.
 
 exe = EXE(
     pyz,
     a.scripts,
-    a.binaries,
-    a.zipfiles,
-    a.datas,
     [],
+    exclude_binaries=True,
     name='PhotoCropper_v9',
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,  # Set True on Linux for smaller size
-    upx=True,     # Enable UPX compression
+    upx=False,    # Disabled for App Control / PyQt stability
     upx_exclude=[
         # Don't compress these (causes issues)
         'vcruntime140.dll',
@@ -233,6 +272,21 @@ exe = EXE(
     version=None,
 )
 
+coll = COLLECT(
+    exe,
+    a.binaries,
+    a.zipfiles,
+    a.datas,
+    strip=False,
+    upx=False,
+    upx_exclude=[
+        'vcruntime140.dll',
+        'python*.dll',
+        'Qt*.dll',
+    ],
+    name='PhotoCropper_v9',
+)
+
 # ============================================
 # Build Notes
 # ============================================
@@ -243,23 +297,24 @@ Build Commands:
     # Standard build
     pyinstaller photo_cropper.spec --clean
     
-    # With UPX (recommended for smaller size)
-    # Install UPX: https://github.com/upx/upx/releases
-    pyinstaller photo_cropper.spec --clean --upx-dir=/path/to/upx
-    
     # Debug build (with console)
     # Change console=True above, then:
     pyinstaller photo_cropper.spec --clean
 
 Expected Output Size:
-    - Without UPX: ~80-100 MB
-    - With UPX: ~50-70 MB
+    - onedir without UPX: larger than one-file, but more reliable under
+      Windows application control policies.
 
 Tips for further size reduction:
-    1. Install UPX compression
-    2. Use Python 3.11+ (smaller stdlib)
-    3. Use opencv-python-headless instead of opencv-python
-    4. Consider using Nuitka instead of PyInstaller
+    1. Use Python 3.11+ (smaller stdlib)
+    2. Use opencv-python-headless instead of opencv-python
+    3. Consider using Nuitka instead of PyInstaller
+
+If a single-file EXE is absolutely required:
+    - Code-sign the executable and extracted binaries, or
+    - Allowlist the PyInstaller temp extraction path in App Control policy, or
+    - Use a different packager/runtime strategy that does not unpack to a
+      blocked user-writable temp location.
 
 2026-03-01 note:
     - No additional binary dependencies were introduced by the CLI/watch/profile
@@ -324,4 +379,12 @@ Tips for further size reduction:
       overwrite/fileChanged handling are code-path-only updates.
     - No new third-party packages or PyInstaller hidden imports were required
       after verifying the current module graph against this patch set.
+
+2026-04-19 note:
+    - The management-app split added `core/library`, `core/jobs`,
+      `core/recipes`, `ui/widgets/management`, and deeper internal module
+      extraction under `core/batch` / `core/image`.
+    - Hidden imports now use `collect_submodules(...)` for split package
+      families so future internal module extraction does not require editing
+      this file every time.
 """

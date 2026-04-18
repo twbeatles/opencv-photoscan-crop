@@ -427,8 +427,12 @@ def _list_presets() -> int:
 def process_batch(args: argparse.Namespace) -> int:
     try:
         from .core.batch import BatchProcessor
+        from .core.jobs import JobOrchestrator
+        from .core.library import get_library_repository
     except ImportError:
         from photo_cropper.core.batch import BatchProcessor
+        from photo_cropper.core.jobs import JobOrchestrator
+        from photo_cropper.core.library import get_library_repository
 
     try:
         settings = build_settings_from_args(args)
@@ -444,6 +448,21 @@ def process_batch(args: argparse.Namespace) -> int:
         return 2
 
     processor = BatchProcessor(settings)
+    job_orchestrator = None
+    job_id: Optional[int] = None
+
+    try:
+        job_orchestrator = JobOrchestrator(get_library_repository())
+        job_id = job_orchestrator.create_job(
+            job_kind="cli_batch",
+            input_path=args.input,
+            output_path=args.output,
+            recipe_name=str(args.preset or ""),
+        )
+    except Exception as exc:
+        logger.warning("CLI job tracking unavailable: %s", exc)
+        job_orchestrator = None
+        job_id = None
 
     def on_log(message: str, level: str) -> None:
         level = str(level or "info").lower()
@@ -452,9 +471,39 @@ def process_batch(args: argparse.Namespace) -> int:
         else:
             print(message)
 
-    processor.set_callbacks(on_log=on_log)
+    def on_complete(progress, results) -> None:
+        if job_orchestrator is None or job_id is None:
+            return
+        try:
+            job_orchestrator.finalize_job(
+                job_id=job_id,
+                progress=progress,
+                results=list(results or []),
+                settings=settings,
+                recipe_name=str(args.preset or ""),
+                job_kind="cli_batch",
+            )
+        except Exception as exc:
+            logger.warning("CLI job finalization failed: %s", exc)
+
+    processor.set_callbacks(on_log=on_log, on_complete=on_complete)
 
     if not processor.start_async(args.input, args.output):
+        if job_orchestrator is not None and job_id is not None:
+            try:
+                job_orchestrator.repository.finalize_job(
+                    job_id,
+                    status="failed",
+                    total_items=0,
+                    processed_items=0,
+                    success_count=0,
+                    partial_count=0,
+                    failed_count=0,
+                    skipped_count=0,
+                    summary={"reason": "start_async_failed"},
+                )
+            except Exception:
+                logger.debug("Failed to finalize rejected CLI job", exc_info=True)
         print("ERROR: Failed to start batch processing", file=sys.stderr)
         return 2
 

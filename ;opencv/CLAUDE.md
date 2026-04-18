@@ -25,29 +25,26 @@ photo_cropper/
 ├── main.py
 ├── cli.py
 ├── core/
-│   ├── image/processor.py
-│   ├── image/types.py
-│   ├── batch/processor.py
-│   ├── batch/types.py
-│   ├── settings_model/app_settings.py
-│   ├── settings_model/manager.py
-│   ├── settings_model/migration.py
-│   ├── settings_model/validation.py
+│   ├── app_paths.py
+│   ├── image/
+│   ├── batch/
+│   ├── jobs/
+│   ├── library/
+│   ├── recipes/
+│   ├── settings_model/
 │   ├── multi_photo_detector.py
 │   ├── watermark_processor.py
 │   ├── resize_processor.py
 │   ├── folder_watcher.py
 │   ├── scheduler.py
+│   ├── processed_index.py
 │   └── history_manager.py
 ├── ui/
-│   ├── main/window.py
-│   ├── main/actions/        # UI action 계층
-│   ├── main/builders/       # menu/toolbar/central/statusbar/fab 빌더
-│   ├── main/models.py       # window state/refs/services/signals
-│   ├── main/services/       # runtime flow/message helpers
-│   ├── main/*.py            # 호환용 re-export shim
+│   ├── main/                # composition root + actions/builders/services
 │   ├── styles/
 │   └── widgets/
+│       ├── management/
+│       └── settings/
 ├── i18n/
 │   └── catalog/
 │       └── locales/*.py
@@ -74,6 +71,15 @@ photo_cropper/
 - `apply_post_pipeline`, `build_output_path`, `find_existing_output`
 - `lookup_processed_outputs_from_index`, `record_processed_outputs` (`skip_processed` 로컬 인덱스)
 - `BatchProgress.partial_success`로 full success와 partial success를 분리 집계
+
+### 2-1) Library / Jobs / Recipes
+
+관리앱 계층은 아래 서비스 조합을 기준으로 봅니다.
+
+- `LibraryRepository` (`core/library/repository.py`): SQLite 카탈로그 저장소 파사드
+- `LibraryIngestService` / `QueryService` / `ReviewService` / `DuplicateService`
+- `JobOrchestrator` (`core/jobs/orchestrator.py`): GUI/CLI/Watch/수동/maintenance 작업 기록과 실행 경로 통합
+- `RecipeManager` (`core/recipes/manager.py`): preset/profile/recipe 호환 저장소
 
 ### 3) MainWindow (`ui/main/window.py`)
 
@@ -157,7 +163,9 @@ pip install pyinstaller
 pyinstaller photo_cropper.spec --clean
 ```
 
-출력 예: `dist/PhotoCropper_v9.exe`
+출력 예:
+- 안정 onedir: `dist/PhotoCropper_v9/PhotoCropper_v9.exe`
+- 실험 onefile: `dist/PhotoCropper_v9_single.exe`
 
 ## 트러블슈팅
 
@@ -270,19 +278,21 @@ pyinstaller photo_cropper.spec --clean
 - Watch-mode processing uses an `AppSettings` snapshot with `file_management.move_failed_files=False`, preventing `_failed` subtree feedback loops without mutating the global settings object.
 - `FolderWatcher.fileChanged` now participates in reprocessing, but only queues when the file's size/mtime signature actually changed.
 
-## 2026-04-14 Refactor Status
+## 2026-04-19 Refactor Status
 
 - 완료:
-  - Python locale 카탈로그 기반 i18n manager 정리
-  - 런타임 UI 재번역 경로 및 action/service message factory 추가
-  - 공용 path validation + settings model migration/validation 분리
-  - `core.{image,batch}.types` 분리와 `ui.main.services` 패키지 추가
-- 미완료:
-  - `ui/widgets/settings/panel.py`, `core/image/processor.py`, `core/batch/processor.py`, `selftest.py`는 여전히 대형 파일이며 추가 분할 대상
+  - `ui/widgets/settings/panel.py`는 coordinator 역할만 남기고 `tab_basic.py`, `tab_algorithm.py`, `tab_processing.py`, `tab_management.py`, `tab_ai.py`, `controls.py`로 분리
+  - `ui/widgets/management_pages.py`는 호환용 파사드로 축소되고 실제 구현은 `ui/widgets/management/` 패키지로 이동
+  - `core/batch/processor.py`, `core/image/processor.py`, `core/library/repository.py`는 파사드로 축소되고 내부 구현은 세부 모듈로 이동
+  - `core/batch/single.py`, `core/image/detect.py`, `core/library/_repository_assets.py`도 추가 분할
+  - 관리앱 계층(`core/library`, `core/jobs`, `core/recipes`)과 관리 셸 UI가 기본 구조로 자리잡음
 - 패키징 주의:
-  - frozen build에서는 `photo_cropper.i18n.catalog.locales.*`를 hidden import로 유지해야 함
-- `ProcessedIndexStore` moved to schema v2 with backward-compatible `status` normalization; legacy records default to `success`, partial records do not force full skip.
-- `retry_failed_files()` now reuses the same output-path normalization/validation as regular batch start (`<input>/output_cropped` fallback).
+  - frozen build에서는 locale 패키지와 분할된 하위 모듈들을 안정적으로 포함해야 하므로 `photo_cropper.spec`/`photo_cropper_onefile.spec`는 `collect_submodules(...)` 기반 자동 수집을 사용
+  - 기본 배포 타깃은 `photo_cropper.spec` onedir 빌드이며, `photo_cropper_onefile.spec`는 실험용으로 유지
+- 검증 기준:
+  - `python -m compileall -q photo_cropper`
+  - `python -m photo_cropper.selftest`
+  - `pyright --project pyrightconfig.json`
 
 ## 2026-04-06 Implementation Alignment Update
 

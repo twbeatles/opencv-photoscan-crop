@@ -67,6 +67,13 @@
 - **안전한 경로 조각 검증**: 자동 분류 폴더명과 naming prefix/suffix는 단일 path segment 규칙으로 즉시 검증
 - **분류 폴더 locale 기본값**: 분류 폴더 입력을 비워두면 현재 UI 언어 기본 폴더명을 사용하고, 구 기본 한글값은 자동 마이그레이션
 
+### 🗂️ 관리 셸 및 리팩터링 업데이트 (2026-04-19)
+- **관리 셸 중심 UX**: 메인 화면이 `라이브러리`, `워크벤치`, `검토`, `중복`, `작업`, `컬렉션`, `레시피`, `설정` 섹션 중심으로 확장
+- **카탈로그/작업 이력 계층 도입**: 관리앱 관련 핵심 로직이 `photo_cropper/core/library/`, `core/jobs/`, `core/recipes/`로 정리
+- **SOLID 기반 분할 리팩터링**: 기존 대형 파일을 얇은 파사드 + 책임별 내부 모듈 구조로 재편
+- **패키징 안정화**: PyInstaller spec이 분할된 하위 모듈들을 자동 수집하도록 보강
+- **검증 기준 갱신**: `compileall`, `selftest`와 함께 `pyright`를 기본 정합성 점검 항목으로 포함
+
 ### 🔥 v8.5 핵심 기능
 - **다중 사진 자동 감지**: 한 스캔에서 여러 사진을 자동으로 분리
 - **워터마크 추가**: 텍스트/이미지 워터마크 지원
@@ -291,28 +298,34 @@ python -m photo_cropper.cli --help
 ;opencv/
 ├── run.py
 ├── photo_cropper.spec
+├── photo_cropper_onefile.spec
 └── photo_cropper/
     ├── main.py
     ├── cli.py
     ├── benchmark.py
     ├── core/
-    │   ├── image/processor.py
-    │   ├── batch/processor.py
-    │   ├── settings_model/app_settings.py
+    │   ├── app_paths.py
+    │   ├── batch/
+    │   ├── image/
+    │   ├── jobs/
+    │   ├── library/
+    │   ├── recipes/
+    │   ├── settings_model/
+    │   ├── manual_extract/
+    │   ├── watch_mode/
     │   ├── multi_photo_detector.py
-    │   ├── watermark_processor.py
+    │   ├── processed_index.py
     │   ├── resize_processor.py
-    │   ├── folder_watcher.py
     │   ├── scheduler.py
-    │   └── history_manager.py
+    │   └── watermark_processor.py
     ├── ui/
-    │   ├── main/window.py
-    │   ├── main/models.py
-    │   ├── main/actions/
-    │   ├── main/builders/
-    │   └── widgets/settings/panel.py
-    ├── i18n/catalog/manager.py
-    └── utils/file_helpers.py
+    │   ├── main/
+    │   └── widgets/
+    │       ├── management/
+    │       └── settings/
+    ├── i18n/catalog/
+    └── utils/
+        └── path_validation.py
 ```
 
 ## 🔧 빌드 (PyInstaller)
@@ -323,29 +336,33 @@ python -m photo_cropper.cli --help
 # 의존성 설치
 pip install pyinstaller
 
-# 저장소 루트에서 빌드
+# 저장소 루트에서 안정 빌드
 pyinstaller ".\\;opencv\\photo_cropper.spec" --clean
+
+# 저장소 루트에서 단일 파일 실험 빌드
+pyinstaller ".\\;opencv\\photo_cropper_onefile.spec" --clean
 ```
 
-빌드된 실행 파일: `dist/PhotoCropper_v9.exe`
+생성 결과:
+- 안정 onedir 빌드: `;opencv/dist/PhotoCropper_v9/PhotoCropper_v9.exe`
+- 실험 onefile 빌드: `;opencv/dist/PhotoCropper_v9_single.exe`
 
-### 추가 경량화 (UPX)
+### 패키징 참고
 
-[UPX](https://github.com/upx/upx/releases)를 설치하면 실행 파일 크기가 약 30-50% 감소합니다:
-
-1. UPX 다운로드 및 압축 해제
-2. `upx.exe`를 시스템 PATH에 추가
-3. 다시 빌드: `pyinstaller ".\\;opencv\\photo_cropper.spec" --clean`
+- `photo_cropper.spec`는 Windows 앱 제어 정책 환경에서 더 안정적인 기본 빌드 대상입니다.
+- `photo_cropper_onefile.spec`는 편의용/실험용이며, 런타임 압축 해제 경로에 여전히 의존합니다.
+- 두 spec 모두 Qt/PyQt 안정성을 위해 UPX 압축을 비활성화했습니다.
 
 ### 빌드 최적화 내용
 
 | 항목 | 설명 |
 |------|------|
-| 단일 파일 | onefile 모드로 단일 .exe 생성 |
+| 기본 빌드 | `photo_cropper.spec`는 onedir 앱 폴더를 생성 |
+| 실험 빌드 | `photo_cropper_onefile.spec`는 단일 `.exe`를 생성 |
 | 불필요 모듈 제외 | matplotlib, scipy, pandas, tkinter 등 |
+| 분할 모듈 자동 수집 | 리팩터링된 `core/*`, `ui/*` 하위 모듈을 자동 수집 |
 | OpenCV/Qt 경량화 | `cv2.gapi` 제외 및 불필요한 Qt/OpenCV 런타임 바이너리 선별 제외 |
-| NumPy 경량화 | 테스트/문서 파일 제거 |
-| UPX 압축 | 실행 파일 압축 (~40% 크기 감소) |
+| 압축 정책 | App Control / PyQt 안정성을 위해 UPX 비활성화 |
 
 ## 📋 변경 이력
 
@@ -483,3 +500,17 @@ MIT License
 - 위젯 생성은 `ui/main/builders/`로 분리되었고, shared context는 `ui/main/models.py`에 정리되었습니다.
 - `photo_cropper.spec` hidden import는 새 canonical 경로(`ui.main.actions.*`, `ui.main.builders.*`, `ui.main.models`)와 호환용 shim 경로를 함께 포함하도록 갱신했습니다.
 - `ui.main.batch_actions` 등 기존 평면 import 경로는 호환용 re-export shim으로 유지됩니다.
+
+## 2026-04-19 관리앱/리팩터링 메모
+
+- 라이브러리 ingest, review queue, duplicates, collections, recipes, jobs를 `core/library`, `core/jobs`, `core/recipes` 패키지로 분리해 관리앱 아키텍처를 고정했습니다.
+- 다음 파일들은 외부 API 호환을 위한 파사드로 유지되고, 실제 구현은 내부 모듈로 이동했습니다:
+  - `core/batch/processor.py`
+  - `core/image/processor.py`
+  - `core/library/repository.py`
+  - `ui/widgets/management_pages.py`
+- `core/batch/single.py`, `core/image/detect.py`, `core/library/_repository_assets.py`도 추가 분할돼 책임 경계를 더 명확히 했습니다.
+- 현재 기본 검증 기준:
+  - `cd ";opencv" && python -m compileall -q photo_cropper`
+  - `cd ";opencv" && python -m photo_cropper.selftest`
+  - `pyright --project .\\pyrightconfig.json`

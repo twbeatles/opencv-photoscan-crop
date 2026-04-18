@@ -20,6 +20,20 @@ dist/
 **/*_photos/
 *.photocropper
 
+# Local library/catalog cache artifacts
+library.db
+library.db-shm
+library.db-wal
+preview_cache/
+thumbnails/
+logs/
+;opencv/library.db
+;opencv/library.db-shm
+;opencv/library.db-wal
+;opencv/preview_cache/
+;opencv/thumbnails/
+;opencv/logs/
+
 # PyInstaller cache
 *.spec.bak
 

@@ -284,6 +284,7 @@ class ToolActions:
         if not manager.apply_profile(profile, self.state.settings):
             return
 
+        self.state.active_recipe_name = profile
         if self._sync_current_settings is not None:
             self._sync_current_settings(sync_panel=True, reconfigure_scheduler=True)
         ToastManager.success(t("tools.profile.toast", profile=profile))
@@ -300,6 +301,7 @@ class ToolActions:
         if not manager.apply_preset(preset_name, self.state.settings):
             return
 
+        self.state.active_recipe_name = preset_name
         if self._sync_current_settings is not None:
             self._sync_current_settings(sync_panel=True, reconfigure_scheduler=True)
         if self.refs.status_label is not None:

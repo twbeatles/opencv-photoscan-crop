@@ -4,7 +4,7 @@
 
 from __future__ import annotations
 
-from typing import Callable, List, Optional
+from typing import Any, Callable, List, Optional
 
 from .processor import BatchProcessor
 from .types import BatchProgress
@@ -28,7 +28,7 @@ class BatchSessionService:
         return list(self._processor.failed_files or [])
 
     def create_processor(
-        self,
+        self: Any,
         settings: AppSettings,
         on_progress: Optional[Callable[[BatchProgress], None]] = None,
         on_log: Optional[Callable[[str, str], None]] = None,
@@ -47,7 +47,7 @@ class BatchSessionService:
         return processor
 
     def start_async(
-        self,
+        self: Any,
         settings: AppSettings,
         input_path: str,
         output_path: str,

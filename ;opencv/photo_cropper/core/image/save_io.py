@@ -1,3 +1,4 @@
+# pyright: reportAttributeAccessIssue=false
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """Image save I/O utilities.
@@ -145,4 +146,102 @@ def save_image_unicode(
     except Exception as e:
         logger.error(f"Image save error: {e}")
         return False, f"저장 오류: {str(e)}", 0.0
+
+
+class ImageSaveMixin:
+    @staticmethod
+    def _resolve_save_codec(
+        output_path: str,
+        output_format: str,
+    ) -> Tuple[str, str]:
+        """Resolve encoder extension and format with extension fallback."""
+        return resolve_save_codec(output_path, output_format)
+    @staticmethod
+    def _copy_metadata_best_effort(source_path: str, output_path: str) -> None:
+        """Best-effort EXIF/ICC metadata copy via Pillow."""
+        copy_metadata_best_effort(source_path, output_path)
+    @staticmethod
+    def save_image(
+        image: np.ndarray,
+        output_path: str,
+        output_format: str = "JPG",
+        jpg_quality: int = 95,
+        png_compression: int = 6,
+        webp_quality: int = 90,
+        source_path: Optional[str] = None,
+        preserve_metadata: bool = False,
+    ) -> Tuple[bool, str, float]:
+        """
+        Save image to file with Unicode path support.
+
+        Args:
+            image: Image array to save
+            output_path: Output file path
+            output_format: Format (JPG, PNG, WEBP)
+            jpg_quality: JPEG quality (1-100)
+            png_compression: PNG compression (0-9)
+            webp_quality: WebP quality (1-100)
+            source_path: Source image path for metadata copy
+            preserve_metadata: Best-effort EXIF/ICC preservation
+
+        Returns:
+            Tuple of (success, message, file_size_kb)
+        """
+        return save_image_unicode(
+            image=image,
+            output_path=output_path,
+            output_format=output_format,
+            jpg_quality=jpg_quality,
+            png_compression=png_compression,
+            webp_quality=webp_quality,
+            source_path=source_path,
+            preserve_metadata=preserve_metadata,
+        )
+    @staticmethod
+    def get_image_info(image_path: str) -> Optional[Tuple[int, int, int]]:
+        """
+        Get image dimensions without fully loading.
+
+        Args:
+            image_path: Path to image
+
+        Returns:
+            Tuple of (width, height, channels) or None
+        """
+        # Try PIL first - only reads headers, much faster for large images
+        try:
+            from PIL import Image
+
+            with Image.open(image_path) as img:
+                w, h = img.size
+                # Determine channels from mode
+                mode_channels = {
+                    "L": 1,
+                    "LA": 2,
+                    "P": 1,
+                    "RGB": 3,
+                    "RGBA": 4,
+                    "CMYK": 4,
+                    "YCbCr": 3,
+                    "LAB": 3,
+                    "HSV": 3,
+                }
+                c = mode_channels.get(img.mode, 3)
+                return w, h, c
+        except ImportError:
+            pass
+        except Exception:
+            pass
+
+        # Fallback to OpenCV (loads full image)
+        try:
+            img_array = np.fromfile(image_path, np.uint8)
+            image = cv2.imdecode(img_array, cv2.IMREAD_COLOR)
+            if image is not None:
+                h, w = image.shape[:2]
+                c = image.shape[2] if len(image.shape) > 2 else 1
+                return w, h, c
+        except Exception:
+            pass
+        return None
 

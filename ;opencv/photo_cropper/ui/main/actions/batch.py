@@ -196,6 +196,79 @@ class BatchActions:
         dialog.show()
         self.refs.progress_dialog = dialog
 
+    def _start_job_tracking(self, job_kind: str, input_path: str, output_path: str) -> None:
+        self.state.active_job_id = None
+        self.state.active_job_kind = job_kind
+        job_orchestrator = getattr(self.services, "job_orchestrator", None)
+        if job_orchestrator is None:
+            return
+        try:
+            self.state.active_job_id = job_orchestrator.create_job(
+                job_kind=job_kind,
+                input_path=input_path,
+                output_path=output_path,
+                recipe_name=self.state.active_recipe_name,
+            )
+        except Exception:
+            logger.debug("Failed to create tracked job", exc_info=True)
+
+    def start_processing_with_files(
+        self,
+        *,
+        job_kind: str,
+        input_path: str,
+        output_path: str,
+        files: list[str],
+        tracked_job_id: Optional[int] = None,
+    ) -> bool:
+        if self.state.manual_extract_running:
+            QMessageBox.warning(
+                self.services.host_window,
+                self.messages.warning_title,
+                t("batch.manual_extract_running"),
+            )
+            return False
+        if self._is_batch_running():
+            self._show_batch_running_warning()
+            return False
+        if self._is_watch_running():
+            self._show_watch_running_warning()
+            return False
+        if not self._validate_runtime_settings():
+            return False
+        if not files:
+            QMessageBox.information(
+                self.services.host_window,
+                self.messages.info_title,
+                t("batch.no_files"),
+            )
+            return False
+
+        try:
+            self.services.batch_session.create_processor(
+                settings=self.state.settings,
+                on_progress=self.signals.batch_progress_received.emit,
+                on_log=self.signals.batch_log_received.emit,
+                on_complete=self.signals.batch_complete_received.emit,
+            )
+        except RuntimeError as exc:
+            QMessageBox.warning(self.services.host_window, self.messages.warning_title, str(exc))
+            return False
+
+        self.state.active_job_kind = job_kind
+        self.state.active_job_id = int(tracked_job_id) if tracked_job_id is not None else None
+        if tracked_job_id is None:
+            self._start_job_tracking(job_kind, input_path, output_path)
+        self._create_progress_dialog(output_path)
+        processor = self.batch_processor
+        assert processor is not None
+        if not processor.start_async(input_path, output_path, list(files)):
+            self.state.active_job_id = None
+            self.state.active_job_kind = ""
+            return False
+        self.update_batch_edit_controls()
+        return True
+
     def start_processing(self) -> None:
         if self.state.manual_extract_running:
             QMessageBox.warning(
@@ -245,21 +318,12 @@ class BatchActions:
             )
             return
 
-        try:
-            self.services.batch_session.create_processor(
-                settings=self.state.settings,
-                on_progress=self.signals.batch_progress_received.emit,
-                on_log=self.signals.batch_log_received.emit,
-                on_complete=self.signals.batch_complete_received.emit,
-            )
-        except RuntimeError as exc:
-            QMessageBox.warning(self.services.host_window, self.messages.warning_title, str(exc))
-            return
-        self._create_progress_dialog(output_path)
-        processor = self.batch_processor
-        assert processor is not None
-        processor.start_async(input_path, output_path, files)
-        self.update_batch_edit_controls()
+        self.start_processing_with_files(
+            job_kind="batch",
+            input_path=input_path,
+            output_path=output_path,
+            files=files,
+        )
 
     def cancel_processing(self) -> None:
         if self.state.manual_extract_running:
@@ -320,6 +384,23 @@ class BatchActions:
         )
 
     def on_batch_complete(self, progress: BatchProgress, results: list) -> None:
+        job_orchestrator = getattr(self.services, "job_orchestrator", None)
+        if self.state.active_job_id is not None and job_orchestrator is not None:
+            try:
+                job_orchestrator.finalize_job(
+                    job_id=int(self.state.active_job_id),
+                    progress=progress,
+                    results=list(results or []),
+                    settings=self.state.settings,
+                    recipe_name=self.state.active_recipe_name,
+                    job_kind=self.state.active_job_kind or "batch",
+                )
+            except Exception:
+                logger.debug("Failed to finalize tracked job", exc_info=True)
+            finally:
+                self.state.active_job_id = None
+                self.state.active_job_kind = ""
+
         partial_count = int(getattr(progress, "partial_success", 0) or 0)
         full_success_count = int(progress.success)
         summary_message = self.messages.batch_summary(
@@ -412,6 +493,9 @@ class BatchActions:
                 open_file_explorer(output_path)
 
         self.update_batch_edit_controls()
+        refresh_views = getattr(self.services.host_window, "refresh_management_views", None)
+        if callable(refresh_views):
+            refresh_views()
 
     def retry_failed_files(self) -> None:
         if self._is_batch_running():
@@ -447,21 +531,12 @@ class BatchActions:
             return
         input_path, output_path = paths
 
-        try:
-            self.services.batch_session.create_processor(
-                settings=self.state.settings,
-                on_progress=self.signals.batch_progress_received.emit,
-                on_log=self.signals.batch_log_received.emit,
-                on_complete=self.signals.batch_complete_received.emit,
-            )
-        except RuntimeError as exc:
-            QMessageBox.warning(self.services.host_window, self.messages.warning_title, str(exc))
-            return
-        self._create_progress_dialog(output_path)
-        processor = self.batch_processor
-        assert processor is not None
-        processor.start_async(input_path, output_path, failed)
-        self.update_batch_edit_controls()
+        self.start_processing_with_files(
+            job_kind="batch_retry",
+            input_path=input_path,
+            output_path=output_path,
+            files=list(failed),
+        )
 
     def load_batch_images_for_edit(self) -> None:
         input_path = self.refs.input_path_edit.text() if self.refs.input_path_edit else ""
@@ -618,6 +693,7 @@ class BatchActions:
 
         self.state.manual_extract_stop_event.clear()
         self.state.manual_extract_running = True
+        self._start_job_tracking("manual_extract", input_path, output_path)
         self.update_batch_edit_controls()
         self._create_progress_dialog(output_path)
 

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# pyright: reportAttributeAccessIssue=false
+# pyright: reportAttributeAccessIssue=false, reportArgumentType=false
 # -*- coding: utf-8 -*-
 """
 Lightweight self-tests for Photo Cropper.
@@ -3290,6 +3290,571 @@ def _test_benchmark_harness_report_contract() -> None:
             assert key in metrics
 
 
+def _test_library_catalog_import_and_duplicates() -> None:
+    import os
+    import tempfile
+
+    import cv2
+    import numpy as np
+
+    from .core.library import DuplicateService, LibraryIngestService, ThumbnailService
+    from .core.library.repository import LibraryRepository
+    from .core.library.sqlite_store import LibrarySqliteStore
+
+    with tempfile.TemporaryDirectory(prefix="photocropper_library_catalog_") as td:
+        image_dir = os.path.join(td, "images")
+        os.makedirs(image_dir, exist_ok=True)
+        sample = np.full((120, 180, 3), 190, dtype=np.uint8)
+        ok, encoded = cv2.imencode(".jpg", sample)
+        assert ok
+        for name in ("a.jpg", "b.jpg"):
+            encoded.tofile(os.path.join(image_dir, name))
+
+        repository = LibraryRepository(
+            LibrarySqliteStore(db_path=os.path.join(td, "library.db"))
+        )
+        thumbnails = ThumbnailService(
+            thumbnails_dir=os.path.join(td, "thumbs"),
+            size=96,
+        )
+        duplicates = DuplicateService(repository)
+        ingest = LibraryIngestService(
+            repository,
+            thumbnail_service=thumbnails,
+            duplicate_service=duplicates,
+        )
+
+        assert ingest.import_directory(image_dir, recursive=True) == 2
+        assert ingest.import_directory(image_dir, recursive=True) == 2
+
+        assets = repository.list_assets(limit=10)
+        assert len(assets) == 2
+        duplicate_groups = repository.list_duplicate_groups(kind="exact")
+        assert len(duplicate_groups) == 1
+        for asset in assets:
+            assert os.path.exists(asset["primary_source_path"])
+
+
+def _test_job_orchestrator_records_variants_and_review_queue() -> None:
+    import os
+    import tempfile
+
+    import cv2
+    import numpy as np
+
+    from .core.batch import BatchProgress, FileResult, ProcessStatus
+    from .core.jobs import JobOrchestrator
+    from .core.library import DuplicateService, ThumbnailService
+    from .core.library.repository import LibraryRepository
+    from .core.library.sqlite_store import LibrarySqliteStore
+    from .core.settings_model import AppSettings
+
+    with tempfile.TemporaryDirectory(prefix="photocropper_job_catalog_") as td:
+        input_dir = os.path.join(td, "input")
+        output_dir = os.path.join(td, "output")
+        os.makedirs(input_dir, exist_ok=True)
+        os.makedirs(output_dir, exist_ok=True)
+
+        image = np.full((140, 220, 3), 200, dtype=np.uint8)
+        ok, encoded = cv2.imencode(".jpg", image)
+        assert ok
+        src_success = os.path.join(input_dir, "success.jpg")
+        src_failed = os.path.join(input_dir, "failed.jpg")
+        out_success = os.path.join(output_dir, "success_cropped.jpg")
+        encoded.tofile(src_success)
+        encoded.tofile(src_failed)
+        encoded.tofile(out_success)
+
+        repository = LibraryRepository(
+            LibrarySqliteStore(db_path=os.path.join(td, "library.db"))
+        )
+        thumbnails = ThumbnailService(
+            thumbnails_dir=os.path.join(td, "thumbs"),
+            size=96,
+        )
+        orchestrator = JobOrchestrator(
+            repository,
+            thumbnail_service=thumbnails,
+            duplicate_service=DuplicateService(repository),
+        )
+        settings = AppSettings()
+        job_id = orchestrator.create_job(
+            job_kind="selftest_batch",
+            input_path=input_dir,
+            output_path=output_dir,
+            recipe_name="문서 스캔",
+        )
+
+        progress = BatchProgress(
+            total=2,
+            processed=2,
+            success=1,
+            failed=1,
+            is_running=False,
+        )
+        results = [
+            FileResult(
+                filename="success.jpg",
+                status=ProcessStatus.SUCCESS,
+                source_path=src_success,
+                output_path=out_success,
+                output_paths=[out_success],
+            ),
+            FileResult(
+                filename="failed.jpg",
+                status=ProcessStatus.FAILED,
+                source_path=src_failed,
+                message="synthetic failure",
+            ),
+        ]
+        orchestrator.finalize_job(
+            job_id=job_id,
+            progress=progress,
+            results=results,
+            settings=settings,
+            recipe_name="문서 스캔",
+            job_kind="selftest_batch",
+        )
+
+        jobs = repository.list_jobs(limit=5)
+        assert jobs
+        assert jobs[0]["status"] == "partial_success"
+        assets = repository.list_assets(limit=10)
+        assert len(assets) == 2
+        success_asset = next(
+            asset for asset in assets if asset["primary_source_path"] == src_success
+        )
+        detail = repository.get_asset_detail(int(success_asset["id"]))
+        assert detail is not None
+        assert len(detail["variants"]) == 1
+        review_items = repository.list_review_items(limit=10)
+        assert len(review_items) == 1
+        assert review_items[0]["primary_source_path"] == src_failed
+
+
+def _test_library_search_and_collections() -> None:
+    import os
+    import tempfile
+
+    import cv2
+    import numpy as np
+
+    from .core.library.query_service import QueryService
+    from .core.library.repository import LibraryRepository
+    from .core.library.sqlite_store import LibrarySqliteStore
+
+    with tempfile.TemporaryDirectory(prefix="photocropper_library_search_") as td:
+        input_dir = os.path.join(td, "input")
+        os.makedirs(input_dir, exist_ok=True)
+        image = np.full((100, 150, 3), 180, dtype=np.uint8)
+        ok, encoded = cv2.imencode(".jpg", image)
+        assert ok
+        image_path = os.path.join(input_dir, "receipt.jpg")
+        encoded.tofile(image_path)
+
+        repository = LibraryRepository(
+            LibrarySqliteStore(db_path=os.path.join(td, "library.db"))
+        )
+        record = repository.upsert_source(image_path)
+        asset_id = int(record["asset_id"])
+        repository.set_asset_note(asset_id, "receipt from archive")
+        collection_id = repository.create_collection("Archive")
+        assert collection_id is not None
+        repository.add_asset_to_collection(asset_id, int(collection_id))
+
+        query = QueryService(repository)
+        assets = query.list_assets(search_text="receipt", limit=10)
+        assert len(assets) == 1
+        filtered = query.list_assets(collection_id=int(collection_id), limit=10)
+        assert len(filtered) == 1
+
+
+def _test_duplicate_service_near_groups() -> None:
+    import os
+    import tempfile
+
+    import cv2
+    import numpy as np
+
+    from .core.library.duplicate_service import DuplicateService
+    from .core.library.repository import LibraryRepository
+    from .core.library.sqlite_store import LibrarySqliteStore
+
+    with tempfile.TemporaryDirectory(prefix="photocropper_near_dupes_") as td:
+        image_a = np.full((220, 220, 3), 220, dtype=np.uint8)
+        cv2.rectangle(image_a, (40, 50), (180, 170), (40, 40, 40), 4)
+        cv2.line(image_a, (60, 60), (160, 160), (90, 90, 90), 3)
+        image_b = image_a.copy()
+        cv2.rectangle(image_b, (42, 52), (178, 168), (40, 40, 40), 4)
+        cv2.circle(image_b, (110, 110), 8, (120, 120, 120), -1)
+
+        path_a = os.path.join(td, "a.jpg")
+        path_b = os.path.join(td, "b.jpg")
+        ok, encoded_a = cv2.imencode(".jpg", image_a)
+        assert ok
+        ok, encoded_b = cv2.imencode(".jpg", image_b)
+        assert ok
+        encoded_a.tofile(path_a)
+        encoded_b.tofile(path_b)
+
+        repository = LibraryRepository(
+            LibrarySqliteStore(db_path=os.path.join(td, "library.db"))
+        )
+        repository.upsert_source(path_a)
+        repository.upsert_source(path_b)
+
+        duplicate_service = DuplicateService(repository)
+        assert duplicate_service.rebuild_near_groups(max_distance=20) >= 1
+        groups = duplicate_service.list_groups(kind="near")
+        assert len(groups) >= 1
+
+
+def _test_duplicate_preferences_preserved_on_rebuild() -> None:
+    import os
+    import tempfile
+
+    import cv2
+    import numpy as np
+
+    from .core.library.duplicate_service import DuplicateService
+    from .core.library.repository import LibraryRepository
+    from .core.library.sqlite_store import LibrarySqliteStore
+
+    with tempfile.TemporaryDirectory(prefix="photocropper_dupe_prefs_") as td:
+        image = np.full((120, 180, 3), 160, dtype=np.uint8)
+        ok, encoded = cv2.imencode(".jpg", image)
+        assert ok
+        path_a = os.path.join(td, "a.jpg")
+        path_b = os.path.join(td, "b.jpg")
+        encoded.tofile(path_a)
+        encoded.tofile(path_b)
+
+        repository = LibraryRepository(
+            LibrarySqliteStore(db_path=os.path.join(td, "library.db"))
+        )
+        record_a = repository.upsert_source(path_a)
+        record_b = repository.upsert_source(path_b)
+        duplicate_service = DuplicateService(repository)
+        assert duplicate_service.rebuild_exact_groups() == 1
+        group = repository.list_duplicate_groups(kind="exact")[0]
+        group_id = int(group["id"])
+        asset_a = int(record_a["asset_id"])
+        asset_b = int(record_b["asset_id"])
+
+        duplicate_service.set_representative(group_id, asset_b)
+        duplicate_service.set_excluded(group_id, asset_a, True)
+        duplicate_service.rebuild_exact_groups()
+
+        rebuilt = repository.list_duplicate_groups(kind="exact")[0]
+        assert int(rebuilt["representative_asset_id"]) == asset_b
+        members = {
+            int(item["asset_id"]): item
+            for item in repository.list_duplicate_group_members(int(rebuilt["id"]))
+        }
+        assert int(members[asset_a]["is_excluded"]) == 1
+
+
+def _test_source_relink_unique_and_ambiguous() -> None:
+    import os
+    import tempfile
+
+    import cv2
+    import numpy as np
+
+    from .core.library import LibraryIngestService, ThumbnailService
+    from .core.library.duplicate_service import DuplicateService
+    from .core.library.repository import LibraryRepository
+    from .core.library.sqlite_store import LibrarySqliteStore
+
+    with tempfile.TemporaryDirectory(prefix="photocropper_relink_unique_") as td:
+        repository = LibraryRepository(
+            LibrarySqliteStore(db_path=os.path.join(td, "library.db"))
+        )
+        ingest = LibraryIngestService(
+            repository,
+            thumbnail_service=ThumbnailService(thumbnails_dir=os.path.join(td, "thumbs")),
+            duplicate_service=DuplicateService(repository),
+        )
+        image = np.full((100, 140, 3), 220, dtype=np.uint8)
+        ok, encoded = cv2.imencode(".jpg", image)
+        assert ok
+
+        original = os.path.join(td, "original.jpg")
+        renamed = os.path.join(td, "renamed.jpg")
+        encoded.tofile(original)
+        first = repository.upsert_source(original)
+        os.replace(original, renamed)
+        stats = repository.scan_missing_sources()
+        assert stats["missing"] == 1
+        relinked = ingest.ingest_file(renamed)
+        assert str(relinked["ingest_state"]) == "relinked"
+        assert int(relinked["asset_id"]) == int(first["asset_id"])
+
+    with tempfile.TemporaryDirectory(prefix="photocropper_relink_ambiguous_") as td:
+        repository = LibraryRepository(
+            LibrarySqliteStore(db_path=os.path.join(td, "library.db"))
+        )
+        ingest = LibraryIngestService(
+            repository,
+            thumbnail_service=ThumbnailService(thumbnails_dir=os.path.join(td, "thumbs")),
+            duplicate_service=DuplicateService(repository),
+        )
+        image = np.full((100, 140, 3), 210, dtype=np.uint8)
+        ok, encoded = cv2.imencode(".jpg", image)
+        assert ok
+
+        path_a = os.path.join(td, "missing_a.jpg")
+        path_b = os.path.join(td, "missing_b.jpg")
+        pending = os.path.join(td, "pending.jpg")
+        encoded.tofile(path_a)
+        encoded.tofile(path_b)
+        repository.upsert_source(path_a)
+        repository.upsert_source(path_b)
+        os.remove(path_a)
+        os.remove(path_b)
+        repository.scan_missing_sources()
+        encoded.tofile(pending)
+        record = ingest.ingest_file(pending)
+        assert str(record["ingest_state"]) == "ambiguous_relink"
+        review_items = repository.list_review_items(limit=10)
+        assert review_items
+        assert review_items[0]["reason"] == "source_relink_required"
+
+
+def _test_recipe_determinism_and_preserved_global_state() -> None:
+    import os
+    import tempfile
+
+    from .core.recipes.manager import RecipeManager, RecipeRecord
+    from .core.settings_model import AppSettings
+
+    original_env = {
+        "APPDATA": os.environ.get("APPDATA"),
+        "LOCALAPPDATA": os.environ.get("LOCALAPPDATA"),
+        "HOME": os.environ.get("HOME"),
+    }
+    with tempfile.TemporaryDirectory(prefix="photocropper_recipe_det_") as td:
+        os.environ["APPDATA"] = td
+        os.environ["LOCALAPPDATA"] = td
+        os.environ["HOME"] = td
+        manager = RecipeManager()
+        manager.save_recipe(
+            RecipeRecord(
+                name="Deterministic",
+                settings_snapshot={
+                    "algorithm": {"canny_min": 12},
+                    "output": {"jpg_quality": 81},
+                },
+            )
+        )
+
+        settings_a = AppSettings()
+        settings_a.algorithm.canny_min = 220
+        settings_a.output.jpg_quality = 50
+        settings_a.ui.theme = "light"
+        settings_a.last_input_path = "A"
+
+        settings_b = AppSettings()
+        settings_b.algorithm.canny_min = 140
+        settings_b.output.jpg_quality = 30
+        settings_b.ui.theme = "dark"
+        settings_b.last_input_path = "B"
+
+        assert manager.apply_recipe("Deterministic", settings_a) is True
+        assert manager.apply_recipe("Deterministic", settings_b) is True
+        assert settings_a.algorithm.canny_min == 12
+        assert settings_b.algorithm.canny_min == 12
+        assert settings_a.output.jpg_quality == 81
+        assert settings_b.output.jpg_quality == 81
+        assert settings_a.ui.theme == "light"
+        assert settings_b.ui.theme == "dark"
+        assert settings_a.last_input_path == "A"
+        assert settings_b.last_input_path == "B"
+    for key, value in original_env.items():
+        if value is None:
+            os.environ.pop(key, None)
+        else:
+            os.environ[key] = value
+
+
+def _test_review_service_guard_and_reprocess_queue() -> None:
+    import os
+    import tempfile
+
+    import cv2
+    import numpy as np
+
+    from .core.jobs import JobOrchestrator
+    from .core.library import DuplicateService, ReviewService, ThumbnailService
+    from .core.library.repository import LibraryRepository
+    from .core.library.sqlite_store import LibrarySqliteStore
+
+    with tempfile.TemporaryDirectory(prefix="photocropper_review_queue_") as td:
+        repository = LibraryRepository(
+            LibrarySqliteStore(db_path=os.path.join(td, "library.db"))
+        )
+        thumbnails = ThumbnailService(thumbnails_dir=os.path.join(td, "thumbs"))
+        orchestrator = JobOrchestrator(
+            repository,
+            thumbnail_service=thumbnails,
+            duplicate_service=DuplicateService(repository),
+        )
+        review_service = ReviewService(
+            repository,
+            create_reprocess_job=orchestrator.prepare_review_reprocess,
+        )
+        image = np.full((120, 180, 3), 170, dtype=np.uint8)
+        ok, encoded = cv2.imencode(".jpg", image)
+        assert ok
+        source_path = os.path.join(td, "source.jpg")
+        variant_path = os.path.join(td, "variant.jpg")
+        encoded.tofile(source_path)
+        encoded.tofile(variant_path)
+
+        record = repository.upsert_source(source_path)
+        asset_id = int(record["asset_id"])
+        source_id = int(record["source_id"])
+        origin_job_id = repository.create_job(
+            job_kind="selftest_batch",
+            input_path=td,
+            output_path=os.path.join(td, "output"),
+            recipe_name="문서 스캔",
+            status="success",
+        )
+        review_id = repository.create_review_item(
+            asset_id=asset_id,
+            source_id=source_id,
+            variant_id=None,
+            job_id=origin_job_id,
+            job_item_id=None,
+            status="new",
+            reason="manual_review",
+        )
+
+        assert review_service.approve(review_id) is False
+        variant_id = repository.upsert_variant(
+            asset_id=asset_id,
+            source_id=source_id,
+            file_path=variant_path,
+            variant_kind="manual_fix",
+        )
+        assert review_service.approve(review_id, variant_id=variant_id) is True
+        approved = repository.get_review_item(review_id)
+        assert approved is not None
+        assert approved["status"] == "approved"
+
+        review_id_2 = repository.create_review_item(
+            asset_id=asset_id,
+            source_id=source_id,
+            variant_id=None,
+            job_id=origin_job_id,
+            job_item_id=None,
+            status="new",
+            reason="retry_needed",
+        )
+        queued_job_id = review_service.enqueue_reprocess(review_id_2)
+        assert queued_job_id is not None
+        queued_job = repository.get_job(int(queued_job_id))
+        assert queued_job is not None
+        assert queued_job["status"] == "queued"
+        requested = repository.get_review_item(review_id_2)
+        assert requested is not None
+        assert requested["status"] == "reprocess_requested"
+
+
+def _test_asset_query_filters_and_timeline() -> None:
+    import os
+    import tempfile
+
+    import cv2
+    import numpy as np
+
+    from .core.library import AssetQuery
+    from .core.library.query_service import QueryService
+    from .core.library.repository import LibraryRepository
+    from .core.library.sqlite_store import LibrarySqliteStore
+
+    with tempfile.TemporaryDirectory(prefix="photocropper_asset_query_") as td:
+        repository = LibraryRepository(
+            LibrarySqliteStore(db_path=os.path.join(td, "library.db"))
+        )
+        image = np.full((100, 160, 3), 200, dtype=np.uint8)
+        ok, encoded = cv2.imencode(".jpg", image)
+        assert ok
+        path = os.path.join(td, "receipt.jpg")
+        variant_path = os.path.join(td, "receipt_variant.jpg")
+        encoded.tofile(path)
+        encoded.tofile(variant_path)
+
+        record = repository.upsert_source(path)
+        asset_id = int(record["asset_id"])
+        source_id = int(record["source_id"])
+        repository.set_asset_note(asset_id, "receipt archive note")
+        repository.add_asset_tag(asset_id, "receipt")
+        collection_id = repository.create_collection("Archive")
+        assert collection_id is not None
+        repository.add_asset_to_collection(asset_id, int(collection_id))
+        job_id = repository.create_job(
+            job_kind="selftest_batch",
+            input_path=td,
+            output_path=os.path.join(td, "output"),
+            recipe_name="문서 스캔",
+            status="success",
+        )
+        job_item_id = repository.add_job_item(
+            job_id=job_id,
+            source_path=path,
+            asset_id=asset_id,
+            source_id=source_id,
+            status="success",
+            message="done",
+            output_paths=[variant_path],
+            processing_time_ms=1.0,
+        )
+        repository.upsert_variant(
+            asset_id=asset_id,
+            source_id=source_id,
+            file_path=variant_path,
+            variant_kind="cropped",
+            job_item_id=job_item_id,
+        )
+        repository.add_ocr_document(
+            asset_id=asset_id,
+            source_id=source_id,
+            variant_id=None,
+            provider="selftest",
+            text="receipt archive text",
+        )
+        repository.create_review_item(
+            asset_id=asset_id,
+            source_id=source_id,
+            variant_id=None,
+            job_id=job_id,
+            job_item_id=job_item_id,
+            status="new",
+            reason="check",
+        )
+
+        query_service = QueryService(repository)
+        asset_query = AssetQuery(
+            search_text="receipt",
+            collection_id=int(collection_id),
+            tag_names=("receipt",),
+            review_status="new",
+            sort_by="updated",
+            page=1,
+            page_size=1,
+        )
+        rows = query_service.list_assets(asset_query)
+        assert len(rows) == 1
+        assert query_service.count_assets(asset_query) == 1
+        timeline = query_service.get_asset_timeline(asset_id)
+        event_types = {getattr(event, "event_type", "") for event in timeline}
+        assert "source" in event_types
+        assert "review" in event_types
+        assert "variant" in event_types
+
+
 def main() -> int:
     try:
         _test_crop_editor_import_smoke()
@@ -3365,6 +3930,15 @@ def main() -> int:
         _test_settings_panel_ai_roundtrip()
         _test_settings_panel_algorithm_tuning_roundtrip()
         _test_benchmark_harness_report_contract()
+        _test_library_catalog_import_and_duplicates()
+        _test_job_orchestrator_records_variants_and_review_queue()
+        _test_library_search_and_collections()
+        _test_duplicate_service_near_groups()
+        _test_duplicate_preferences_preserved_on_rebuild()
+        _test_source_relink_unique_and_ambiguous()
+        _test_recipe_determinism_and_preserved_global_state()
+        _test_review_service_guard_and_reprocess_queue()
+        _test_asset_query_filters_and_timeline()
     except Exception as e:
         print(f"SELFTEST FAILED: {e}")
         return 1

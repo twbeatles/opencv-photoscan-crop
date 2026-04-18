@@ -39,6 +39,7 @@ class WatchModeCoordinator(QObject):
         self._batch_processor: Optional[BatchProcessor] = None
         self._auto_processor: Optional[AutoProcessor] = None
         self._watch_input_root: str = ""
+        self._result_callback: Optional[Callable[[str, str, object], None]] = None
 
     @property
     def is_active(self) -> bool:
@@ -48,6 +49,12 @@ class WatchModeCoordinator(QObject):
         self._settings = settings
         if self._batch_processor is not None:
             self._batch_processor.update_settings(settings)
+
+    def set_result_callback(
+        self,
+        callback: Optional[Callable[[str, str, object], None]],
+    ) -> None:
+        self._result_callback = callback
 
     def start(
         self,
@@ -167,6 +174,16 @@ class WatchModeCoordinator(QObject):
                 output_path,
                 input_root=self._watch_input_root or os.path.dirname(input_path),
             )
+            if not getattr(result, "source_path", ""):
+                try:
+                    result.source_path = os.path.abspath(input_path)
+                except Exception:
+                    pass
+            if self._result_callback is not None:
+                try:
+                    self._result_callback(input_path, output_path, result)
+                except Exception:
+                    logger.debug("Watch result callback failed", exc_info=True)
             raw_status = ""
             if hasattr(result, "status") and result.status is not None:
                 raw_status = (

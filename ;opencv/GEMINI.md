@@ -98,24 +98,23 @@
 | `main/actions/` | preview/batch/input/watch/tools/settings/lifecycle 계층 |
 | `main/builders/` | menu/toolbar/central/statusbar/fab 빌더 |
 | `main/services/` | runtime flow/message helper 계층 |
-| `settings/panel.py` | 모든 설정 UI 패널 |
+| `widgets/settings/` | 설정 패널 coordinator + 탭 분리 구현 |
+| `widgets/management/` | Library/Review/Duplicates/Jobs/Collections/Recipes/Settings 페이지 |
 | `preview_widget.py` | 이미지 미리보기 위젯 |
 | `toast_notification.py` | 토스트 알림 시스템 |
 
-## 2026-04-14 Refactor Status
+## 2026-04-19 Refactor Status
 
 - 완료:
   - i18n manager가 Python locale catalog(`i18n/catalog/locales/*.py`)를 직접 로드
   - 장수명 UI용 runtime retranslate 경로와 `ui/main/services` 계층 추가
   - 분류 폴더명/prefix/suffix 공용 validator 도입
   - settings persistence/migration/validation 책임 분리
-- 남은 대형 파일:
-  - `ui/widgets/settings/panel.py`
-  - `core/image/processor.py`
-  - `core/batch/processor.py`
-  - `selftest.py`
+  - `ui/widgets/settings/panel.py`는 coordinator 역할만 남기고 탭 모듈로 분리
+  - `core/image/processor.py`, `core/batch/processor.py`, `core/library/repository.py`는 파사드로 축소되고 실제 구현은 내부 모듈로 이동
+  - `ui/widgets/management_pages.py`는 호환용 파사드로 축소되고 실제 구현은 `ui/widgets/management/` 패키지로 이동
 - packaging note:
-  - PyInstaller spec는 `photo_cropper.i18n.catalog.locales.*` hidden import를 유지해야 함
+  - PyInstaller spec는 `photo_cropper.i18n.catalog.locales.*`와 분할된 패키지 하위 모듈을 안정적으로 포함해야 하므로 `collect_submodules(...)` 기반 자동 수집을 유지해야 함
 
 ## Detection Algorithm Pipeline
 
@@ -276,7 +275,11 @@ python -m photo_cropper.cli --help
 
 # 빌드
 pyinstaller photo_cropper.spec --clean
-# → dist/PhotoCropper_v9.exe
+# → dist/PhotoCropper_v9/PhotoCropper_v9.exe
+
+# 실험용 단일 파일 빌드
+pyinstaller photo_cropper_onefile.spec --clean
+# → dist/PhotoCropper_v9_single.exe
 ```
 
 ## Troubleshooting

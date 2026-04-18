@@ -4,6 +4,9 @@
 
 from __future__ import annotations
 
+import logging
+import os
+import threading
 from typing import Optional
 
 from PyQt6.QtCore import QTimer, pyqtSignal
@@ -32,14 +35,33 @@ from .builders import (
     build_toolbar,
 )
 from .models import WindowRefs, WindowServices, WindowSignals, WindowState
-from ...core.batch import BatchProcessor, BatchSessionService
+from ...core.batch import BatchProcessor, BatchSessionService, FileResult
 from ...core.history_manager import HistoryManager
 from ...core.image import ImageProcessor
+from ...core.jobs import JobOrchestrator
+from ...core.library import (
+    DuplicateService,
+    LibraryIngestService,
+    QueryService,
+    ReviewService,
+    ThumbnailService,
+    get_library_repository,
+)
+from ...core.recipes import get_recipe_manager
 from ...i18n.catalog import get_translator, set_language, t
 from ...core.scheduler import Scheduler
 from ...core.settings_model import SettingsManager
 from ...core.watch_mode import WatchModeCoordinator
 from ..widgets.fullscreen_viewer import FullscreenViewerManager
+
+logger = logging.getLogger(__name__)
+
+
+def _management_job_label(job_kind: str) -> str:
+    text = str(job_kind or "").strip()
+    if not text:
+        return "-"
+    return t(f"management.job.kind.{text}", default=text)
 
 
 class MainWindow(QMainWindow):
@@ -51,6 +73,7 @@ class MainWindow(QMainWindow):
     batch_progress_received = pyqtSignal(object)
     batch_log_received = pyqtSignal(str, str)
     batch_complete_received = pyqtSignal(object, object)
+    management_task_finished = pyqtSignal(str)
 
     def __init__(self):
         super().__init__()
@@ -64,9 +87,48 @@ class MainWindow(QMainWindow):
         settings_manager = SettingsManager()
         settings = settings_manager.load()
         set_language(getattr(settings.ui, "language", "ko"))
+        library_repository = None
+        thumbnail_service = None
+        library_ingest_service = None
+        query_service = None
+        review_service = None
+        duplicate_service = None
+        recipe_manager = None
+        job_orchestrator = None
+        try:
+            library_repository = get_library_repository()
+            thumbnail_service = ThumbnailService()
+            duplicate_service = DuplicateService(library_repository)
+            job_orchestrator = JobOrchestrator(
+                library_repository,
+                thumbnail_service=thumbnail_service,
+                duplicate_service=duplicate_service,
+            )
+            library_ingest_service = LibraryIngestService(
+                library_repository,
+                thumbnail_service=thumbnail_service,
+                duplicate_service=duplicate_service,
+            )
+            query_service = QueryService(library_repository)
+            review_service = ReviewService(
+                library_repository,
+                create_reprocess_job=job_orchestrator.prepare_review_reprocess,
+            )
+        except Exception as exc:
+            logger.warning("Library services unavailable: %s", exc)
+
+        try:
+            recipe_manager = get_recipe_manager()
+        except Exception as exc:
+            logger.warning("Recipe manager unavailable: %s", exc)
+            recipe_manager = None
+
         state = WindowState(
             settings=settings,
             preview_settings_snapshot=settings.to_dict(),
+            active_recipe_name=recipe_manager.get_current_recipe_name()
+            if recipe_manager is not None
+            else "",
         )
         refs = WindowRefs()
         preview_timer = QTimer(self)
@@ -94,6 +156,14 @@ class MainWindow(QMainWindow):
             batch_session=BatchSessionService(),
             preview_timer=preview_timer,
             input_path_scan_timer=input_path_scan_timer,
+            library_repository=library_repository,
+            thumbnail_service=thumbnail_service,
+            library_ingest_service=library_ingest_service,
+            query_service=query_service,
+            review_service=review_service,
+            duplicate_service=duplicate_service,
+            recipe_manager=recipe_manager,
+            job_orchestrator=job_orchestrator,
         )
 
         self.state = state
@@ -107,6 +177,8 @@ class MainWindow(QMainWindow):
         self.watch_mode_coordinator = services.watch_mode_coordinator
         self._scheduler = services.scheduler
         self._translator = get_translator()
+        self.services.watch_mode_coordinator.set_result_callback(self._on_watch_result)
+        self.management_task_finished.connect(self._on_management_task_finished)
 
         self.feature_actions = FeatureActions(state, refs, services)
         self.preview_actions = PreviewActions(state, refs, services, signals)
@@ -225,6 +297,7 @@ class MainWindow(QMainWindow):
             self,
             refs,
             state,
+            services,
             input_actions=self.input_actions,
             preview_actions=self.preview_actions,
             batch_actions=self.batch_actions,
@@ -245,6 +318,7 @@ class MainWindow(QMainWindow):
         self.settings_actions.apply_loaded_settings(state.settings)
         self.batch_actions.update_batch_edit_controls()
         self.settings_actions.restore_window_state()
+        self.refresh_management_views()
         self.setAcceptDrops(True)
         self._translator.add_language_change_listener(self._on_language_changed)
         self.retranslate_ui()
@@ -283,13 +357,186 @@ class MainWindow(QMainWindow):
             self._translator.remove_language_change_listener(self._on_language_changed)
         except Exception:
             pass
-        self.lifecycle_actions.close_event(a0)
+            self.lifecycle_actions.close_event(a0)
+
+    def open_path_in_workbench(self, image_path: str) -> None:
+        normalized = os.path.abspath(str(image_path or ""))
+        if not normalized or not os.path.exists(normalized):
+            return
+        parent_dir = os.path.dirname(normalized)
+        if self.refs.input_path_edit is not None:
+            self.refs.input_path_edit.setText(parent_dir)
+        if self.refs.output_path_edit is not None and not self.refs.output_path_edit.text().strip():
+            self.refs.output_path_edit.setText(os.path.join(parent_dir, "output_cropped"))
+        self.state.current_image_path = normalized
+        if self.refs.shell_nav is not None:
+            self.refs.shell_nav.setCurrentRow(1)
+        self.preview_actions.request_preview()
+
+    def apply_recipe_from_management(self, recipe_name: str) -> None:
+        if not recipe_name:
+            return
+        self.state.active_recipe_name = recipe_name
+        self.tool_actions.on_preset_selected(recipe_name)
+        self.refresh_management_views()
+
+    def refresh_management_views(self) -> None:
+        for page in list(self.refs.management_pages.values()):
+            refresh = getattr(page, "refresh", None)
+            if callable(refresh):
+                try:
+                    refresh()
+                except Exception:
+                    logger.debug("Management page refresh failed", exc_info=True)
+
+    def run_review_reprocess(self, review_id: int) -> None:
+        if self.services.review_service is None or self.services.query_service is None:
+            return
+        job_id = self.services.review_service.enqueue_reprocess(review_id)
+        if not job_id:
+            ToastManager.warning(t("management.window.review_reprocess.create_failed"))
+            return
+        job = self.services.query_service.get_job(job_id)
+        if job is None:
+            ToastManager.warning(t("management.window.review_reprocess.job_missing"))
+            return
+        source_path = str(job.get("input_path", "") or "")
+        if not source_path:
+            ToastManager.warning(t("management.window.review_reprocess.source_missing"))
+            return
+        input_root = os.path.dirname(source_path) or source_path
+        output_path = str(job.get("output_path", "") or "")
+        if not output_path:
+            output_path = os.path.join(input_root, "output_cropped")
+        started = self.batch_actions.start_processing_with_files(
+            job_kind=str(job.get("job_kind", "") or "review_reprocess"),
+            input_path=input_root,
+            output_path=output_path,
+            files=[source_path],
+            tracked_job_id=job_id,
+        )
+        if not started:
+            ToastManager.warning(t("management.window.review_reprocess.start_failed"))
+            return
+        self.refresh_management_views()
+
+    def run_job_rerun(self, job_id: int, *, failed_only: bool = False) -> None:
+        if self.services.job_orchestrator is None:
+            return
+        spec = self.services.job_orchestrator.prepare_job_rerun(job_id, failed_only=failed_only)
+        if spec is None:
+            ToastManager.warning(t("management.window.rerun.job_missing"))
+            return
+        origin_job_kind = str(spec.get("origin_job_kind", "") or "")
+        source_paths = list(spec.get("source_paths", []) or [])
+        input_path = str(spec.get("input_path", "") or "")
+        if origin_job_kind.startswith("maintenance_") and not source_paths:
+            self.run_maintenance_job(origin_job_kind)
+            return
+        if not source_paths and input_path and os.path.isfile(input_path):
+            source_paths = [input_path]
+        if not source_paths:
+            ToastManager.warning(t("management.window.rerun.source_missing"))
+            return
+        output_path = str(spec.get("output_path", "") or "")
+        if not output_path:
+            output_path = os.path.join(
+                os.path.dirname(source_paths[0]) or os.getcwd(),
+                "output_cropped",
+            )
+        started = self.batch_actions.start_processing_with_files(
+            job_kind=str(spec.get("job_kind", "") or "batch_rerun"),
+            input_path=input_path or os.path.dirname(source_paths[0]),
+            output_path=output_path,
+            files=source_paths,
+            tracked_job_id=int(spec.get("job_id", 0) or 0),
+        )
+        if not started:
+            ToastManager.warning(t("management.window.rerun.start_failed"))
+            return
+        self.refresh_management_views()
+
+    def show_review_page_for_job(self, job_id: int) -> None:
+        review_page = self.refs.management_pages.get("review")
+        focus = getattr(review_page, "focus_job", None)
+        if callable(focus):
+            focus(int(job_id))
+        if self.refs.shell_nav is not None:
+            self.refs.shell_nav.setCurrentRow(2)
+
+    def run_maintenance_job(self, job_kind: str) -> None:
+        if self.services.job_orchestrator is None:
+            return
+
+        def worker() -> None:
+            orchestrator = self.services.job_orchestrator
+            if orchestrator is None:
+                self.management_task_finished.emit(f"{job_kind}:failed")
+                return
+            try:
+                orchestrator.run_maintenance_job(job_kind)
+                self.management_task_finished.emit(job_kind)
+            except Exception:
+                logger.debug("Maintenance job failed", exc_info=True)
+                self.management_task_finished.emit(f"{job_kind}:failed")
+
+        threading.Thread(target=worker, daemon=True).start()
+        ToastManager.info(
+            t("management.window.maintenance.started", task=_management_job_label(job_kind))
+        )
+
+    def _on_watch_result(self, source_path: str, output_path: str, result: object) -> None:
+        if self.services.job_orchestrator is None:
+            return
+        from typing import cast
+        try:
+            self.services.job_orchestrator.record_watch_file(
+                source_path=source_path,
+                output_path=output_path,
+                result=cast(FileResult, result),
+                settings=self.state.settings,
+                recipe_name=self.state.active_recipe_name,
+            )
+        except Exception:
+            logger.debug("Failed to record watch result", exc_info=True)
+        QTimer.singleShot(0, self.refresh_management_views)
+
+    def _on_management_task_finished(self, job_kind: str) -> None:
+        self.refresh_management_views()
+        failed = str(job_kind or "").endswith(":failed")
+        normalized = str(job_kind or "")
+        if failed:
+            normalized = normalized[:-7]
+        message_key = (
+            "management.window.maintenance.failed"
+            if failed
+            else "management.window.maintenance.complete"
+        )
+        toast = ToastManager.warning if failed else ToastManager.success
+        toast(t(message_key, task=_management_job_label(normalized)))
 
     def _on_language_changed(self, _language: str) -> None:
         self.retranslate_ui()
 
     def retranslate_ui(self) -> None:
         self.setWindowTitle(t("app.title", version=self.VERSION))
+
+        if self.refs.shell_nav is not None:
+            for index, page_key in enumerate(
+                (
+                    "library",
+                    "workbench",
+                    "review",
+                    "duplicates",
+                    "jobs",
+                    "collections",
+                    "recipes",
+                    "settings",
+                )
+            ):
+                item = self.refs.shell_nav.item(index)
+                if item is not None:
+                    item.setText(t(f"shell.{page_key}", default=page_key.title()))
 
         menu_titles = {
             "file": t("menu.file"),
@@ -420,3 +667,10 @@ class MainWindow(QMainWindow):
             self.state.multi_compare_window, "retranslate_ui"
         ):
             self.state.multi_compare_window.retranslate_ui()
+        for page in list(self.refs.management_pages.values()):
+            if hasattr(page, "retranslate_ui"):
+                page.retranslate_ui()
+            else:
+                refresh = getattr(page, "refresh", None)
+                if callable(refresh):
+                    refresh()
