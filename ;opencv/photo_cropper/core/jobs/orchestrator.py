@@ -10,6 +10,7 @@ from ..smart_enhancer import SmartEnhancer
 from ..batch import BatchProgress, FileResult, ProcessStatus
 from ..library import (
     DuplicateService,
+    LibraryIngestService,
     LibraryRepository,
     ThumbnailService,
     get_ocr_provider,
@@ -30,6 +31,9 @@ class JobOrchestrator:
         self._classifier: Optional[ImageClassifier] = None
         self._face_detector: Optional[FaceDetector] = None
         self._enhancer: Optional[SmartEnhancer] = None
+        self._metadata_warnings: list[str] = []
+        self._ai_errors: list[str] = []
+        self._thumbnail_failed_count = 0
 
     def create_job(
         self,
@@ -59,6 +63,9 @@ class JobOrchestrator:
         job_kind: str = "",
     ) -> None:
         review_candidates = 0
+        self._metadata_warnings = []
+        self._ai_errors = []
+        self._thumbnail_failed_count = 0
         for result in results:
             ingest_record = None
             ingest_state = ""
@@ -66,8 +73,18 @@ class JobOrchestrator:
             if result.source_path:
                 ingest_record = self.repository.upsert_source(result.source_path)
                 ingest_state = str(ingest_record.get("ingest_state", "") or "")
-                self.thumbnail_service.ensure_thumbnail(result.source_path)
-                if ingest_state == "ambiguous_relink":
+                thumb_path = self.thumbnail_service.ensure_thumbnail(result.source_path)
+                if not thumb_path:
+                    self._thumbnail_failed_count += 1
+                    self._metadata_warnings.append(f"thumbnail_failed:{result.source_path}")
+                if ingest_state == "invalid_source":
+                    asset_id = None
+                    source_id = None
+                    source_action_context = {
+                        "source_path": str(ingest_record.get("source_path", "") or result.source_path),
+                        "error": str(ingest_record.get("error", "") or "invalid_source"),
+                    }
+                elif ingest_state == "ambiguous_relink":
                     asset_id = None
                     source_id = None
                     source_action_context = {
@@ -119,7 +136,9 @@ class JobOrchestrator:
                         job_item_id=item_id,
                         metadata={"message": result.message},
                     )
-                    self.thumbnail_service.ensure_thumbnail(path)
+                    if not self.thumbnail_service.ensure_thumbnail(path):
+                        self._thumbnail_failed_count += 1
+                        self._metadata_warnings.append(f"thumbnail_failed:{path}")
                     self.repository.refresh_asset_perceptual_hash(asset_id, path)
                     self._record_ai_metadata(
                         asset_id=asset_id,
@@ -129,7 +148,19 @@ class JobOrchestrator:
                         settings=settings,
                     )
 
-            if ingest_state == "ambiguous_relink":
+            if ingest_state == "invalid_source":
+                review_candidates += 1
+                self.repository.create_review_item(
+                    asset_id=None,
+                    source_id=None,
+                    variant_id=None,
+                    job_id=job_id,
+                    job_item_id=item_id,
+                    status="new",
+                    reason="invalid_source",
+                    action_context=source_action_context,
+                )
+            elif ingest_state == "ambiguous_relink":
                 review_candidates += 1
                 self.repository.create_review_item(
                     asset_id=None,
@@ -181,6 +212,9 @@ class JobOrchestrator:
             summary={
                 "review_candidates": review_candidates,
                 "cancelled": bool(progress.is_cancelled),
+                "metadata_warnings": list(dict.fromkeys(self._metadata_warnings)),
+                "ai_errors": list(dict.fromkeys(self._ai_errors)),
+                "thumbnail_failed_count": self._thumbnail_failed_count,
             },
         )
         self.duplicate_service.rebuild_exact_groups()
@@ -235,11 +269,13 @@ class JobOrchestrator:
         job_kind: str,
         *,
         asset_ids: Optional[list[int] | tuple[int, ...]] = None,
+        input_path: str = "",
+        recursive: bool = True,
     ) -> int:
         normalized_asset_ids = [int(item) for item in list(asset_ids or []) if int(item) > 0]
         job_id = self.create_job(
             job_kind=job_kind,
-            input_path="library",
+            input_path=input_path or "library",
             output_path="",
             recipe_name="",
         )
@@ -250,6 +286,18 @@ class JobOrchestrator:
             if job_kind == "maintenance_missing_sources":
                 summary = self.repository.scan_missing_sources()
                 processed_items = int(summary.get("updated", 0) or 0)
+            elif job_kind == "maintenance_library_import":
+                ingest = LibraryIngestService(
+                    self.repository,
+                    thumbnail_service=self.thumbnail_service,
+                    duplicate_service=self.duplicate_service,
+                )
+                processed_items = ingest.import_directory(input_path, recursive=recursive)
+                summary = {
+                    "imported": processed_items,
+                    "input_path": input_path,
+                    "recursive": bool(recursive),
+                }
             elif job_kind == "maintenance_thumbnails":
                 processed_items = self._run_thumbnail_refresh(asset_ids=normalized_asset_ids)
                 summary = {"updated": processed_items}
@@ -264,6 +312,14 @@ class JobOrchestrator:
                 summary = {
                     "groups": processed_items,
                     "hash_updates": hash_updates,
+                    **self.duplicate_service.last_near_summary,
+                }
+            elif job_kind == "maintenance_search_index":
+                processed_items = self.repository.rebuild_search_index()
+                summary = {
+                    "indexed_assets": processed_items,
+                    "fts_enabled": self.repository.fts_enabled,
+                    "search_index_dirty": self.repository.get_search_index_dirty(),
                 }
             elif job_kind == "maintenance_ocr_refresh":
                 processed_items = self._run_ocr_refresh(asset_ids=normalized_asset_ids)
@@ -376,7 +432,7 @@ class JobOrchestrator:
                             kind="classification",
                         )
             except Exception:
-                pass
+                self._ai_errors.append("classification_failed")
 
         if settings.face_detection.enabled:
             try:
@@ -445,9 +501,9 @@ class JobOrchestrator:
                                     confidence=float(assignment.get("confidence", 1.0) or 1.0),
                                 )
                         except Exception:
-                            pass
+                            self._ai_errors.append("person_provider_failed")
             except Exception:
-                pass
+                self._ai_errors.append("face_detection_failed")
 
         ocr_provider = get_ocr_provider()
         if ocr_provider is not None:
@@ -463,7 +519,7 @@ class JobOrchestrator:
                         metadata=metadata,
                     )
             except Exception:
-                pass
+                self._ai_errors.append("ocr_provider_failed")
 
     def _load_image_for_ai(self, image_path: str):
         try:

@@ -1,4 +1,3 @@
-# pyright: reportAttributeAccessIssue=false
 from __future__ import annotations
 
 import os
@@ -150,7 +149,7 @@ class BatchProcessorRunnerMixin:
 
         self._update_progress()
         self._safe_callback(self._on_file_complete, result)
-    def cleanup(self):
+    def cleanup(self: Any):
         """Clean up resources and stop threads."""
         self.request_stop()
         if self._executor:
@@ -158,36 +157,36 @@ class BatchProcessorRunnerMixin:
         if self._processing_thread and self._processing_thread.is_alive():
             # Thread join is blocking, avoid if calling from UI thread
             pass
-    def _update_progress(self):
+    def _update_progress(self: Any):
         """Send progress update through callback."""
         with self._lock:
             progress_copy = BatchProgress(**self._progress.__dict__)
         self._safe_callback(self._on_progress, progress_copy)
     @property
-    def is_running(self) -> bool:
+    def is_running(self: Any) -> bool:
         """Check if processing is in progress."""
         with self._lock:
             return self._progress.is_running
     @property
-    def progress(self) -> BatchProgress:
+    def progress(self: Any) -> BatchProgress:
         """Get current progress."""
         with self._lock:
             return BatchProgress(**self._progress.__dict__)
     @property
-    def failed_files(self) -> List[str]:
+    def failed_files(self: Any) -> List[str]:
         """Get list of failed files."""
         return self._failed_files.copy()
     @property
-    def results(self) -> List[FileResult]:
+    def results(self: Any) -> List[FileResult]:
         """Get all processing results."""
         return self._results.copy()
-    def request_stop(self):
+    def request_stop(self: Any):
         """Request processing to stop."""
         self._stop_event.set()
         with self._lock:
             self._progress.is_cancelled = True
         self._log("작업 중단 요청됨", "warning")
-    def _is_stop_requested(self) -> bool:
+    def _is_stop_requested(self: Any) -> bool:
         """Check if stop was requested."""
         return self._stop_event.is_set()
     def start_async(

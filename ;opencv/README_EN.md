@@ -488,3 +488,18 @@ Please report bugs or feature suggestions in Issues.
   - `python -m compileall -q photo_cropper`
   - `python -m photo_cropper.selftest`
   - `pyright --project pyrightconfig.json`
+
+## 2026-04-27 Management/Library Stabilization Notes
+
+- Management rerun/reprocess, Watch, and Batch now share a file-list preflight path. Recursive output-inside-input guards, empty-output defaults, and missing-file validation are applied consistently.
+- Library import, exact duplicate rebuild, near duplicate rebuild, and search-index rebuild now run through maintenance jobs instead of blocking the UI thread directly.
+- SQLite connections enable `foreign_keys=ON` and `busy_timeout=5000`; initialization enables WAL best-effort. Write paths use a store-level `RLock` plus a write connection helper to reduce contention.
+- `LibraryRepository.upsert_source()` now returns `ingest_state="invalid_source"` for empty paths, missing files, directories, and unsupported non-image files without creating assets.
+- FTS refresh failures mark `app_state.search_index_dirty=1`, and `maintenance_search_index` can rebuild the full index.
+- Asset timeline queries now use asset-specific SQL instead of scanning a 5000-item review window, and near-duplicate rebuild summaries include `scanned_assets`, `limited`, and `limit`.
+- Thumbnail/AI/OCR/person provider failures are recorded in job summary fields: `metadata_warnings`, `ai_errors`, and `thumbnail_failed_count`.
+- `core/library/_repository_protocol.py` documents repository mixin typing contracts, and file-level pyright suppressions in the touched library/batch/image areas were removed.
+- Validation baseline:
+  - `python -m compileall -q photo_cropper`
+  - `pyright --project pyrightconfig.json`
+  - `python -m photo_cropper.selftest`

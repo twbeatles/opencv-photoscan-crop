@@ -486,6 +486,21 @@ MIT License
   - `python -m photo_cropper.selftest`
   - `pyright --project pyrightconfig.json`
 
+## 2026-04-27 Management/Library 안정화 완료 메모
+
+- Management 재실행/재처리, Watch, Batch가 파일 목록 기반 공통 preflight를 공유하도록 정리했습니다. recursive 처리에서 output이 input 내부에 들어가는 경로, 빈 output 기본값, 누락 파일 검증을 같은 규칙으로 차단합니다.
+- Library import, exact duplicate rebuild, near duplicate rebuild, search-index rebuild를 maintenance job 흐름으로 통합해 UI 스레드 블로킹을 줄이고 완료 toast/refresh 경로를 일관화했습니다.
+- SQLite 연결마다 `foreign_keys=ON`, `busy_timeout=5000`을 적용하고 초기화 시 WAL을 best-effort로 켭니다. 쓰기 경합은 store-level `RLock`과 write connection helper로 완화했습니다.
+- `LibraryRepository.upsert_source()`는 빈 경로, 누락 파일, 디렉터리, 비이미지 파일을 asset으로 저장하지 않고 `ingest_state="invalid_source"`로 반환합니다.
+- FTS 갱신 실패는 `app_state.search_index_dirty=1`로 기록되며, `maintenance_search_index`로 전체 색인을 재빌드할 수 있습니다.
+- asset timeline 조회는 전체 review 5000건 스캔 대신 asset 전용 SQL 경로를 사용하고, near duplicate rebuild summary는 `scanned_assets`, `limited`, `limit`를 기록합니다.
+- thumbnail/AI/OCR/person provider 실패는 job summary의 `metadata_warnings`, `ai_errors`, `thumbnail_failed_count`에 남깁니다.
+- `core/library/_repository_protocol.py`로 repository mixin 타입 계약을 명시하고, 수정 범위의 파일 단위 pyright suppress를 제거했습니다.
+- 검증 기준:
+  - `python -m compileall -q photo_cropper`
+  - `pyright --project pyrightconfig.json`
+  - `python -m photo_cropper.selftest`
+
 ## 2026-03-16 정합성 점검 메모
 
 - 저장소 루트 `../pyrightconfig.json`과 루트 `.editorconfig`를 추가해 루트/앱 폴더 어디서 실행해도 동일한 타입 검사와 UTF-8 규칙을 사용하도록 정렬했습니다.

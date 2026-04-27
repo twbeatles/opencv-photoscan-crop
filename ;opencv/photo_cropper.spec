@@ -127,6 +127,7 @@ a = Analysis(
         'photo_cropper.core.library.providers',
         'photo_cropper.core.library.query_service',
         'photo_cropper.core.library.repository',
+        'photo_cropper.core.library._repository_protocol',
         'photo_cropper.core.library.review_service',
         'photo_cropper.core.library.sqlite_store',
         'photo_cropper.core.library.thumbnail_service',
@@ -387,4 +388,12 @@ If a single-file EXE is absolutely required:
     - Hidden imports now use `collect_submodules(...)` for split package
       families so future internal module extraction does not require editing
       this file every time.
+
+2026-04-27 note:
+    - Management/library stabilization added a private repository Protocol
+      module plus code-only maintenance flows for search-index rebuild,
+      background library import, and duplicate rebuild jobs.
+    - `collect_submodules("photo_cropper.core.library")` already covers the
+      new private module; it is also listed explicitly above as a packaging
+      guard for frozen builds. No new third-party packages are required.
 """

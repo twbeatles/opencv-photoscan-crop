@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass
+from typing import Sequence
 
 from ....core.settings_model import AppSettings
 from ....core.settings_model.validation import (
@@ -88,4 +89,39 @@ class BatchRuntimeFlow:
             ok=True,
             input_path=input_path,
             output_path=normalized_output,
+        )
+
+    def resolve_file_batch_paths(
+        self,
+        *,
+        input_path: str,
+        output_path: str,
+        files: Sequence[str],
+        recursive: bool,
+        failed_folder_name: str,
+    ) -> ResolvedIoPaths:
+        normalized_files = [os.path.abspath(str(item or "")) for item in files]
+        valid_files = [
+            path
+            for path in normalized_files
+            if path and os.path.isfile(path)
+        ]
+        if not valid_files:
+            return ResolvedIoPaths(
+                ok=False,
+                title=t("dialog.warning"),
+                message=t("batch.no_files"),
+            )
+
+        normalized_input = str(input_path or "").strip()
+        if not normalized_input:
+            normalized_input = os.path.dirname(valid_files[0]) or os.getcwd()
+        if os.path.isfile(normalized_input):
+            normalized_input = os.path.dirname(normalized_input) or os.getcwd()
+
+        return self.resolve_io_paths(
+            input_path=normalized_input,
+            output_path=output_path,
+            recursive=recursive,
+            failed_folder_name=failed_folder_name,
         )

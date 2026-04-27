@@ -1,4 +1,3 @@
-# pyright: reportAttributeAccessIssue=false
 from __future__ import annotations
 
 import os
@@ -113,7 +112,7 @@ class BatchProcessorContextMixin:
             context = {}
             self._worker_local.context = context
         return context
-    def _get_worker_processor(self) -> ImageProcessor:
+    def _get_worker_processor(self: Any) -> ImageProcessor:
         if not self._use_thread_local_context():
             return self.processor
 

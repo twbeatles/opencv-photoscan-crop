@@ -244,6 +244,43 @@ class BatchActions:
             )
             return False
 
+        recursive = bool(
+            getattr(self.state.settings.file_management, "recursive_search", False)
+        )
+        resolved = self.runtime_flow.resolve_file_batch_paths(
+            input_path=input_path,
+            output_path=output_path,
+            files=files,
+            recursive=recursive,
+            failed_folder_name=self.state.settings.file_management.failed_folder_name,
+        )
+        if not resolved.ok:
+            QMessageBox.warning(
+                self.services.host_window,
+                resolved.title,
+                resolved.message,
+            )
+            if tracked_job_id is not None:
+                job_orchestrator = getattr(self.services, "job_orchestrator", None)
+                if job_orchestrator is not None:
+                    try:
+                        job_orchestrator.repository.finalize_job(
+                            int(tracked_job_id),
+                            status="failed",
+                            total_items=len(files),
+                            processed_items=0,
+                            success_count=0,
+                            partial_count=0,
+                            failed_count=len(files),
+                            skipped_count=0,
+                            summary={"error": resolved.message, "preflight_failed": True},
+                        )
+                    except Exception:
+                        logger.debug("Failed to finalize preflight-failed job", exc_info=True)
+            return False
+        input_path = resolved.input_path
+        output_path = resolved.output_path
+
         try:
             self.services.batch_session.create_processor(
                 settings=self.state.settings,

@@ -1,20 +1,46 @@
-# pyright: reportAttributeAccessIssue=false
 from __future__ import annotations
 
 import json
 import os
 from typing import Any, Optional
 
-from ...utils.file_helpers import compute_file_hash, get_image_dimensions
+from ...utils.file_helpers import SUPPORTED_IMAGE_FORMATS, compute_file_hash, get_image_dimensions
 from .types import AssetQuery, AssetTimelineEvent
 from ._repository_shared import compute_perceptual_hash, now_iso, safe_json_loads
+from ._repository_protocol import LibraryRepositoryProtocol
 
 
 class LibraryRepositoryAssetSourceMixin:
-    def upsert_source(self: Any, source_path: str, *, metadata: Optional[dict[str, Any]] = None) -> dict[str, Any]:
-        normalized = os.path.abspath(str(source_path or ""))
+    def _invalid_source_record(self, source_path: str, error: str) -> dict[str, Any]:
+        raw_path = str(source_path or "")
+        normalized = os.path.abspath(raw_path) if raw_path.strip() else ""
+        return {
+            "asset_id": None,
+            "source_id": None,
+            "source_hash": "",
+            "display_name": os.path.basename(normalized) or normalized,
+            "source_path": normalized,
+            "width": 0,
+            "height": 0,
+            "perceptual_hash": "",
+            "ingest_state": "invalid_source",
+            "error": error,
+        }
+    def upsert_source(self: LibraryRepositoryProtocol, source_path: str, *, metadata: Optional[dict[str, Any]] = None) -> dict[str, Any]:
+        raw_path = str(source_path or "").strip()
+        if not raw_path:
+            return self._invalid_source_record(source_path, "empty_path")
+        normalized = os.path.abspath(raw_path)
+        if not os.path.exists(normalized):
+            return self._invalid_source_record(source_path, "missing_file")
+        if not os.path.isfile(normalized):
+            return self._invalid_source_record(source_path, "not_file")
+        if not normalized.lower().endswith(SUPPORTED_IMAGE_FORMATS):
+            return self._invalid_source_record(source_path, "unsupported_image_format")
         now = now_iso()
         source_hash = compute_file_hash(normalized, algorithm="sha256") or ""
+        if not source_hash:
+            return self._invalid_source_record(source_path, "unreadable_file")
         perceptual_hash = compute_perceptual_hash(normalized)
         width = 0
         height = 0
@@ -32,7 +58,7 @@ class LibraryRepositoryAssetSourceMixin:
         payload = json.dumps(metadata or {}, ensure_ascii=False, sort_keys=True)
         display_name = os.path.basename(normalized) or normalized
 
-        with self.store.connect() as conn:
+        with self.store.write_connect() as conn:
             existing = conn.execute(
                 """
                 SELECT s.id AS source_id, s.asset_id AS asset_id
@@ -126,7 +152,7 @@ class LibraryRepositoryAssetSourceMixin:
                             now,
                         ),
                     )
-                    asset_id = int(asset_cur.lastrowid)
+                    asset_id = int(asset_cur.lastrowid or 0)
                     source_cur = conn.execute(
                         """
                         INSERT INTO asset_sources(
@@ -148,7 +174,7 @@ class LibraryRepositoryAssetSourceMixin:
                             now,
                         ),
                     )
-                    source_id = int(source_cur.lastrowid)
+                    source_id = int(source_cur.lastrowid or 0)
                     ingest_state = "created"
             else:
                 asset_id = int(existing["asset_id"])
@@ -192,9 +218,13 @@ class LibraryRepositoryAssetSourceMixin:
             "perceptual_hash": perceptual_hash,
             "ingest_state": ingest_state,
         }
-    def relink_source(self: Any, source_id: int, new_path: str) -> Optional[dict[str, Any]]:
+    def relink_source(self: LibraryRepositoryProtocol, source_id: int, new_path: str) -> Optional[dict[str, Any]]:
         normalized = os.path.abspath(str(new_path or ""))
-        if not normalized or not os.path.exists(normalized):
+        if (
+            not normalized
+            or not os.path.isfile(normalized)
+            or not normalized.lower().endswith(SUPPORTED_IMAGE_FORMATS)
+        ):
             return None
         source_hash = compute_file_hash(normalized, algorithm="sha256") or ""
         perceptual_hash = compute_perceptual_hash(normalized)
@@ -208,7 +238,7 @@ class LibraryRepositoryAssetSourceMixin:
             file_size = 0
             mtime_ns = 0
         now = now_iso()
-        with self.store.connect() as conn:
+        with self.store.write_connect() as conn:
             row = conn.execute(
                 "SELECT asset_id FROM asset_sources WHERE id = ?",
                 (int(source_id),),
@@ -259,7 +289,7 @@ class LibraryRepositoryAssetSourceMixin:
             "source_path": normalized,
             "source_hash": source_hash,
         }
-    def list_sources_by_ids(self: Any, source_ids: list[int]) -> list[dict[str, Any]]:
+    def list_sources_by_ids(self: LibraryRepositoryProtocol, source_ids: list[int]) -> list[dict[str, Any]]:
         unique_ids = sorted({int(item) for item in source_ids if int(item) > 0})
         if not unique_ids:
             return []
@@ -282,12 +312,12 @@ class LibraryRepositoryAssetSourceMixin:
                 unique_ids,
             ).fetchall()
             return [dict(row) for row in rows]
-    def scan_missing_sources(self) -> dict[str, Any]:
+    def scan_missing_sources(self: LibraryRepositoryProtocol) -> dict[str, Any]:
         updated = 0
         missing = 0
         restored = 0
         affected_asset_ids: set[int] = set()
-        with self.store.connect() as conn:
+        with self.store.write_connect() as conn:
             rows = conn.execute(
                 "SELECT id, asset_id, source_path, is_missing FROM asset_sources"
             ).fetchall()

@@ -332,6 +332,8 @@ def build_central_widget(
         _connect_open_signal(review_page, window)
         _connect_open_signal(duplicates_page, window)
         _connect_open_signal(collections_page, window)
+        library_page.import_requested.connect(window.run_library_import_job)
+        duplicates_page.maintenance_requested.connect(window.run_maintenance_job)
         recipes_page.recipe_applied.connect(window.apply_recipe_from_management)
         review_page.reprocess_requested.connect(window.run_review_reprocess)
         jobs_page.rerun_requested.connect(

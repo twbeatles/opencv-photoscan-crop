@@ -301,3 +301,20 @@ pyinstaller photo_cropper.spec --clean
 - `BatchProgress.partial_success` is now a first-class counter; GUI/CLI summaries use aligned semantics, and CLI gained `--strict-partial`.
 - Legacy classification model `custom` is normalized to the `advanced` alias, while the settings UI only exposes `basic` and `advanced`.
 - Scheduler `once` is documented/UI-labeled as "next upcoming HH:MM one-shot" rather than a date-based reservation.
+
+## 2026-04-27 Management/Library Stabilization Update
+
+- `BatchRuntimeFlow.resolve_file_batch_paths(...)` is the shared file-list preflight entry point for Management rerun/reprocess, Batch, and Watch-style flows. Use it before queueing tracked rerun jobs so output-inside-input, empty output defaults, and missing files fail consistently.
+- Management maintenance work should run through `JobOrchestrator.run_maintenance_job(...)`. Current maintenance kinds include `maintenance_library_import`, `maintenance_exact_duplicates`, `maintenance_near_duplicates`, and `maintenance_search_index`.
+- Library import and duplicate rebuild UI buttons emit management requests and rely on background worker completion signals, toast reporting, and current-page refresh. Avoid adding long-running direct calls in widget event handlers.
+- `LibrarySqliteStore.connect()` applies `PRAGMA foreign_keys=ON` and `PRAGMA busy_timeout=5000` for every connection. Initialization attempts `PRAGMA journal_mode=WAL` best-effort, and write paths should use `store.write_connect()`.
+- `LibraryRepository.upsert_source()` is non-throwing for invalid source inputs. Empty paths, missing files, directories, unsupported extensions, and unreadable image files return `ingest_state="invalid_source"` plus an `error` string without creating assets.
+- FTS refresh failure must mark `app_state.search_index_dirty=1`; full recovery is exposed through `maintenance_search_index`.
+- Job summaries now preserve observability fields for provider failures: `metadata_warnings`, `ai_errors`, `thumbnail_failed_count`, and near-duplicate scan scope fields such as `scanned_assets`, `limited`, and `limit`.
+- Timeline queries for a single asset should use repository asset-specific SQL (`list_review_items_for_asset`) instead of broad review-window scans.
+- Repository mixins use `core/library/_repository_protocol.py` for shared typing contracts. Keep pyright suppressions narrow and line-local when they are genuinely unavoidable.
+- Packaging check: both `photo_cropper.spec` and `photo_cropper_onefile.spec` explicitly list `photo_cropper.core.library._repository_protocol` in addition to `collect_submodules(...)`; no new external packaging dependency was introduced.
+- Validation baseline for this update:
+  - `python -m compileall -q photo_cropper`
+  - `pyright --project pyrightconfig.json`
+  - `python -m photo_cropper.selftest`

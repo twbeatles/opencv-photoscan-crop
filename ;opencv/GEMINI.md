@@ -396,3 +396,17 @@ pyinstaller photo_cropper_onefile.spec --clean
   - Added `photo_cropper.benchmark` runnable harness + JSON report metrics.
   - Added `BENCHMARK_LABEL_FORMAT.md` and `benchmark/labels.template.json`.
   - Real-image datasets are intentionally excluded from the repository.
+
+## 2026-04-27 Management/Library Stabilization Notes
+
+- Management rerun/reprocess, Watch, and Batch now share `BatchRuntimeFlow.resolve_file_batch_paths(...)` for file-list preflight.
+- Library import, exact duplicate rebuild, near duplicate rebuild, and search-index rebuild run as maintenance/background jobs.
+- SQLite connections enable `foreign_keys=ON` and `busy_timeout=5000`, with best-effort WAL initialization and `store.write_connect()` for write paths.
+- `LibraryRepository.upsert_source()` returns `ingest_state="invalid_source"` for invalid source paths without creating assets.
+- Search-index refresh failures mark `app_state.search_index_dirty=1`, and `maintenance_search_index` performs full rebuild recovery.
+- Job summaries record provider failures in `metadata_warnings`, `ai_errors`, and `thumbnail_failed_count`; near-duplicate rebuilds report scan scope.
+- Repository mixin typing contracts live in `core/library/_repository_protocol.py`; broad file-level pyright suppressions were removed from the touched areas.
+- Validation baseline:
+  - `python -m compileall -q photo_cropper`
+  - `pyright --project pyrightconfig.json`
+  - `python -m photo_cropper.selftest`

@@ -13,6 +13,7 @@ from .types import AssetQuery
 class DuplicateService:
     def __init__(self, repository: LibraryRepository):
         self.repository = repository
+        self.last_near_summary: dict[str, Any] = {}
 
     def rebuild_exact_groups(self) -> int:
         current_groups = {
@@ -125,6 +126,8 @@ class DuplicateService:
         assets = self.repository.list_assets(
             asset_query=AssetQuery(page=1, page_size=max(int(limit or 2000), 1))
         )
+        total_assets = self.repository.count_assets(AssetQuery(page_size=1))
+        limited = total_assets > len(assets)
         records = []
         for asset in assets:
             asset_id = int(asset.get("id", 0) or 0)
@@ -198,6 +201,14 @@ class DuplicateService:
             active_signatures.append(signature)
             created += 1
         self.repository.prune_duplicate_groups("near", active_signatures)
+        self.last_near_summary = {
+            "groups": created,
+            "scanned_assets": len(records),
+            "listed_assets": len(assets),
+            "total_assets": total_assets,
+            "limited": limited,
+            "limit": int(limit or 2000),
+        }
         return created
 
     def list_groups(self, *, kind: str | None = "exact") -> list[dict]:

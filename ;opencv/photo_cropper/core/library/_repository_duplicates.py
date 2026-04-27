@@ -1,4 +1,3 @@
-# pyright: reportAttributeAccessIssue=false
 from __future__ import annotations
 
 import json
@@ -8,11 +7,12 @@ from typing import Any, Optional
 from ...utils.file_helpers import compute_file_hash, get_image_dimensions
 from .types import AssetQuery, AssetTimelineEvent
 from ._repository_shared import compute_perceptual_hash, now_iso, safe_json_loads
+from ._repository_protocol import LibraryRepositoryProtocol
 
 
 class LibraryRepositoryDuplicateMixin:
     def replace_duplicate_group(
-        self: Any,
+        self: LibraryRepositoryProtocol,
         *,
         kind: str,
         signature: str,
@@ -21,7 +21,7 @@ class LibraryRepositoryDuplicateMixin:
     ) -> int:
         now = now_iso()
         unique_ids = sorted({int(item) for item in asset_ids})
-        with self.store.connect() as conn:
+        with self.store.write_connect() as conn:
             preferences = self.get_duplicate_member_preferences(kind)
             existing = conn.execute(
                 "SELECT id FROM duplicate_groups WHERE signature = ?",
@@ -35,7 +35,7 @@ class LibraryRepositoryDuplicateMixin:
                     """,
                     (kind, signature, representative_asset_id, now, now),
                 )
-                group_id = int(cur.lastrowid)
+                group_id = int(cur.lastrowid or 0)
             else:
                 group_id = int(existing["id"])
                 conn.execute(
@@ -74,8 +74,8 @@ class LibraryRepositoryDuplicateMixin:
                 )
             conn.commit()
             return group_id
-    def clear_duplicate_groups_by_kind(self: Any, kind: str) -> None:
-        with self.store.connect() as conn:
+    def clear_duplicate_groups_by_kind(self: LibraryRepositoryProtocol, kind: str) -> None:
+        with self.store.write_connect() as conn:
             group_ids = [
                 int(row["id"])
                 for row in conn.execute(
@@ -94,9 +94,9 @@ class LibraryRepositoryDuplicateMixin:
                     group_ids,
                 )
             conn.commit()
-    def prune_duplicate_groups(self: Any, kind: str, keep_signatures: list[str]) -> int:
+    def prune_duplicate_groups(self: LibraryRepositoryProtocol, kind: str, keep_signatures: list[str]) -> int:
         signatures = sorted({str(item or "") for item in keep_signatures if str(item or "").strip()})
-        with self.store.connect() as conn:
+        with self.store.write_connect() as conn:
             if signatures:
                 placeholders = ", ".join("?" for _ in signatures)
                 rows = conn.execute(
@@ -126,7 +126,7 @@ class LibraryRepositoryDuplicateMixin:
             conn.commit()
             return len(group_ids)
     def get_duplicate_member_preferences(
-        self: Any,
+        self: LibraryRepositoryProtocol,
         kind: str,
     ) -> dict[int, dict[str, Any]]:
         with self.store.connect() as conn:
@@ -140,7 +140,7 @@ class LibraryRepositoryDuplicateMixin:
             ).fetchall()
             return {int(row["asset_id"]): dict(row) for row in rows}
     def set_duplicate_member_preference(
-        self: Any,
+        self: LibraryRepositoryProtocol,
         kind: str,
         asset_id: int,
         *,
@@ -148,7 +148,7 @@ class LibraryRepositoryDuplicateMixin:
         prefer_representative: Optional[bool] = None,
     ) -> None:
         current = self.get_duplicate_member_preferences(kind).get(int(asset_id), {})
-        with self.store.connect() as conn:
+        with self.store.write_connect() as conn:
             conn.execute(
                 """
                 INSERT INTO duplicate_member_preferences(
@@ -177,7 +177,7 @@ class LibraryRepositoryDuplicateMixin:
                 ),
             )
             conn.commit()
-    def list_duplicate_groups(self: Any, *, kind: Optional[str] = None) -> list[dict[str, Any]]:
+    def list_duplicate_groups(self: LibraryRepositoryProtocol, *, kind: Optional[str] = None) -> list[dict[str, Any]]:
         with self.store.connect() as conn:
             if kind:
                 rows = conn.execute(
@@ -214,7 +214,7 @@ class LibraryRepositoryDuplicateMixin:
                     """
                 ).fetchall()
             return [dict(row) for row in rows]
-    def list_duplicate_group_members(self: Any, group_id: int) -> list[dict[str, Any]]:
+    def list_duplicate_group_members(self: LibraryRepositoryProtocol, group_id: int) -> list[dict[str, Any]]:
         with self.store.connect() as conn:
             rows = conn.execute(
                 """
@@ -234,8 +234,8 @@ class LibraryRepositoryDuplicateMixin:
                 (int(group_id),),
             ).fetchall()
             return [dict(row) for row in rows]
-    def set_duplicate_representative(self: Any, group_id: int, asset_id: int) -> None:
-        with self.store.connect() as conn:
+    def set_duplicate_representative(self: LibraryRepositoryProtocol, group_id: int, asset_id: int) -> None:
+        with self.store.write_connect() as conn:
             group = conn.execute(
                 "SELECT kind FROM duplicate_groups WHERE id = ?",
                 (int(group_id),),
@@ -261,8 +261,8 @@ class LibraryRepositoryDuplicateMixin:
                     int(member["asset_id"]),
                     prefer_representative=int(member["asset_id"]) == int(asset_id),
                 )
-    def set_duplicate_member_excluded(self: Any, group_id: int, asset_id: int, excluded: bool) -> None:
-        with self.store.connect() as conn:
+    def set_duplicate_member_excluded(self: LibraryRepositoryProtocol, group_id: int, asset_id: int, excluded: bool) -> None:
+        with self.store.write_connect() as conn:
             group = conn.execute(
                 "SELECT kind FROM duplicate_groups WHERE id = ?",
                 (int(group_id),),

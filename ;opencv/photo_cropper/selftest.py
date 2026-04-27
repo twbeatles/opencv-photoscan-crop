@@ -2557,6 +2557,11 @@ def _test_retry_failed_files_normalizes_empty_output_path() -> None:
         with tempfile.TemporaryDirectory(prefix="photocropper_retry_failed_") as td:
             input_dir = os.path.join(td, "input")
             os.makedirs(input_dir, exist_ok=True)
+            failed_a = os.path.join(input_dir, "failed_a.jpg")
+            failed_b = os.path.join(input_dir, "failed_b.jpg")
+            open(failed_a, "wb").close()
+            open(failed_b, "wb").close()
+            services.batch_session.failed_files = [failed_a, failed_b]
             refs.input_path_edit.setText(input_dir)
             refs.output_path_edit.setText("")
 
@@ -2572,7 +2577,7 @@ def _test_retry_failed_files_normalizes_empty_output_path() -> None:
                 (
                     input_dir,
                     default_output,
-                    ["failed_a.jpg", "failed_b.jpg"],
+                    [failed_a, failed_b],
                 )
             ]
     finally:
@@ -3855,6 +3860,214 @@ def _test_asset_query_filters_and_timeline() -> None:
         assert "variant" in event_types
 
 
+def _test_management_preflight_file_batch_guard() -> None:
+    import os
+    import tempfile
+
+    from .ui.main.services.batch_flow import BatchRuntimeFlow
+
+    with tempfile.TemporaryDirectory(prefix="photocropper_preflight_") as td:
+        input_dir = os.path.join(td, "input")
+        output_dir = os.path.join(input_dir, "output_cropped")
+        os.makedirs(input_dir, exist_ok=True)
+        source = os.path.join(input_dir, "source.jpg")
+        with open(source, "wb") as f:
+            f.write(b"not a real image but present")
+
+        flow = BatchRuntimeFlow()
+        blocked = flow.resolve_file_batch_paths(
+            input_path=input_dir,
+            output_path=output_dir,
+            files=[source],
+            recursive=True,
+            failed_folder_name="_failed",
+        )
+        assert blocked.ok is False
+        allowed = flow.resolve_file_batch_paths(
+            input_path=input_dir,
+            output_path=os.path.join(td, "out"),
+            files=[source],
+            recursive=True,
+            failed_folder_name="_failed",
+        )
+        assert allowed.ok is True
+        missing = flow.resolve_file_batch_paths(
+            input_path=input_dir,
+            output_path=os.path.join(td, "out2"),
+            files=[os.path.join(input_dir, "missing.jpg")],
+            recursive=False,
+            failed_folder_name="_failed",
+        )
+        assert missing.ok is False
+
+
+def _test_library_sqlite_pragmas_and_invalid_sources() -> None:
+    import os
+    import tempfile
+
+    from .core.library.repository import LibraryRepository
+    from .core.library.sqlite_store import LibrarySqliteStore
+
+    with tempfile.TemporaryDirectory(prefix="photocropper_sqlite_pragmas_") as td:
+        store = LibrarySqliteStore(db_path=os.path.join(td, "library.db"))
+        repository = LibraryRepository(store)
+        with store.connect() as conn:
+            foreign_keys = conn.execute("PRAGMA foreign_keys").fetchone()
+            busy_timeout = conn.execute("PRAGMA busy_timeout").fetchone()
+            assert foreign_keys is not None and int(foreign_keys[0]) == 1
+            assert busy_timeout is not None and int(busy_timeout[0]) >= 5000
+
+        assert repository.upsert_source("")["ingest_state"] == "invalid_source"
+        assert repository.upsert_source(os.path.join(td, "missing.jpg"))["ingest_state"] == "invalid_source"
+        assert repository.upsert_source(td)["ingest_state"] == "invalid_source"
+        text_path = os.path.join(td, "note.txt")
+        with open(text_path, "w", encoding="utf-8") as f:
+            f.write("hello")
+        assert repository.upsert_source(text_path)["ingest_state"] == "invalid_source"
+        assert repository.list_assets(limit=10) == []
+
+
+def _test_search_index_dirty_and_rebuild() -> None:
+    import os
+    import tempfile
+
+    import cv2
+    import numpy as np
+
+    from .core.library.repository import LibraryRepository
+    from .core.library.sqlite_store import LibrarySqliteStore
+
+    with tempfile.TemporaryDirectory(prefix="photocropper_search_dirty_") as td:
+        repository = LibraryRepository(
+            LibrarySqliteStore(db_path=os.path.join(td, "library.db"))
+        )
+        image = np.full((80, 120, 3), 180, dtype=np.uint8)
+        ok, encoded = cv2.imencode(".jpg", image)
+        assert ok
+        path = os.path.join(td, "asset.jpg")
+        encoded.tofile(path)
+        record = repository.upsert_source(path)
+        asset_id = int(record["asset_id"])
+        repository.store._fts_enabled = False
+        repository.refresh_search_index(asset_id)
+        assert repository.get_search_index_dirty() is True
+        repository.store._fts_enabled = True
+        assert repository.rebuild_search_index() >= 1
+        assert repository.get_search_index_dirty() is False
+
+
+def _test_timeline_review_query_not_limited_to_5000() -> None:
+    import os
+    import tempfile
+
+    import cv2
+    import numpy as np
+
+    from .core.library.query_service import QueryService
+    from .core.library.repository import LibraryRepository
+    from .core.library.sqlite_store import LibrarySqliteStore
+
+    with tempfile.TemporaryDirectory(prefix="photocropper_timeline_many_") as td:
+        repository = LibraryRepository(
+            LibrarySqliteStore(db_path=os.path.join(td, "library.db"))
+        )
+        image = np.full((80, 120, 3), 190, dtype=np.uint8)
+        ok, encoded = cv2.imencode(".jpg", image)
+        assert ok
+        target_path = os.path.join(td, "target.jpg")
+        encoded.tofile(target_path)
+        target = repository.upsert_source(target_path)
+        target_asset_id = int(target["asset_id"])
+        repository.create_review_item(
+            asset_id=target_asset_id,
+            source_id=int(target["source_id"]),
+            variant_id=None,
+            job_id=None,
+            job_item_id=None,
+            status="new",
+            reason="target_review",
+        )
+        with repository.store.write_connect() as conn:
+            for idx in range(5005):
+                stamp = f"2099-01-01T00:{idx // 60:02d}:{idx % 60:02d}"
+                conn.execute(
+                    """
+                    INSERT INTO review_items(
+                        asset_id, source_id, variant_id, job_id, job_item_id,
+                        status, reason, notes, action_context_json, created_at, updated_at
+                    )
+                    VALUES (NULL, NULL, NULL, NULL, NULL, 'new', 'other', '', '{}', ?, ?)
+                    """,
+                    (stamp, stamp),
+                )
+            conn.commit()
+        timeline = QueryService(repository).get_asset_timeline(target_asset_id)
+        assert any(
+            event.event_type == "review" and event.metadata.get("reason") == "target_review"
+            for event in timeline
+        )
+
+
+def _test_job_summary_metadata_warnings_and_near_summary() -> None:
+    import os
+    import tempfile
+
+    import cv2
+    import numpy as np
+
+    from .core.batch import BatchProgress, FileResult, ProcessStatus
+    from .core.jobs import JobOrchestrator
+    from .core.library import DuplicateService, ThumbnailService
+    from .core.library.repository import LibraryRepository
+    from .core.library.sqlite_store import LibrarySqliteStore
+    from .core.settings_model import AppSettings
+
+    class FailingThumbnailService(ThumbnailService):
+        def ensure_thumbnail(self, file_path: str) -> str:
+            return ""
+
+    with tempfile.TemporaryDirectory(prefix="photocropper_job_warnings_") as td:
+        repository = LibraryRepository(
+            LibrarySqliteStore(db_path=os.path.join(td, "library.db"))
+        )
+        image = np.full((100, 140, 3), 200, dtype=np.uint8)
+        ok, encoded = cv2.imencode(".jpg", image)
+        assert ok
+        src = os.path.join(td, "source.jpg")
+        out = os.path.join(td, "out.jpg")
+        encoded.tofile(src)
+        encoded.tofile(out)
+        duplicate_service = DuplicateService(repository)
+        orchestrator = JobOrchestrator(
+            repository,
+            thumbnail_service=FailingThumbnailService(thumbnails_dir=os.path.join(td, "thumbs")),
+            duplicate_service=duplicate_service,
+        )
+        job_id = orchestrator.create_job(job_kind="selftest_warning", input_path=td)
+        orchestrator.finalize_job(
+            job_id=job_id,
+            progress=BatchProgress(total=1, processed=1, success=1, is_running=False),
+            results=[
+                FileResult(
+                    filename="source.jpg",
+                    status=ProcessStatus.SUCCESS,
+                    source_path=src,
+                    output_path=out,
+                    output_paths=[out],
+                )
+            ],
+            settings=AppSettings(),
+            job_kind="selftest_warning",
+        )
+        job = repository.get_job(job_id)
+        assert job is not None
+        assert int(job["summary"]["thumbnail_failed_count"]) >= 1
+
+        duplicate_service.rebuild_near_groups(limit=1)
+        assert "scanned_assets" in duplicate_service.last_near_summary
+        assert "limited" in duplicate_service.last_near_summary
+
+
 def main() -> int:
     try:
         _test_crop_editor_import_smoke()
@@ -3939,6 +4152,11 @@ def main() -> int:
         _test_recipe_determinism_and_preserved_global_state()
         _test_review_service_guard_and_reprocess_queue()
         _test_asset_query_filters_and_timeline()
+        _test_management_preflight_file_batch_guard()
+        _test_library_sqlite_pragmas_and_invalid_sources()
+        _test_search_index_dirty_and_rebuild()
+        _test_timeline_review_query_not_limited_to_5000()
+        _test_job_summary_metadata_warnings_and_near_summary()
     except Exception as e:
         print(f"SELFTEST FAILED: {e}")
         return 1

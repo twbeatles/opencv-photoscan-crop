@@ -113,6 +113,7 @@ a = Analysis(
         'photo_cropper.core.library.providers',
         'photo_cropper.core.library.query_service',
         'photo_cropper.core.library.repository',
+        'photo_cropper.core.library._repository_protocol',
         'photo_cropper.core.library.review_service',
         'photo_cropper.core.library.sqlite_store',
         'photo_cropper.core.library.thumbnail_service',
@@ -244,4 +245,12 @@ exe = EXE(
       families introduced by the management-shell and core refactors.
     - `runtime_tmpdir` is derived from `LOCALAPPDATA`/temp at build time to
       avoid username-specific hardcoded paths in the checked-in spec.
+
+2026-04-27 note:
+    - Management/library stabilization added a private repository Protocol
+      module plus code-only maintenance flows for search-index rebuild,
+      background library import, and duplicate rebuild jobs.
+    - The new module is explicitly listed in hidden imports in addition to
+      `collect_submodules(...)`. No onefile-specific data files or external
+      runtime dependencies were added.
 """

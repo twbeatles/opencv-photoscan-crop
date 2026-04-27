@@ -1,4 +1,3 @@
-# pyright: reportAttributeAccessIssue=false
 from __future__ import annotations
 
 import json
@@ -8,10 +7,11 @@ from typing import Any, Optional
 from ...utils.file_helpers import compute_file_hash, get_image_dimensions
 from .types import AssetQuery, AssetTimelineEvent
 from ._repository_shared import compute_perceptual_hash, now_iso, safe_json_loads
+from ._repository_protocol import LibraryRepositoryProtocol
 
 
 class LibraryRepositoryAssetCoreMixin:
-    def _refresh_asset_primary_source(self: Any, conn, asset_id: int) -> None:
+    def _refresh_asset_primary_source(self: LibraryRepositoryProtocol, conn: Any, asset_id: int) -> None:
         primary = conn.execute(
             """
             SELECT source_path, source_hash
@@ -44,7 +44,7 @@ class LibraryRepositoryAssetCoreMixin:
             (primary_path, exact_hash, now_iso(), int(asset_id)),
         )
     def _source_candidates_by_hash(
-        self: Any,
+        self: LibraryRepositoryProtocol,
         conn,
         source_hash: str,
         *,
@@ -72,8 +72,8 @@ class LibraryRepositoryAssetCoreMixin:
         query.append("ORDER BY s.is_missing DESC, s.last_seen_at DESC, s.id DESC")
         rows = conn.execute("\n".join(query), params).fetchall()
         return [dict(row) for row in rows]
-    def set_asset_perceptual_hash(self: Any, asset_id: int, value: str) -> None:
-        with self.store.connect() as conn:
+    def set_asset_perceptual_hash(self: LibraryRepositoryProtocol, asset_id: int, value: str) -> None:
+        with self.store.write_connect() as conn:
             conn.execute(
                 """
                 UPDATE assets
@@ -83,7 +83,7 @@ class LibraryRepositoryAssetCoreMixin:
                 (str(value or ""), now_iso(), now_iso(), int(asset_id)),
             )
             conn.commit()
-    def refresh_asset_perceptual_hash(self: Any, asset_id: int, file_path: str) -> str:
+    def refresh_asset_perceptual_hash(self: LibraryRepositoryProtocol, asset_id: int, file_path: str) -> str:
         perceptual_hash = compute_perceptual_hash(file_path)
         self.set_asset_perceptual_hash(asset_id, perceptual_hash)
         return perceptual_hash

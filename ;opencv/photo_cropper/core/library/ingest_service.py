@@ -22,6 +22,8 @@ class LibraryIngestService:
     def ingest_file(self, file_path: str) -> dict:
         record = self.repository.upsert_source(file_path)
         ingest_state = str(record.get("ingest_state", "") or "")
+        if ingest_state == "invalid_source":
+            return record
         self.thumbnail_service.ensure_thumbnail(file_path)
         if ingest_state == "ambiguous_relink":
             self.repository.create_review_item(
@@ -56,7 +58,8 @@ class LibraryIngestService:
         count = 0
         for path in files:
             record = self.ingest_file(path)
-            if str(record.get("ingest_state", "") or "") != "ambiguous_relink":
+            ingest_state = str(record.get("ingest_state", "") or "")
+            if ingest_state not in ("ambiguous_relink", "invalid_source"):
                 count += 1
         self.duplicate_service.rebuild_exact_groups()
         return count

@@ -42,6 +42,7 @@ from .shared import (
 
 class LibraryPage(QWidget):
     open_requested = pyqtSignal(str)
+    import_requested = pyqtSignal(str, bool)
 
     def __init__(self, query_service, ingest_service, thumbnail_service, repository, parent=None):
         super().__init__(parent)
@@ -55,6 +56,7 @@ class LibraryPage(QWidget):
         self._total_assets = 0
         self._current_page = 1
         self._page_size = 200
+        self._busy = False
 
         layout = QVBoxLayout(self)
 
@@ -407,16 +409,12 @@ class LibraryPage(QWidget):
         )
         if not folder:
             return
-        count = self.ingest_service.import_directory(
-            folder,
-            recursive=self.recursive_checkbox.isChecked(),
-        )
-        QMessageBox.information(
-            self,
-            t("management.library.import_result.title"),
-            t("management.library.import_result.body", count=count),
-        )
-        self.refresh()
+        self.import_requested.emit(folder, self.recursive_checkbox.isChecked())
+
+    def set_busy(self, busy: bool) -> None:
+        self._busy = bool(busy)
+        self.import_btn.setEnabled(not self._busy)
+        self.refresh_btn.setEnabled(not self._busy)
 
     def _go_prev_page(self) -> None:
         if self._current_page > 1:
