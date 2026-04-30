@@ -156,17 +156,18 @@ class BatchProcessorIoPathsMixin:
                     )
                 if suffix and suffix != "_cropped":
                     base, ext = os.path.splitext(path)
-                    path = self._ensure_unique_output_path(base + suffix + ext)
-                return path
+                    return self._ensure_unique_output_path(base + suffix + ext)
+                return self._ensure_unique_output_path(path)
 
         base_name = os.path.splitext(os.path.basename(input_path))[0] + suffix
         extension = "." + output_format.lower()
-        return get_unique_filename(
+        path = get_unique_filename(
             output_dir,
             base_name,
             extension,
             add_timestamp=self.settings.output.add_timestamp,
         )
+        return self._ensure_unique_output_path(path)
     def _pipeline_signature(self) -> str:
         if self._pipeline_signature_cache is None:
             self._pipeline_signature_cache = build_pipeline_signature(self.settings)

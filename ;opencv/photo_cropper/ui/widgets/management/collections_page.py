@@ -13,16 +13,18 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
+from ....core.history_manager import CallableCommand, CommandType, HistoryManager
 from ....i18n.catalog import t
 from .shared import _selected_row_payload, _stretch_table
 
 class CollectionsPage(QWidget):
     open_requested = pyqtSignal(str)
 
-    def __init__(self, query_service, repository, parent=None):
+    def __init__(self, query_service, repository, history_manager: HistoryManager | None = None, parent=None):
         super().__init__(parent)
         self.query_service = query_service
         self.repository = repository
+        self.history_manager = history_manager
 
         layout = QVBoxLayout(self)
         controls = QHBoxLayout()
@@ -62,6 +64,19 @@ class CollectionsPage(QWidget):
         splitter.setSizes([280, 780])
         self.retranslate_ui()
 
+    def _record_history(self, description: str, undo, redo) -> None:
+        if self.history_manager is None:
+            return
+        self.history_manager.record_applied(
+            CallableCommand(
+                do=redo,
+                undo=undo,
+                redo=redo,
+                description=description,
+                command_type=CommandType.LIBRARY,
+            )
+        )
+
     def _selected_collection(self):
         return _selected_row_payload(self.collection_table)
 
@@ -99,7 +114,17 @@ class CollectionsPage(QWidget):
             t("management.collections.create_dialog.title"),
             t("management.common.description"),
         )
-        self.repository.create_collection(name.strip(), description)
+        collection_name = name.strip()
+        self.repository.create_collection(collection_name, description)
+        self._record_history(
+            t("history.collections.create"),
+            undo=lambda collection_name=collection_name: self._delete_collection_by_name(collection_name),
+            redo=lambda collection_name=collection_name, description=description: (
+                self.repository.create_collection(collection_name, description)
+                or self.refresh()
+                or True
+            ),
+        )
         self.refresh()
 
     def _delete_collection(self) -> None:
@@ -113,8 +138,35 @@ class CollectionsPage(QWidget):
         )
         if reply != QMessageBox.StandardButton.Yes:
             return
-        self.repository.delete_collection(int(collection["id"]))
+        collection_id = int(collection["id"])
+        collection_snapshot = dict(collection)
+        assets = self.query_service.list_assets(collection_id=collection_id, limit=5000)
+        asset_ids = [int(asset.get("id", 0) or 0) for asset in assets if int(asset.get("id", 0) or 0) > 0]
+        self.repository.delete_collection(collection_id)
+        self._record_history(
+            t("history.collections.delete"),
+            undo=lambda snapshot=collection_snapshot, asset_ids=asset_ids: self._restore_collection(snapshot, asset_ids),
+            redo=lambda name=str(collection_snapshot.get("name", "")): self._delete_collection_by_name(name),
+        )
         self.refresh()
+
+    def _delete_collection_by_name(self, name: str) -> bool:
+        for collection in self.query_service.list_collections():
+            if str(collection.get("name", "")) == str(name):
+                self.repository.delete_collection(int(collection["id"]))
+                self.refresh()
+                return True
+        self.refresh()
+        return True
+
+    def _restore_collection(self, snapshot: dict, asset_ids: list[int]) -> bool:
+        name = str(snapshot.get("name", "") or "")
+        description = str(snapshot.get("description", "") or "")
+        collection_id = self.repository.create_collection(name, description)
+        if collection_id is not None:
+            self.repository.add_assets_to_collection(asset_ids, int(collection_id))
+        self.refresh()
+        return True
 
     def _load_assets(self) -> None:
         collection = self._selected_collection()
@@ -146,9 +198,21 @@ class CollectionsPage(QWidget):
         asset = self._selected_asset()
         if collection is None or asset is None:
             return
-        self.repository.remove_asset_from_collection(
-            int(asset["id"]),
-            int(collection["id"]),
+        asset_id = int(asset["id"])
+        collection_id = int(collection["id"])
+        self.repository.remove_asset_from_collection(asset_id, collection_id)
+        self._record_history(
+            t("history.collections.remove_asset"),
+            undo=lambda asset_id=asset_id, collection_id=collection_id: (
+                self.repository.add_asset_to_collection(asset_id, collection_id)
+                or self.refresh()
+                or True
+            ),
+            redo=lambda asset_id=asset_id, collection_id=collection_id: (
+                self.repository.remove_asset_from_collection(asset_id, collection_id)
+                or self.refresh()
+                or True
+            ),
         )
         self._load_assets()
         self.refresh()

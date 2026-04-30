@@ -12,9 +12,11 @@ import time
 from concurrent.futures import Future, ThreadPoolExecutor
 from collections import deque
 from dataclasses import dataclass
-from typing import Any, Callable, Deque, Dict, List, Optional, Set, Tuple
+from typing import Any, Callable, Deque, Dict, List, Optional, Sequence, Set, Tuple
 
 from PyQt6.QtCore import QObject, QFileSystemWatcher, QTimer, pyqtSignal
+
+from ..utils.file_helpers import is_path_within, normalize_path
 
 logger = logging.getLogger(__name__)
 
@@ -53,12 +55,14 @@ class FolderWatcher(QObject):
         watch_path: Optional[str] = None,
         recursive: bool = False,
         debounce_ms: int = 500,
+        excluded_roots: Optional[Sequence[str]] = None,
         parent: Optional[QObject] = None,
     ):
         super().__init__(parent)
         self._watch_path: Optional[str] = watch_path
         self._recursive = bool(recursive)
         self._debounce_ms = int(debounce_ms)
+        self._excluded_roots = self._normalize_excluded_roots(excluded_roots)
 
         self._watcher = QFileSystemWatcher(self)
         self._watcher.directoryChanged.connect(self._on_directory_changed)
@@ -74,6 +78,28 @@ class FolderWatcher(QObject):
         self._debounce_timer.timeout.connect(self._process_pending_files)
 
         self._on_new_file_callback: Optional[Callable[[str], None]] = None
+
+    @staticmethod
+    def _normalize_excluded_roots(
+        excluded_roots: Optional[Sequence[str]],
+    ) -> List[str]:
+        normalized: List[str] = []
+        for raw in excluded_roots or []:
+            candidate = normalize_path(str(raw or ""))
+            if candidate and candidate not in normalized:
+                normalized.append(candidate)
+        return normalized
+
+    def set_excluded_roots(self, excluded_roots: Optional[Sequence[str]]) -> None:
+        self._excluded_roots = self._normalize_excluded_roots(excluded_roots)
+
+    def _is_excluded_path(self, path: str) -> bool:
+        if os.path.basename(str(path or "")) == ".photocropper":
+            return True
+        normalized = normalize_path(str(path or ""))
+        if not normalized:
+            return False
+        return any(is_path_within(root, normalized) for root in self._excluded_roots)
 
     @property
     def is_watching(self) -> bool:
@@ -107,6 +133,11 @@ class FolderWatcher(QObject):
 
             if self._recursive:
                 for root, dirs, _ in os.walk(self._watch_path):
+                    dirs[:] = [
+                        dirname
+                        for dirname in dirs
+                        if not self._is_excluded_path(os.path.join(root, dirname))
+                    ]
                     for dirname in dirs:
                         dir_path = os.path.join(root, dirname)
                         self._watcher.addPath(dir_path)
@@ -146,10 +177,17 @@ class FolderWatcher(QObject):
         self._file_signatures.clear()
 
         if self._recursive:
-            for root, _, files in os.walk(self._watch_path):
+            for root, dirs, files in os.walk(self._watch_path):
+                dirs[:] = [
+                    dirname
+                    for dirname in dirs
+                    if not self._is_excluded_path(os.path.join(root, dirname))
+                ]
+                if self._is_excluded_path(root):
+                    continue
                 for filename in files:
                     filepath = os.path.join(root, filename)
-                    if self._is_image_file(filepath):
+                    if self._is_image_file(filepath) and not self._is_excluded_path(filepath):
                         self._track_known_file(filepath)
         else:
             for filename in os.listdir(self._watch_path):
@@ -199,10 +237,16 @@ class FolderWatcher(QObject):
 
     def _scan_directory_images(self, directory: str) -> Set[str]:
         images: Set[str] = set()
+        if self._is_excluded_path(directory):
+            return images
         try:
             for filename in os.listdir(directory):
                 filepath = os.path.join(directory, filename)
-                if os.path.isfile(filepath) and self._is_image_file(filepath):
+                if (
+                    os.path.isfile(filepath)
+                    and self._is_image_file(filepath)
+                    and not self._is_excluded_path(filepath)
+                ):
                     images.add(filepath)
         except Exception as exc:
             logger.debug("Directory scan failed (%s): %s", directory, exc)
@@ -211,6 +255,8 @@ class FolderWatcher(QObject):
     def _queue_new_files(self, filepaths: Set[str]) -> None:
         queued = False
         for filepath in filepaths:
+            if self._is_excluded_path(filepath):
+                continue
             if filepath in self._known_files:
                 continue
             self._track_known_file(filepath)
@@ -222,6 +268,8 @@ class FolderWatcher(QObject):
 
     def _on_directory_changed(self, path: str) -> None:
         logger.debug("Directory changed: %s", path)
+        if self._is_excluded_path(path):
+            return
         if self._recursive:
             self._refresh_recursive_directories(path)
         self._check_for_new_files(path)
@@ -230,6 +278,8 @@ class FolderWatcher(QObject):
         logger.debug("File changed: %s", path)
         filepath = str(path or "")
         if not filepath:
+            return
+        if self._is_excluded_path(filepath):
             return
 
         if not os.path.exists(filepath):
@@ -288,6 +338,13 @@ class FolderWatcher(QObject):
             discovered_files: Set[str] = set()
 
             for root, dirs, _ in os.walk(changed_dir):
+                dirs[:] = [
+                    dirname
+                    for dirname in dirs
+                    if not self._is_excluded_path(os.path.join(root, dirname))
+                ]
+                if self._is_excluded_path(root):
+                    continue
                 for dirname in dirs:
                     dir_path = os.path.join(root, dirname)
                     if dir_path in known_dirs:
@@ -319,7 +376,7 @@ class FolderWatcher(QObject):
         return self._watcher.directories()
 
     def add_directory(self, path: str) -> bool:
-        if not os.path.isdir(path):
+        if not os.path.isdir(path) or self._is_excluded_path(path):
             return False
         return self._watcher.addPath(path)
 
@@ -344,6 +401,7 @@ class AutoProcessor(QObject):
         recursive: bool = False,
         debounce_ms: int = 500,
         max_wait_seconds: float = 30.0,
+        excluded_roots: Optional[Sequence[str]] = None,
         process_callback: Optional[Callable[[str, str], Any]] = None,
         parent: Optional[QObject] = None,
     ):
@@ -357,6 +415,7 @@ class AutoProcessor(QObject):
             watch_path,
             recursive=recursive,
             debounce_ms=debounce_ms,
+            excluded_roots=excluded_roots,
             parent=self,
         )
         self._watcher.new_file_detected.connect(self._on_new_file)
@@ -396,6 +455,7 @@ class AutoProcessor(QObject):
         recursive: Optional[bool] = None,
         debounce_ms: Optional[int] = None,
         max_wait_seconds: Optional[float] = None,
+        excluded_roots: Optional[Sequence[str]] = None,
     ) -> bool:
         if watch_path:
             self._watch_path = watch_path
@@ -409,6 +469,8 @@ class AutoProcessor(QObject):
             self._retry_interval_ms = max(200, int(int(debounce_ms) * 0.8))
         if max_wait_seconds is not None:
             self._max_wait_s = max(1.0, float(max_wait_seconds))
+        if excluded_roots is not None:
+            self._watcher.set_excluded_roots(excluded_roots)
 
         self._halted = False
 

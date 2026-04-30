@@ -284,7 +284,10 @@ class MainWindow(QMainWindow):
             dialog_actions=self.dialog_actions,
             watch_actions=self.watch_actions,
             tool_actions=self.tool_actions,
+            feature_actions=self.feature_actions,
         )
+        self.services.history_manager.set_change_callback(self._update_history_actions)
+        self._update_history_actions()
         build_toolbar(
             self,
             refs,
@@ -518,6 +521,14 @@ class MainWindow(QMainWindow):
     def _on_language_changed(self, _language: str) -> None:
         self.retranslate_ui()
 
+    def _update_history_actions(self) -> None:
+        undo_action = self.refs.actions.get("edit.undo")
+        if undo_action is not None:
+            undo_action.setEnabled(self.services.history_manager.can_undo)
+        redo_action = self.refs.actions.get("edit.redo")
+        if redo_action is not None:
+            redo_action.setEnabled(self.services.history_manager.can_redo)
+
     def retranslate_ui(self) -> None:
         self.setWindowTitle(t("app.title", version=self.VERSION))
 
@@ -559,6 +570,8 @@ class MainWindow(QMainWindow):
             "file.open_output_folder": t("menu.file.open_output_folder"),
             "file.exit": t("menu.file.exit"),
             "edit.reset_settings": t("menu.edit.reset_settings"),
+            "edit.undo": t("menu.edit.undo"),
+            "edit.redo": t("menu.edit.redo"),
             "tools.preview": t("menu.tools.preview"),
             "tools.retry_failed": t("menu.tools.retry_failed"),
             "tools.refresh": t("menu.tools.refresh"),

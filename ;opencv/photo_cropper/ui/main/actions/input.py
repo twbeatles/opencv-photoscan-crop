@@ -34,7 +34,7 @@ class InputActions:
         self._request_preview: Optional[Callable[[], None]] = None
         self._navigate_prev: Optional[Callable[[], None]] = None
         self._navigate_next: Optional[Callable[[], None]] = None
-        self._start_processing: Optional[Callable[[], None]] = None
+        self._start_processing: Optional[Callable[..., object]] = None
         self._rotate_preview: Optional[Callable[[], None]] = None
         self._show_compare_dialog: Optional[Callable[[], None]] = None
         self._show_fullscreen: Optional[Callable[[], None]] = None
@@ -50,7 +50,7 @@ class InputActions:
         request_preview: Callable[[], None],
         navigate_prev: Callable[[], None],
         navigate_next: Callable[[], None],
-        start_processing: Callable[[], None],
+        start_processing: Callable[..., object],
         rotate_preview: Callable[[], None],
         show_compare_dialog: Callable[[], None],
         show_fullscreen: Callable[[], None],

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from typing import Optional, Sequence
+from threading import Event
+from typing import Callable, Optional, Sequence
 
 from ...utils.file_helpers import get_image_files
 from .duplicate_service import DuplicateService
@@ -47,18 +48,26 @@ class LibraryIngestService:
         *,
         recursive: bool = True,
         excluded_roots: Optional[Sequence[str]] = None,
+        progress_callback: Optional[Callable[[int, int, str], None]] = None,
+        cancel_event: Optional[Event] = None,
     ) -> int:
         files = get_image_files(
             directory,
             recursive=recursive,
             excluded_roots=excluded_roots,
         )
+        total = len(files)
         count = 0
-        for path in files:
+        for index, path in enumerate(files, 1):
+            if cancel_event is not None and cancel_event.is_set():
+                break
             record = self.ingest_file(path)
             if str(record.get("ingest_state", "") or "") != "ambiguous_relink":
                 count += 1
-        self.duplicate_service.rebuild_exact_groups()
+            if progress_callback is not None:
+                progress_callback(index, total, path)
+        if cancel_event is None or not cancel_event.is_set():
+            self.duplicate_service.rebuild_exact_groups()
         return count
 
     def scan_missing_sources(self) -> dict:

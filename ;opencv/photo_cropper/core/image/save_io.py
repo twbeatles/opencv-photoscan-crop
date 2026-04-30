@@ -16,6 +16,8 @@ from typing import Optional, Tuple
 import cv2
 import numpy as np
 
+from ...utils.image_io import load_image_unicode
+
 logger = logging.getLogger(__name__)
 EXIF_ORIENTATION_TAG = 0x0112
 
@@ -235,8 +237,7 @@ class ImageSaveMixin:
 
         # Fallback to OpenCV (loads full image)
         try:
-            img_array = np.fromfile(image_path, np.uint8)
-            image = cv2.imdecode(img_array, cv2.IMREAD_COLOR)
+            image = load_image_unicode(image_path, cv2.IMREAD_COLOR)
             if image is not None:
                 h, w = image.shape[:2]
                 c = image.shape[2] if len(image.shape) > 2 else 1

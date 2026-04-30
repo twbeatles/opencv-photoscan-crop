@@ -11,6 +11,7 @@ from PyQt6.QtCore import QObject, pyqtSignal, pyqtSlot
 
 from ...core.image import ImageProcessor
 from ...core.settings_model import AppSettings
+from ...i18n.catalog import t
 
 
 class PreviewWorker(QObject):
@@ -34,7 +35,7 @@ class PreviewWorker(QObject):
     ):
         try:
             if not image_path or not os.path.exists(image_path):
-                self.preview_failed.emit(request_id, "미리보기할 파일이 없습니다.")
+                self.preview_failed.emit(request_id, t("preview.error.no_file"))
                 return
 
             if isinstance(settings_snapshot, AppSettings):
@@ -74,4 +75,3 @@ class PreviewWorker(QObject):
 
 
 __all__ = ["PreviewWorker"]
-

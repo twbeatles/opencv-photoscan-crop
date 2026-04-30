@@ -23,8 +23,37 @@ import cv2
 import numpy as np
 
 from ...i18n.catalog import t
+from ...utils.image_io import load_image_unicode
 
 logger = logging.getLogger(__name__)
+
+
+def _image_to_qimage(image: np.ndarray) -> QImage:
+    rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+    h, w, ch = rgb.shape
+    bytes_per_line = ch * w
+    return QImage(
+        np.ascontiguousarray(rgb).tobytes(),
+        w,
+        h,
+        bytes_per_line,
+        QImage.Format.Format_RGB888,
+    ).copy()
+
+
+def _load_thumbnail_qimage(filepath: str, size: int) -> Optional[QImage]:
+    image = load_image_unicode(filepath, cv2.IMREAD_COLOR, normalize_exif=True)
+    if image is None:
+        return None
+
+    h, w = image.shape[:2]
+    if w <= 0 or h <= 0:
+        return None
+    scale = min(size / w, size / h)
+    new_w = max(1, int(w * scale))
+    new_h = max(1, int(h * scale))
+    thumbnail = cv2.resize(image, (new_w, new_h), interpolation=cv2.INTER_AREA)
+    return _image_to_qimage(thumbnail)
 
 
 class ThumbnailItem(QFrame):
@@ -85,30 +114,9 @@ class ThumbnailItem(QFrame):
     def _load_thumbnail(self):
         """Load thumbnail image."""
         try:
-            # Load image
-            image = cv2.imread(self.filepath)
-            if image is None:
+            qimg = _load_thumbnail_qimage(self.filepath, self.thumbnail_size)
+            if qimg is None:
                 return
-            
-            # Resize to thumbnail
-            h, w = image.shape[:2]
-            scale = min(self.thumbnail_size / w, self.thumbnail_size / h)
-            new_w, new_h = int(w * scale), int(h * scale)
-            
-            thumbnail = cv2.resize(image, (new_w, new_h), interpolation=cv2.INTER_AREA)
-            
-            # Convert to QPixmap
-            rgb = cv2.cvtColor(thumbnail, cv2.COLOR_BGR2RGB)
-            h, w, ch = rgb.shape
-            bytes_per_line = ch * w
-            qimg = QImage(
-                np.ascontiguousarray(rgb).tobytes(),
-                w,
-                h,
-                bytes_per_line,
-                QImage.Format.Format_RGB888,
-            )
-            
             self._pixmap = QPixmap.fromImage(qimg)
             self.image_label.setPixmap(self._pixmap)
             
@@ -163,7 +171,7 @@ class ThumbnailItem(QFrame):
 class ThumbnailLoader(QThread):
     """Background thread for loading thumbnails."""
     
-    thumbnail_loaded = pyqtSignal(str, QPixmap)
+    thumbnail_loaded = pyqtSignal(str, QImage)
     
     def __init__(self, filepaths: List[str], size: int = 150):
         super().__init__()
@@ -178,23 +186,10 @@ class ThumbnailLoader(QThread):
                 break
             
             try:
-                image = cv2.imread(filepath)
-                if image is None:
+                qimg = _load_thumbnail_qimage(filepath, self.size)
+                if qimg is None:
                     continue
-                
-                h, w = image.shape[:2]
-                scale = min(self.size / w, self.size / h)
-                new_w, new_h = int(w * scale), int(h * scale)
-                
-                thumbnail = cv2.resize(image, (new_w, new_h), interpolation=cv2.INTER_AREA)
-                rgb = cv2.cvtColor(thumbnail, cv2.COLOR_BGR2RGB)
-                
-                h, w, ch = rgb.shape
-                bytes_per_line = ch * w
-                qimg = QImage(rgb.data.tobytes(), w, h, bytes_per_line, QImage.Format.Format_RGB888)
-                pixmap = QPixmap.fromImage(qimg)
-                
-                self.thumbnail_loaded.emit(filepath, pixmap)
+                self.thumbnail_loaded.emit(filepath, qimg)
                 
             except Exception as e:
                 logger.debug(f"Thumbnail load failed: {e}")

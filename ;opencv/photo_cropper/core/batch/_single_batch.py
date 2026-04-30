@@ -115,6 +115,7 @@ class BatchProcessorBatchLoopMixin:
 
             self._log(f"총 {total}개 파일 처리 시작", "info")
             self._update_progress()
+            self._reset_output_reservations()
 
             # Initialize naming engine for this batch if enabled
             if self.settings.file_management.use_naming_rules:

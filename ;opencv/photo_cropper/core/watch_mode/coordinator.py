@@ -13,7 +13,7 @@ from PyQt6.QtCore import QObject, pyqtSignal
 from ..batch import BatchProcessor
 from ..folder_watcher import AutoProcessor
 from ..settings_model import AppSettings, WatchModeSettings
-from ...utils.file_helpers import is_output_inside_input
+from ...utils.file_helpers import build_recursive_excluded_roots, is_output_inside_input
 from .types import WatchStartResult
 
 logger = logging.getLogger(__name__)
@@ -114,6 +114,15 @@ class WatchModeCoordinator(QObject):
             recursive=recursive,
             debounce_ms=debounce_ms,
             max_wait_seconds=max_wait_seconds,
+            excluded_roots=(
+                build_recursive_excluded_roots(
+                    normalized_input,
+                    normalized_output,
+                    failed_folder_name=self._settings.file_management.failed_folder_name,
+                )
+                if recursive
+                else None
+            ),
             process_callback=self._process_watched_file,
             parent=self,
         )

@@ -13,6 +13,7 @@ from ....core.batch_profile_manager import get_batch_profile_manager
 from ....core.smart_enhancer import EnhancementPreset, get_smart_enhancer
 from ....i18n.catalog import t
 from ....utils.file_helpers import build_recursive_excluded_roots, get_image_files
+from ....utils.image_io import load_image_unicode
 from ...widgets.preset_manager import get_preset_manager
 from ...widgets.toast_notification import ToastManager
 from ..models import WindowRefs, WindowServices, WindowState
@@ -173,7 +174,6 @@ class ToolActions:
             return
 
         import cv2
-        import numpy as np
 
         from ....core.face import get_face_detector
 
@@ -181,9 +181,10 @@ class ToolActions:
             use_dnn=getattr(self.state.settings.face_detection, "use_dnn", False),
             min_face_size=getattr(self.state.settings.face_detection, "min_face_size", 30),
         )
-        image = cv2.imdecode(
-            np.fromfile(self.state.current_image_path, dtype=np.uint8),
+        image = load_image_unicode(
+            self.state.current_image_path,
             cv2.IMREAD_COLOR,
+            normalize_exif=True,
         )
         if image is None:
             return

@@ -22,12 +22,17 @@ from typing import Any, Dict, Optional, Tuple
 try:
     from .core.batch_profile_manager import get_batch_profile_manager
     from .core.settings_model import AppSettings
+    from .core.settings_model.validation import build_validation_summary, validate_settings
     from .utils.file_helpers import is_output_inside_input
 except ImportError:
     # Support direct execution: python photo_cropper/cli.py
     sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     from photo_cropper.core.batch_profile_manager import get_batch_profile_manager
     from photo_cropper.core.settings_model import AppSettings
+    from photo_cropper.core.settings_model.validation import (
+        build_validation_summary,
+        validate_settings,
+    )
     from photo_cropper.utils.file_helpers import is_output_inside_input
 
 
@@ -436,6 +441,9 @@ def process_batch(args: argparse.Namespace) -> int:
 
     try:
         settings = build_settings_from_args(args)
+        issues = validate_settings(settings)
+        if issues:
+            raise ValueError(build_validation_summary(issues))
         _validate_io_paths(
             args.input,
             args.output,

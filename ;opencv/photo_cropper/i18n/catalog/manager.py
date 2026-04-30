@@ -163,8 +163,13 @@ class TranslationManager:
         if kwargs:
             try:
                 text = text.format(**kwargs)
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.warning(
+                    "Translation formatting failed: language=%s key=%s error=%s",
+                    lang,
+                    key,
+                    exc,
+                )
         return text
 
     def t(self, key: str, **kwargs) -> str:

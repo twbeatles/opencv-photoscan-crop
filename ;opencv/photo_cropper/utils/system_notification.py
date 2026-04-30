@@ -20,6 +20,8 @@ from typing import Optional, Callable
 from enum import Enum
 from dataclasses import dataclass
 
+from ..i18n.catalog import t
+
 logger = logging.getLogger(__name__)
 
 # Try to import winotify for Windows notifications
@@ -240,12 +242,21 @@ class SystemNotification:
             return
         
         if failed == 0:
-            title = "배치 처리 완료"
-            message = f"{processed}개 이미지 처리 완료 ({time_seconds:.1f}초)"
+            title = t("notification.batch_complete.title")
+            message = t(
+                "notification.batch_complete.body",
+                processed=processed,
+                seconds=f"{time_seconds:.1f}",
+            )
             notification_type = NotificationType.SUCCESS
         else:
-            title = "배치 처리 완료 (일부 실패)"
-            message = f"성공: {processed}개, 실패: {failed}개 ({time_seconds:.1f}초)"
+            title = t("notification.batch_partial.title")
+            message = t(
+                "notification.batch_partial.body",
+                processed=processed,
+                failed=failed,
+                seconds=f"{time_seconds:.1f}",
+            )
             notification_type = NotificationType.WARNING
         
         self.notify(title, message, notification_type)
@@ -265,7 +276,7 @@ class SystemNotification:
         if details:
             full_message += f"\n{details}"
         
-        self.notify("오류 발생", full_message, NotificationType.ERROR)
+        self.notify(t("notification.error.title"), full_message, NotificationType.ERROR)
     
     def notify_watch_mode(self, new_files: int, processed: int = 0):
         """
@@ -279,11 +290,15 @@ class SystemNotification:
             return
         
         if processed > 0:
-            message = f"{new_files}개 파일 감지, {processed}개 처리됨"
+            message = t(
+                "notification.watch.processed",
+                new_files=new_files,
+                processed=processed,
+            )
         else:
-            message = f"{new_files}개 새 파일 감지됨"
+            message = t("notification.watch.detected", new_files=new_files)
         
-        self.notify("폴더 감시", message, NotificationType.INFO)
+        self.notify(t("notification.watch.title"), message, NotificationType.INFO)
     
     def notify_classification_complete(self, categories: dict):
         """
@@ -295,8 +310,12 @@ class SystemNotification:
         if not self.settings.enabled:
             return
         
-        summary = ", ".join(f"{k}: {v}개" for k, v in categories.items() if v > 0)
-        self.notify("분류 완료", summary, NotificationType.SUCCESS)
+        summary = ", ".join(
+            t("notification.classification.item", category=k, count=v)
+            for k, v in categories.items()
+            if v > 0
+        )
+        self.notify(t("notification.classification.title"), summary, NotificationType.SUCCESS)
     
     def register_callback(self, notification_type: NotificationType,
                           callback: Callable[[str, str], None]):

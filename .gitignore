@@ -13,6 +13,8 @@ dist/
 ;opencv/benchmark/report-*.json
 
 # Runtime output artifacts from local processing
+out/
+;opencv/out/
 **/output_cropped/
 **/_failed/
 **/backup/

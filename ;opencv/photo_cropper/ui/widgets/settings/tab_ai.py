@@ -3,7 +3,7 @@ from __future__ import annotations
 from PyQt6.QtWidgets import QCheckBox, QFormLayout, QGroupBox, QHBoxLayout, QLabel, QLineEdit, QVBoxLayout, QWidget
 
 from ....core.settings_model import CLASSIFICATION_CATEGORY_KEYS
-from ....i18n.catalog import get_category_folder_defaults
+from ....i18n.catalog import get_category_folder_defaults, t
 from ..toggle_switch import ModernToggleSwitch
 from .controls import NoScrollComboBox, NoScrollSpinBox
 
@@ -155,12 +155,12 @@ def create_ai_settings_tab(self):
 def schedule_hint_text(schedule_type: str) -> str:
     normalized = str(schedule_type or "").strip().lower()
     if normalized == "once":
-        return "once: 날짜 없이 다음 도래 HH:MM에 한 번만 실행됩니다."
+        return t("settings.schedule_hint.once")
     if normalized == "daily":
-        return "daily: 매일 지정한 HH:MM에 반복 실행됩니다."
+        return t("settings.schedule_hint.daily")
     if normalized == "hourly":
-        return "hourly: 매 정시에 반복 실행됩니다."
-    return "interval: 지정한 분 간격마다 반복 실행됩니다."
+        return t("settings.schedule_hint.hourly")
+    return t("settings.schedule_hint.interval")
 
 def on_schedule_type_changed(self, schedule_type: str):
     """Handle schedule type change to show/hide relevant controls."""

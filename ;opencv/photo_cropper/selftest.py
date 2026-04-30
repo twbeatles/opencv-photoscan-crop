@@ -806,6 +806,7 @@ def _test_watch_max_wait_roundtrip() -> None:
 
     from .core.folder_watcher import AutoProcessor
     from .core.settings_model import AppSettings
+    from .i18n.catalog import t
     from .ui.widgets.settings import SettingsPanel
 
     app = QApplication.instance()
@@ -1139,6 +1140,7 @@ def _test_settings_panel_performance_roundtrip() -> None:
         return
 
     from .core.settings_model import AppSettings
+    from .i18n.catalog import t
     from .ui.widgets.settings import SettingsPanel
 
     app = QApplication.instance()
@@ -2800,6 +2802,7 @@ def _test_settings_panel_legacy_custom_alias_and_schedule_once_hint() -> None:
         return
 
     from .core.settings_model import AppSettings
+    from .i18n.catalog import t
     from .ui.widgets.settings import SettingsPanel
 
     app = QApplication.instance()
@@ -2820,7 +2823,7 @@ def _test_settings_panel_legacy_custom_alias_and_schedule_once_hint() -> None:
     assert panel.classification_model_combo.currentText() == "advanced"
 
     panel.schedule_type_combo.setCurrentText("once")
-    assert "다음 도래" in panel.schedule_hint_label.text()
+    assert panel.schedule_hint_label.text() == t("settings.schedule_hint.once")
 
     out = panel._build_settings()
     assert out.classification.model == "advanced"
@@ -2969,6 +2972,375 @@ def _test_cli_recursive_output_guard() -> None:
             code = cli_mod.process_batch(args)
         assert code == 2
         assert "output directory inside the input directory" in error_buffer.getvalue()
+
+
+def _test_unicode_image_io_helper_and_blank_path_guards() -> None:
+    import os
+    import tempfile
+
+    import cv2
+    import numpy as np
+
+    from .utils.file_helpers import (
+        build_recursive_excluded_roots,
+        is_output_inside_input,
+        normalize_path,
+    )
+    from .utils.image_io import load_image_unicode
+
+    with tempfile.TemporaryDirectory(prefix="photocropper_unicode_경로_") as td:
+        image_path = os.path.join(td, "샘플 이미지.jpg")
+        image = np.zeros((12, 16, 3), dtype=np.uint8)
+        ok, encoded = cv2.imencode(".jpg", image)
+        assert ok
+        encoded.tofile(image_path)
+
+        loaded = load_image_unicode(image_path, cv2.IMREAD_COLOR)
+        assert loaded is not None
+        assert loaded.shape[:2] == (12, 16)
+
+        assert normalize_path("") == ""
+        assert normalize_path("   ") == ""
+        roots = build_recursive_excluded_roots(td, "")
+        assert normalize_path(os.getcwd()) not in roots
+        assert is_output_inside_input("", os.path.join(td, "child")) is False
+
+
+def _test_cli_rejects_invalid_settings_segments() -> None:
+    import io
+    import json
+    import os
+    import tempfile
+    from contextlib import redirect_stderr
+
+    from . import cli as cli_mod
+
+    with tempfile.TemporaryDirectory(prefix="photocropper_cli_invalid_") as td:
+        in_dir = os.path.join(td, "input")
+        out_dir = os.path.join(td, "output")
+        os.makedirs(in_dir, exist_ok=True)
+        config_path = os.path.join(td, "bad.json")
+        with open(config_path, "w", encoding="utf-8") as handle:
+            json.dump(
+                {
+                    "file_management": {"naming_prefix": "../bad"},
+                    "classification": {
+                        "category_folders": {"portrait": "bad/folder"}
+                    },
+                },
+                handle,
+            )
+
+        parser = cli_mod.create_parser()
+        args = parser.parse_args(["-i", in_dir, "-o", out_dir, "--config", config_path])
+        error_buffer = io.StringIO()
+        with redirect_stderr(error_buffer):
+            code = cli_mod.process_batch(args)
+        assert code == 2
+        assert "ERROR:" in error_buffer.getvalue()
+
+
+def _test_processed_signature_includes_routing_and_backup() -> None:
+    from .core.processed_index import build_pipeline_signature
+    from .core.settings_model import AppSettings
+
+    ko_settings = AppSettings()
+    ko_settings.classification.enabled = True
+    ko_settings.classification.auto_folder = True
+    ko_settings.ui.language = "ko"
+
+    en_settings = AppSettings.from_dict(ko_settings.to_dict())
+    en_settings.ui.language = "en"
+
+    backup_settings = AppSettings.from_dict(ko_settings.to_dict())
+    backup_settings.create_backup = True
+
+    assert build_pipeline_signature(ko_settings) != build_pipeline_signature(en_settings)
+    assert build_pipeline_signature(ko_settings) != build_pipeline_signature(backup_settings)
+
+
+def _test_output_reservation_is_thread_safe() -> None:
+    import os
+    import tempfile
+    from concurrent.futures import ThreadPoolExecutor
+
+    from .core.batch import BatchProcessor
+    from .core.settings_model import AppSettings
+
+    processor = BatchProcessor(AppSettings())
+    with tempfile.TemporaryDirectory(prefix="photocropper_reserve_") as td:
+        target = os.path.join(td, "same.jpg")
+        with ThreadPoolExecutor(max_workers=8) as executor:
+            paths = list(executor.map(lambda _idx: processor._ensure_unique_output_path(target), range(8)))
+        assert len(set(paths)) == 8
+        assert paths[0] == target
+
+
+def _test_scheduler_once_preserves_task_until_started() -> None:
+    from .core.scheduler import Scheduler, ScheduleRunStatus, ScheduleTask, ScheduleType
+
+    task = ScheduleTask(
+        task_id="once",
+        name="once",
+        schedule_type=ScheduleType.ONCE,
+        input_path="in",
+        output_path="out",
+    )
+    scheduler = Scheduler(process_callback=lambda *_args: ScheduleRunStatus.SKIPPED_BUSY)
+    assert scheduler._execute_task(task) is False
+    assert task.enabled is True
+    assert task.last_run is None
+
+    scheduler.set_process_callback(lambda *_args: ScheduleRunStatus.STARTED)
+    assert scheduler._execute_task(task) is True
+    assert task.enabled is False
+    assert task.last_run is not None
+
+
+def _test_scheduled_batch_uses_task_paths() -> None:
+    import os
+    import tempfile
+    from types import SimpleNamespace
+
+    app, owned_app = _ensure_qt_app("scheduled path test")
+    if app is None:
+        return
+
+    from PyQt6.QtWidgets import QLabel, QLineEdit, QMainWindow
+
+    from .core.scheduler import ScheduleRunStatus
+    from .core.settings_model import AppSettings
+    from .ui.main.actions.watch import WatchActions
+
+    class FakeProcessor:
+        is_running = False
+
+    class FakeBatchSession:
+        def __init__(self) -> None:
+            self.processor = FakeProcessor()
+
+    with tempfile.TemporaryDirectory(prefix="photocropper_schedule_paths_") as td:
+        scheduled_input = os.path.join(td, "scheduled_in")
+        scheduled_output = os.path.join(td, "scheduled_out")
+        ui_input = os.path.join(td, "ui_in")
+        ui_output = os.path.join(td, "ui_out")
+        os.makedirs(scheduled_input, exist_ok=True)
+        os.makedirs(scheduled_output, exist_ok=True)
+        os.makedirs(ui_input, exist_ok=True)
+        with open(os.path.join(scheduled_input, "a.jpg"), "wb") as handle:
+            handle.write(b"not decoded by scan")
+
+        host_window = QMainWindow()
+        refs = SimpleNamespace(
+            input_path_edit=QLineEdit(ui_input),
+            output_path_edit=QLineEdit(ui_output),
+            status_label=QLabel(),
+        )
+        services = SimpleNamespace(
+            host_window=host_window,
+            batch_session=FakeBatchSession(),
+            watch_mode_coordinator=SimpleNamespace(is_active=False),
+        )
+        state = SimpleNamespace(settings=AppSettings(), manual_extract_running=False)
+        actions = WatchActions(state=state, refs=refs, services=services)
+        captured: dict[str, str] = {}
+
+        def start_processing(**kwargs) -> bool:
+            captured.update(kwargs)
+            services.batch_session.processor.is_running = True
+            return True
+
+        actions.bind(start_processing=start_processing)
+        status = actions.on_scheduled_batch_trigger(scheduled_input, scheduled_output)
+        assert status == ScheduleRunStatus.STARTED
+        assert captured["input_path_override"] == scheduled_input
+        assert captured["output_path_override"] == scheduled_output
+
+        host_window.deleteLater()
+        refs.input_path_edit.deleteLater()
+        refs.output_path_edit.deleteLater()
+        refs.status_label.deleteLater()
+        if owned_app:
+            app.quit()
+
+
+def _test_folder_watcher_recursive_excluded_roots() -> None:
+    import os
+    import tempfile
+
+    app, owned_app = _ensure_qt_app("folder watcher exclusion test")
+    if app is None:
+        return
+
+    from .core.folder_watcher import FolderWatcher
+    from .utils.file_helpers import is_path_within, normalize_path
+
+    with tempfile.TemporaryDirectory(prefix="photocropper_watch_exclude_") as td:
+        root = os.path.join(td, "input")
+        output = os.path.join(root, "output_cropped")
+        keep = os.path.join(root, "keep")
+        os.makedirs(output, exist_ok=True)
+        os.makedirs(keep, exist_ok=True)
+        with open(os.path.join(output, "out.jpg"), "wb") as handle:
+            handle.write(b"x")
+        with open(os.path.join(keep, "in.jpg"), "wb") as handle:
+            handle.write(b"x")
+
+        watcher = FolderWatcher(root, recursive=True, excluded_roots=[output])
+        try:
+            assert watcher.start(root)
+            watched = {normalize_path(path) for path in watcher.get_watched_directories()}
+            assert normalize_path(output) not in watched
+            assert all(
+                not is_path_within(output, path)
+                for path in getattr(watcher, "_known_files", set())
+            )
+        finally:
+            watcher.stop()
+            watcher.deleteLater()
+            if owned_app:
+                app.quit()
+
+
+def _test_sqlite_pragmas_and_ingest_cancel_progress() -> None:
+    import os
+    import tempfile
+    import threading
+
+    import cv2
+    import numpy as np
+
+    from .core.library import LibraryIngestService, LibraryRepository
+    from .core.library.sqlite_store import LibrarySqliteStore
+
+    class NoopThumbnailService:
+        def ensure_thumbnail(self, _path: str) -> str:
+            return ""
+
+    with tempfile.TemporaryDirectory(prefix="photocropper_library_pragmas_") as td:
+        db_path = os.path.join(td, "library.db")
+        store = LibrarySqliteStore(db_path=db_path)
+        repository = LibraryRepository(store)
+        with store.connect() as conn:
+            assert int(conn.execute("PRAGMA foreign_keys").fetchone()[0]) == 1
+            assert int(conn.execute("PRAGMA busy_timeout").fetchone()[0]) >= 30000
+
+        image_dir = os.path.join(td, "images")
+        os.makedirs(image_dir, exist_ok=True)
+        for idx in range(2):
+            image = np.zeros((8, 8, 3), dtype=np.uint8)
+            ok, encoded = cv2.imencode(".jpg", image)
+            assert ok
+            encoded.tofile(os.path.join(image_dir, f"{idx}.jpg"))
+
+        cancel_event = threading.Event()
+        progress_calls: list[tuple[int, int]] = []
+
+        def progress(processed: int, total: int, _path: str) -> None:
+            progress_calls.append((processed, total))
+            cancel_event.set()
+
+        ingest = LibraryIngestService(
+            repository,
+            thumbnail_service=NoopThumbnailService(),
+        )
+        count = ingest.import_directory(
+            image_dir,
+            recursive=True,
+            progress_callback=progress,
+            cancel_event=cancel_event,
+        )
+        assert count == 1
+        assert progress_calls and progress_calls[0][1] == 2
+
+
+def _test_i18n_catalog_placeholder_consistency() -> None:
+    import string
+
+    from .i18n.catalog.manager import get_translator
+
+    formatter = string.Formatter()
+
+    def fields(text: str) -> set[str]:
+        return {
+            field_name.split(".", 1)[0].split("[", 1)[0]
+            for _literal, field_name, _format_spec, _conversion in formatter.parse(text)
+            if field_name
+        }
+
+    translator = get_translator()
+    translations = translator._translations
+    base_keys = set(translations["en"].keys())
+    for language, mapping in translations.items():
+        assert set(mapping.keys()) == base_keys, language
+        for key in base_keys:
+            assert fields(mapping[key]) == fields(translations["en"][key]), (language, key)
+
+
+def _test_settings_i18n_literal_binding_coverage() -> None:
+    import ast
+    import re
+    from pathlib import Path
+
+    from .i18n.catalog.manager import get_translator
+    from .ui.widgets.settings.i18n_bindings import (
+        all_bound_settings_literals,
+        all_settings_i18n_binding_keys,
+    )
+
+    translator = get_translator()
+    base_keys = set(translator._translations["en"].keys())
+    missing_keys = sorted(all_settings_i18n_binding_keys() - base_keys)
+    assert not missing_keys, missing_keys
+
+    bound_literals = all_bound_settings_literals()
+    korean_literal_re = re.compile(r"[가-힣]")
+    settings_dir = Path(__file__).resolve().parent / "ui" / "widgets" / "settings"
+    source_files = [settings_dir / "panel.py", *sorted(settings_dir.glob("tab_*.py"))]
+    uncovered: list[tuple[str, int, str]] = []
+    for source_path in source_files:
+        tree = ast.parse(source_path.read_text(encoding="utf-8"))
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Constant) or not isinstance(node.value, str):
+                continue
+            value = node.value
+            if not korean_literal_re.search(value):
+                continue
+            if value not in bound_literals:
+                uncovered.append((source_path.name, int(getattr(node, "lineno", 0)), value))
+    assert not uncovered, uncovered
+
+
+def _test_history_record_applied_and_merge() -> None:
+    from .core.history_manager import CallableCommand, HistoryManager
+
+    state = {"value": 2}
+    history = HistoryManager(max_history=10)
+    history.record_applied(
+        CallableCommand(
+            do=lambda: state.update(value=2),
+            undo=lambda: state.update(value=1),
+            redo=lambda: state.update(value=2),
+            description="first",
+            merge_key="settings",
+        ),
+        merge_key="settings",
+    )
+    history.record_applied(
+        CallableCommand(
+            do=lambda: state.update(value=3),
+            undo=lambda: state.update(value=2),
+            redo=lambda: state.update(value=3),
+            description="second",
+            merge_key="settings",
+        ),
+        merge_key="settings",
+    )
+    assert history.history_count == 1
+    assert history.undo()
+    assert state["value"] == 1
+    assert history.redo()
+    assert state["value"] == 3
 
 
 def _test_multi_photo_merge_distance_effect() -> None:
@@ -3914,6 +4286,17 @@ def main() -> int:
         _test_cli_cancel_exit_code_130()
         _test_cli_partial_exit_code_rules()
         _test_cli_recursive_output_guard()
+        _test_unicode_image_io_helper_and_blank_path_guards()
+        _test_cli_rejects_invalid_settings_segments()
+        _test_processed_signature_includes_routing_and_backup()
+        _test_output_reservation_is_thread_safe()
+        _test_scheduler_once_preserves_task_until_started()
+        _test_scheduled_batch_uses_task_paths()
+        _test_folder_watcher_recursive_excluded_roots()
+        _test_sqlite_pragmas_and_ingest_cancel_progress()
+        _test_i18n_catalog_placeholder_consistency()
+        _test_settings_i18n_literal_binding_coverage()
+        _test_history_record_applied_and_merge()
         _test_crop_accuracy_synthetic()
         _test_no_photo_false_positive_regression()
         _test_multi_photo_close_gap_split()

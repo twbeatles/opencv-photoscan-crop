@@ -21,7 +21,7 @@ A Python application that automatically detects and accurately crops scanned pho
 - **Watch/Batch Pipeline Parity**: Watch Mode now applies the same post-processing chain as batch mode (face adjustment, smart enhancement, resize, classification folders, watermark)
 - **Fixed Post-Processing Order**: face adjustment → smart enhancement → resize → classification routing (pre-watermark) → watermark
 - **AI Settings Enforcement**: Classification and face detection toggles are applied in actual processing/saving paths
-- **Unicode-Safe Watermark Paths**: Image watermark loading uses `np.fromfile + cv2.imdecode`
+- **Unicode-Safe Image Loading**: core/UI image loading now uses `utils.image_io.load_image_unicode()`, and image watermark loading shares the same Windows-safe path pattern
 - **Grayscale + Image Watermark Safety**: channel mismatch issues are handled for `to_grayscale + image watermark`
 - **DNN Face Detection Fallback Hardening**: automatic model download/checksum with immediate Haar fallback on failure
 - **Large File Guard Enforcement**: `performance.max_image_size_mb` is applied before processing
@@ -64,6 +64,13 @@ A Python application that automatically detects and accurately crops scanned pho
 - **Runtime UI retranslation**: the saved language is applied before initial UI construction, and long-lived widgets/menus/toolbars update immediately on language changes
 - **Safe path-segment validation**: classification folders and naming prefix/suffix are validated as single safe path segments before emit/run
 - **Locale-aware classification defaults**: blank classification folder values now resolve to the current UI language default, with legacy Korean defaults migrated automatically
+- **Unified Unicode-safe loader**: core and UI loading paths use `utils.image_io.load_image_unicode()` instead of direct `cv2.imread`
+- **CLI config validation**: invalid naming prefix/suffix or classification folder values from config/preset are blocked before processing with exit code `2`
+- **Processed-index signature hardening**: locale-resolved classification folders and the backup option are included in the `skip_processed` signature
+- **Output name reservation**: normal, classification, and multi-photo saves share per-batch thread-safe output-path reservation
+- **Scheduler once preservation**: busy/no-files/config-error skips do not consume `once`; the task is consumed only after a real batch start
+- **Library/SQLite hardening**: folder imports run off the GUI thread, and SQLite connections enable WAL, foreign keys, and busy timeout
+- **Undo/Redo wiring**: session-local settings, manual crop, library, collection, and recipe edits are reversible with `Ctrl+Z`/`Ctrl+Y`; Batch/Watch output rollback is intentionally excluded
 
 ### 🗂️ Management Shell & Refactor Update (2026-04-19)
 - **Management shell**: the desktop UX now centers on `Library`, `Workbench`, `Review`, `Duplicates`, `Jobs`, `Collections`, `Recipes`, and `Settings`
@@ -221,7 +228,7 @@ python -m photo_cropper.cli --help
 - **Locale-default sentinel**: leaving a classification folder blank means "use the current UI language default folder name."
 
 > Note: in recursive Watch Mode, the output directory must live outside the input root. If you want to keep the default `<input>/output_cropped`, disable recursive watch or choose an external output directory.
-> Note: schedule type `once` means "run once at the next upcoming HH:MM" rather than a date-based one-shot schedule.
+> Note: schedule type `once` means "run once at the next upcoming HH:MM" rather than a date-based one-shot schedule. Busy/no-files/config-error skips preserve the schedule.
 > Note: recursive Batch/Watch/CLI scans automatically exclude generated folders such as `output_root`, `_failed`, `backup`, and `.photocropper`.
 
 ### Algorithm Settings
@@ -488,3 +495,10 @@ Please report bugs or feature suggestions in Issues.
   - `python -m compileall -q photo_cropper`
   - `python -m photo_cropper.selftest`
   - `pyright --project pyrightconfig.json`
+
+## 2026-04-30 Stability Completion Notes
+
+- PyInstaller specs now explicitly include `photo_cropper.utils.image_io` and `photo_cropper.ui.widgets.settings.i18n_bindings` in hidden imports.
+- `.gitignore` covers local `out/` folders in addition to build/dist/runtime cache outputs.
+- Standard verification now includes `compileall`, `selftest`, both root/app pyright configs, CLI help, and an invalid-config CLI smoke expecting exit code `2`.
+- The 2026-04-14 and 2026-04-19 refactor status snapshots have been removed from the tracked documentation set; the current README/GEMINI/CLAUDE files are the active project references.

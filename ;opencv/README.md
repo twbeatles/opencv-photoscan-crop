@@ -21,7 +21,7 @@
 - **Watch/Batch 파이프라인 일치**: 감시 모드도 배치와 동일한 후처리(얼굴 보정/스마트 보정/리사이즈/분류 폴더/워터마크)를 적용
 - **후처리 순서 고정**: 얼굴 보정 → 스마트 보정 → 리사이즈 → 분류 라우팅(워터마크 전) → 워터마크
 - **AI 설정 반영 경로 보강**: 이미지 분류/얼굴 감지 토글이 실제 저장 경로와 결과 이미지에 반영
-- **유니코드 워터마크 경로 안정화**: 이미지 워터마크 로딩을 `np.fromfile + cv2.imdecode`로 처리
+- **유니코드 이미지 로딩 안정화**: core/UI 이미지 로딩을 `utils.image_io.load_image_unicode()`로 통일하고 워터마크 경로도 같은 안전 로딩 패턴을 사용
 - **그레이스케일 워터마크 호환성**: `to_grayscale + 이미지 워터마크` 조합에서도 채널 불일치 없이 적용
 - **DNN 얼굴 감지 폴백 안정화**: 모델 자동 다운로드/검증 실패 시 Haar로 즉시 폴백
 - **대용량 입력 제한 반영**: `performance.max_image_size_mb`를 처리 전 실제 파일 크기 필터에 적용
@@ -64,6 +64,13 @@
 - **메인 UI 런타임 재번역**: 저장된 언어를 초기 UI 생성 전에 적용하고, 장수명 위젯/메뉴/툴바는 언어 변경 즉시 재번역
 - **안전한 경로 조각 검증**: 자동 분류 폴더명과 naming prefix/suffix는 단일 path segment 규칙으로 즉시 검증
 - **분류 폴더 locale 기본값**: 분류 폴더 입력을 비워두면 현재 UI 언어 기본 폴더명을 사용하고, 구 기본 한글값은 자동 마이그레이션
+- **Unicode-safe 이미지 로더 통일**: core/UI 이미지 로딩은 `utils.image_io.load_image_unicode()`를 사용하며 `cv2.imread` 직접 호출을 제거
+- **CLI 설정 검증 강화**: config/preset에서 잘못된 naming prefix/suffix 또는 분류 폴더명이 들어오면 처리 시작 전 exit code `2`로 중단
+- **processed index signature 보강**: 언어별로 해석된 분류 폴더명과 백업 옵션이 `skip_processed` 판정 signature에 포함
+- **출력명 예약 통합**: 일반/분류/멀티포토 저장 경로가 batch 단위 thread-safe reservation을 공유해 동시 저장 충돌을 방지
+- **Scheduler once 보존**: busy/no files/invalid config skip은 `once` 예약을 소비하지 않고, 실제 배치 시작 시에만 비활성화
+- **Library/SQLite 안정화**: 라이브러리 폴더 가져오기는 background thread에서 진행되고 SQLite는 WAL, foreign key, busy timeout을 설정
+- **Undo/Redo 연결**: 세션 내 설정 변경, 수동 crop, 라이브러리/컬렉션/레시피 수동 변경을 `Ctrl+Z`/`Ctrl+Y`로 되돌릴 수 있음
 
 ### 🗂️ 관리 셸 및 리팩터링 업데이트 (2026-04-19)
 - **관리 셸 중심 UX**: 메인 화면이 `라이브러리`, `워크벤치`, `검토`, `중복`, `작업`, `컬렉션`, `레시피`, `설정` 섹션 중심으로 확장
@@ -192,8 +199,8 @@ python -m photo_cropper.cli --help
 | `Ctrl+I` | 이미지 열기 |
 | `Ctrl+P` | 미리보기 |
 | `Ctrl+R` | 이미지 회전 (90도 시계방향) |
-| `Ctrl+Z` | 실행 취소 (v8.5) |
-| `Ctrl+Y` | 다시 실행 (v8.5) |
+| `Ctrl+Z` | 실행 취소 (세션 내 수동 작업) |
+| `Ctrl+Y` | 다시 실행 (세션 내 수동 작업) |
 | `F11` | 전체화면 프리뷰 (v8.5) |
 | `F5` | 파일 목록 새로고침 |
 | `Ctrl+E` | 출력 폴더 열기 |
@@ -222,6 +229,7 @@ python -m photo_cropper.cli --help
 
 #### 언어/파일명 안전성
 - **실시간 언어 전환**: 설정 패널 언어 변경 시 메인 메뉴, 툴바, 상태바, 진행창 등 장수명 UI가 즉시 갱신됩니다.
+- **번역 카탈로그 검증**: locale key coverage와 placeholder 일치성은 selftest에서 검사됩니다.
 - **안전한 분류 폴더명**: 자동 분류 폴더명은 폴더 구분자, `..`, 드라이브/UNC 경로, Windows 예약어, 제어문자를 허용하지 않습니다.
 - **안전한 naming 규칙**: prefix/suffix도 동일한 규칙으로 검증되며 invalid 상태에서는 설정 emit/자동 미리보기가 차단됩니다.
 - **locale 기본값 sentinel**: 분류 폴더 입력을 비워두면 현재 UI 언어 기본값을 사용합니다.
@@ -231,7 +239,7 @@ python -m photo_cropper.cli --help
 - **스케줄러**: 예약 시간에 자동 배치 처리
 
 > 참고: 재귀 Watch Mode에서는 출력 폴더를 입력 폴더 내부에 둘 수 없습니다. 기본 출력값(`<input>/output_cropped`)을 그대로 쓰려면 재귀 감시를 끄거나, 출력 폴더를 입력 루트 밖으로 지정하세요.
-> 참고: 스케줄 유형 `once`는 날짜 지정이 아니라 "다음 도래 HH:MM에 1회 실행" 의미입니다.
+> 참고: 스케줄 유형 `once`는 날짜 지정이 아니라 "다음 도래 HH:MM에 1회 실행" 의미입니다. busy/no files/invalid config로 시작하지 못한 경우 예약은 보존됩니다.
 > 참고: 재귀 Batch/Watch/CLI에서는 내부 생성 폴더(`output_root`, `_failed`, `backup`, `.photocropper`)를 입력 스캔에서 자동 제외합니다.
 
 ### 알고리즘 설정
@@ -257,7 +265,7 @@ python -m photo_cropper.cli --help
 > 참고: 분류 모델 `custom`은 더 이상 별도 모델이 아니며 `advanced`의 호환 alias로 처리됩니다.
 
 > 참고: `skip processed`는 출력 폴더 로컬 인덱스(`.photocropper/processed_index.json`)를 우선 사용합니다.
-> 인덱스 키는 `source_path + size + mtime_ns + pipeline_signature`이며, 멀티포토는 `outputs[]`로 다중 결과를 기록합니다.
+> 인덱스 키는 `source_path + size + mtime_ns + pipeline_signature`이며, signature에는 언어별 분류 폴더 해석값과 백업 옵션이 포함됩니다. 멀티포토는 `outputs[]`로 다중 결과를 기록합니다.
 > `partial_success`는 인덱스에 `status=partial`로 남기되, 다음 실행에서 full skip하지 않고 경고 후 재처리합니다.
 > 인덱스가 비활성/오류일 때만 파일명 기반 fallback 탐지와 제한 경고가 적용됩니다.
 > 자동 분류 하위 폴더(기본 `인물/풍경/문서/흑백/기타`, 사용자 지정 가능)와 멀티포토 하위 폴더(`*_photos`)도 탐지 대상에 포함됩니다.
@@ -485,6 +493,13 @@ MIT License
   - `python -m compileall -q photo_cropper`
   - `python -m photo_cropper.selftest`
   - `pyright --project pyrightconfig.json`
+
+## 2026-04-30 안정화 완료 메모
+
+- PyInstaller spec hidden import에 `photo_cropper.utils.image_io`와 `photo_cropper.ui.widgets.settings.i18n_bindings`를 명시해 frozen build 정합성을 보강했습니다.
+- `.gitignore`는 build/dist/runtime cache 외에 로컬 `out/` 폴더도 저장소 밖으로 유지하도록 보강했습니다.
+- 표준 검증 기준은 `compileall`, `selftest`, 루트/앱 pyright, CLI help, invalid-config CLI exit code `2` 스모크를 포함합니다.
+- 2026-04-14/2026-04-19 리팩터링 상태 스냅샷 문서는 추적 대상에서 제거하고, 현재 README/GEMINI/CLAUDE 문서를 최신 기준으로 사용합니다.
 
 ## 2026-03-16 정합성 점검 메모
 

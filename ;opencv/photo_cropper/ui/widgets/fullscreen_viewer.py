@@ -21,6 +21,7 @@ import cv2
 import numpy as np
 
 from ...i18n.catalog import t
+from ...utils.image_io import load_image_unicode
 
 logger = logging.getLogger(__name__)
 
@@ -179,13 +180,11 @@ class FullscreenViewer(QWidget):
         filepath = self._images[self._current_index]
         
         try:
-            # Load image
-            image = cv2.imread(filepath)
+            image = load_image_unicode(filepath, cv2.IMREAD_COLOR, normalize_exif=True)
             if image is None:
                 self.image_label.setText(t("fullscreen.load_failed"))
                 return
-            
-            # Convert to QPixmap
+
             rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
             h, w, ch = rgb.shape
             bytes_per_line = ch * w

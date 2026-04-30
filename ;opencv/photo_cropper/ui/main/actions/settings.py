@@ -9,6 +9,8 @@ from typing import Callable, Optional
 from PyQt6.QtCore import QSettings, QTimer
 from PyQt6.QtWidgets import QMessageBox
 
+from ....core.history_manager import CallableCommand, CommandType
+from ....core.settings_model import AppSettings
 from ....i18n.catalog import t
 from ...styles.themes import get_theme
 from ..models import WindowRefs, WindowServices, WindowState
@@ -27,6 +29,7 @@ class SettingsActions:
         self.refs = refs
         self.services = services
         self._reconfigure_scheduler: Optional[Callable[[], None]] = None
+        self._applying_history = False
 
     def bind(self, *, reconfigure_scheduler: Callable[[], None]) -> None:
         self._reconfigure_scheduler = reconfigure_scheduler
@@ -92,9 +95,37 @@ class SettingsActions:
             self._reconfigure_scheduler()
 
     def on_settings_changed(self, settings) -> None:
+        previous = AppSettings.from_dict(self.state.settings.to_dict())
+        next_settings = AppSettings.from_dict(settings.to_dict())
+        if (
+            not self._applying_history
+            and previous.to_dict() != next_settings.to_dict()
+        ):
+            self.services.history_manager.record_applied(
+                CallableCommand(
+                    do=lambda: self._apply_settings_from_history(next_settings),
+                    undo=lambda: self._apply_settings_from_history(previous),
+                    redo=lambda: self._apply_settings_from_history(next_settings),
+                    description=t("history.settings_changed"),
+                    command_type=CommandType.SETTINGS,
+                    merge_key="settings",
+                ),
+                merge_key="settings",
+            )
         self.state.settings = settings
         self.sync_current_settings(sync_panel=False, reconfigure_scheduler=True)
         self.schedule_auto_save()
+
+    def _apply_settings_from_history(self, settings: AppSettings) -> bool:
+        self._applying_history = True
+        try:
+            snapshot = AppSettings.from_dict(settings.to_dict())
+            self.state.settings = snapshot
+            self.sync_current_settings(sync_panel=True, reconfigure_scheduler=True)
+            self.schedule_auto_save()
+            return True
+        finally:
+            self._applying_history = False
 
     def schedule_auto_save(self) -> None:
         if self.services.auto_save_timer is None:

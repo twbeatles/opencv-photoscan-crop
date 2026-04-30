@@ -82,6 +82,7 @@ class BatchProcessorSingleEntryMixin:
             )
 
         self._stop_event.clear()
+        self._reset_output_reservations()
         backup_dir = None
         if self.settings.create_backup:
             backup_dir = os.path.join(output_dir, "backup")

@@ -23,10 +23,9 @@ def safe_json_loads(value: Any, default: Any) -> Any:
 def compute_perceptual_hash(file_path: str) -> str:
     try:
         import cv2
-        import numpy as np
+        from ...utils.image_io import load_image_unicode
 
-        data = np.fromfile(file_path, dtype=np.uint8)
-        image = cv2.imdecode(data, cv2.IMREAD_GRAYSCALE)
+        image = load_image_unicode(file_path, cv2.IMREAD_GRAYSCALE)
         if image is None:
             return ""
         image = cv2.resize(image, (32, 32))

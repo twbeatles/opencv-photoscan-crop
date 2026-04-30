@@ -22,6 +22,7 @@ def build_menu(
     dialog_actions,
     watch_actions,
     tool_actions,
+    feature_actions,
 ) -> None:
     menubar = window.menuBar()
     if menubar is None:
@@ -72,6 +73,21 @@ def build_menu(
     reset_settings_action.triggered.connect(settings_actions.reset_settings)
     edit_menu.addAction(reset_settings_action)
     refs.actions["edit.reset_settings"] = reset_settings_action
+    edit_menu.addSeparator()
+
+    undo_action = QAction(t("menu.edit.undo"), window)
+    undo_action.setShortcut(QKeySequence("Ctrl+Z"))
+    undo_action.triggered.connect(feature_actions.undo)
+    undo_action.setEnabled(False)
+    edit_menu.addAction(undo_action)
+    refs.actions["edit.undo"] = undo_action
+
+    redo_action = QAction(t("menu.edit.redo"), window)
+    redo_action.setShortcut(QKeySequence("Ctrl+Y"))
+    redo_action.triggered.connect(feature_actions.redo)
+    redo_action.setEnabled(False)
+    edit_menu.addAction(redo_action)
+    refs.actions["edit.redo"] = redo_action
 
     view_menu = menubar.addMenu(t("menu.view"))
     if view_menu is None:

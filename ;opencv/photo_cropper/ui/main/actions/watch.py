@@ -11,7 +11,7 @@ from typing import Callable, Optional
 from PyQt6.QtCore import QTime
 from PyQt6.QtWidgets import QMessageBox
 
-from ....core.scheduler import ScheduleTask, ScheduleType
+from ....core.scheduler import ScheduleRunStatus, ScheduleTask, ScheduleType
 from ....core.settings_model.validation import (
     build_validation_summary,
     validate_settings,
@@ -43,10 +43,10 @@ class WatchActions:
         self.batch_runtime = BatchRuntimeFlow()
         self.watch_runtime = WatchRuntimeFlow()
         self.messages = UiMessageFactory()
-        self._start_processing: Optional[Callable[[], None]] = None
+        self._start_processing: Optional[Callable[..., bool]] = None
         self._scheduler_task_id: Optional[str] = None
 
-    def bind(self, *, start_processing: Callable[[], None]) -> None:
+    def bind(self, *, start_processing: Callable[..., bool]) -> None:
         self._start_processing = start_processing
 
     @staticmethod
@@ -127,7 +127,9 @@ class WatchActions:
             return "watch"
         return ""
 
-    def on_scheduled_batch_trigger(self, _input_dir: str, _output_dir: str) -> bool:
+    def on_scheduled_batch_trigger(
+        self, _input_dir: str, _output_dir: str
+    ) -> ScheduleRunStatus:
         busy_reason = self.busy_reason_for_scheduled_batch()
         if busy_reason:
             message = t(
@@ -138,17 +140,17 @@ class WatchActions:
             if self.refs.status_label is not None:
                 self.refs.status_label.setText(message)
             ToastManager.info(message)
-            return False
+            return ScheduleRunStatus.SKIPPED_BUSY
         issues = validate_settings(self.state.settings)
         if issues:
             message = build_validation_summary(issues)
             if self.refs.status_label is not None:
                 self.refs.status_label.setText(message)
             ToastManager.warning(message)
-            return False
+            return ScheduleRunStatus.FAILED_CONFIG
 
-        input_path = self.refs.input_path_edit.text().strip() if self.refs.input_path_edit else ""
-        output_path = self.refs.output_path_edit.text().strip() if self.refs.output_path_edit else ""
+        input_path = str(_input_dir or "").strip()
+        output_path = str(_output_dir or "").strip()
         resolved = self.batch_runtime.resolve_io_paths(
             input_path=input_path,
             output_path=output_path,
@@ -161,11 +163,9 @@ class WatchActions:
             if self.refs.status_label is not None:
                 self.refs.status_label.setText(message)
             ToastManager.warning(message)
-            return False
+            return ScheduleRunStatus.FAILED_CONFIG
         input_path = resolved.input_path
         output_path = resolved.output_path
-        if self.refs.output_path_edit is not None and self.refs.output_path_edit.text().strip() != output_path:
-            self.refs.output_path_edit.setText(output_path)
 
         recursive = bool(getattr(self.state.settings.file_management, "recursive_search", False))
 
@@ -188,20 +188,27 @@ class WatchActions:
             logger.info(message)
             if self.refs.status_label is not None:
                 self.refs.status_label.setText(message)
-            return False
+            return ScheduleRunStatus.SKIPPED_NO_WORK
 
         if self._start_processing is None:
-            return False
-        self._start_processing()
+            return ScheduleRunStatus.FAILED
+        callback_started = bool(
+            self._start_processing(
+                input_path_override=input_path,
+                output_path_override=output_path,
+                job_kind="scheduled_batch",
+            )
+        )
         processor = self.services.batch_session.processor
-        started = bool(processor and processor.is_running)
+        started = callback_started and bool(processor and processor.is_running)
         if started:
             message = t("watch.scheduler.started", count=len(files))
             logger.info(message)
             if self.refs.status_label is not None:
                 self.refs.status_label.setText(message)
             ToastManager.info(message)
-        return started
+            return ScheduleRunStatus.STARTED
+        return ScheduleRunStatus.FAILED
 
     def on_scheduler_task_started(self, task_id: str) -> None:
         if task_id != self._scheduler_task_id:

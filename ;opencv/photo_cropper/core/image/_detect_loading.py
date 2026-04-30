@@ -20,6 +20,7 @@ from ..settings_model import (
 )
 from ..advanced import AdvancedImageProcessor, GPUAccelerator
 from .types import CropResult, DetectionStage, PreviewProcessResult
+from ...utils.image_io import load_image_unicode
 
 logger = logging.getLogger(__name__)
 
@@ -37,24 +38,11 @@ class ImageLoadAndClaheMixin:
             Loaded image array or None if failed
         """
         try:
-            # Prefer Pillow path for EXIF orientation normalization.
-            try:
-                from PIL import Image, ImageOps
-
-                with Image.open(image_path) as pil_image:
-                    pil_image = ImageOps.exif_transpose(pil_image)
-                    if pil_image.mode != "RGB":
-                        pil_image = pil_image.convert("RGB")
-                    rgb = np.array(pil_image)
-                    if rgb.ndim == 3 and rgb.shape[2] == 3:
-                        return cv2.cvtColor(rgb, cv2.COLOR_RGB2BGR)
-            except Exception as pil_err:
-                logger.debug("Pillow load fallback for '%s': %s", image_path, pil_err)
-
-            # Fallback: Unicode-safe OpenCV loading.
-            img_array = np.fromfile(image_path, np.uint8)
-            image = cv2.imdecode(img_array, cv2.IMREAD_COLOR)
-            return image
+            return load_image_unicode(
+                image_path,
+                cv2.IMREAD_COLOR,
+                normalize_exif=True,
+            )
         except Exception as e:
             logger.error(f"Failed to load image: {e}")
             return None

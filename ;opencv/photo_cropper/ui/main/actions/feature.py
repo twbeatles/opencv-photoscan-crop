@@ -8,6 +8,7 @@ import os
 
 from PyQt6.QtWidgets import QDialog
 
+from ....core.history_manager import CallableCommand, CommandType
 from ....i18n.catalog import t
 from ...widgets.toast_notification import ToastManager
 from ..services import UiMessageFactory
@@ -74,9 +75,30 @@ class FeatureActions:
             self.refs.status_label.setText(t("feature.redo.empty"))
 
     def on_crop_applied(self, cropped_image, dialog: QDialog | None = None) -> None:
+        previous_image = self.state.last_processed
+        previous = previous_image.copy() if previous_image is not None else None
+        next_image = cropped_image.copy()
+
+        def apply_image(image) -> bool:
+            if image is None:
+                return False
+            if self.refs.preview_widget is not None:
+                self.refs.preview_widget.set_processed_image(image)
+            self.state.last_processed = image.copy()
+            return True
+
         if self.refs.preview_widget is not None:
             self.refs.preview_widget.set_processed_image(cropped_image)
-        self.state.last_processed = cropped_image.copy()
+        self.state.last_processed = next_image.copy()
+        self.services.history_manager.record_applied(
+            CallableCommand(
+                do=lambda: apply_image(next_image),
+                undo=lambda: apply_image(previous) if previous is not None else True,
+                redo=lambda: apply_image(next_image),
+                description=t("history.manual_crop"),
+                command_type=CommandType.CROP,
+            )
+        )
         if self.refs.status_label is not None:
             self.refs.status_label.setText(t("feature.manual_crop.done"))
         if dialog is not None:

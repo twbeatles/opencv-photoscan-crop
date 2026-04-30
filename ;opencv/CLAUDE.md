@@ -49,6 +49,7 @@ photo_cropper/
 │   └── catalog/
 │       └── locales/*.py
 └── utils/
+    ├── image_io.py
     └── path_validation.py
 ```
 
@@ -119,16 +120,18 @@ UI composition root입니다.
 
 5. **스케줄러 자동 배치**
    - `WatchActions.reconfigure_scheduler()`에서 `watch_mode.scheduler_*`를 런타임 스케줄에 반영
-   - 앱 실행 중 예약 시각 도달 시 `BatchActions.start_processing()` 경로로 전체 배치 트리거
+   - 앱 실행 중 예약 시각 도달 시 저장된 ScheduleTask input/output 경로로 전체 배치 트리거
    - 배치/수동/워치 실행 중에는 스케줄 트리거를 skip 처리
-   - `schedule_type=once`는 날짜 없는 "다음 도래 HH:MM 1회 실행" 의미
+   - `schedule_type=once`는 날짜 없는 "다음 도래 HH:MM 1회 실행" 의미이며, busy/no files/invalid config skip은 예약을 소비하지 않음
 
 ## 코딩 가이드라인
 
 ### 이미지 I/O
 
-- 유니코드 경로는 `np.fromfile + cv2.imdecode` 패턴 사용
+- 유니코드 경로는 `utils.image_io.load_image_unicode()` 사용
 - `cv2.imread` 직접 호출은 한글 경로에서 실패 가능
+- worker thread에서는 `QPixmap`을 만들지 말고 `QImage`/bytes를 emit한 뒤 GUI thread에서 변환
+- frozen build에서는 `photo_cropper.utils.image_io`와 `photo_cropper.ui.widgets.settings.i18n_bindings` hidden import를 유지
 
 ### 처리 파이프라인
 
@@ -138,10 +141,12 @@ UI composition root입니다.
 - 재귀 입력은 `output_root`, `_failed`, `backup`, `.photocropper`를 입력 스캔에서 제외
 - 재귀 출력/실패 보관/멀티포토 저장은 입력 기준 상대 경로를 보존
 - `skip_processed`는 `.photocropper/processed_index.json` 인덱스 우선, 실패 시 파일명 기반 fallback
+- `skip_processed` pipeline signature에는 언어별 분류 폴더 해석값과 `create_backup`이 포함됨
 - processed index v2는 레코드별 `status=success|partial`를 저장하며, `partial`은 skip 대신 경고 후 재처리
 - CLI는 summary에 `processed/success/partial_success/failed/skipped`를 항상 출력하고, `--strict-partial` 사용 시 partial도 종료코드 `1` 대상
 - 분류 모델 `custom`은 legacy alias로만 유지되며 내부적으로 `advanced`로 정규화
 - scheduler `once`는 날짜 없는 "다음 도래 HH:MM 1회 실행" 의미
+- `ScheduleRunStatus.STARTED`일 때만 `once` 작업을 소비하고, busy/no-work/config 실패는 보존
 - 수동 contour preview도 `core.manual_extract.crop_manual_contour()`를 통해 실제 저장과 동일한 crop 규칙을 사용
 
 ### 성능/안정성
@@ -154,7 +159,11 @@ UI composition root입니다.
 - `FolderWatcher.fileChanged`는 overwrite된 동일 경로도 size/mtime signature가 바뀐 경우에만 재큐잉
 - UI 직접 실행 경로에서도 watch/batch/manual 상호 배제를 강제
 - GUI 입력 검증과 batch/watch/manual preflight는 모두 `utils.path_validation` + `core.settings_model.validation`의 공용 API를 사용
+- CLI도 병합된 config/preset/override 설정에 `validate_settings()`를 적용하고 invalid path segment는 exit code `2`로 차단
 - 분류 폴더 빈 문자열은 "현재 UI 언어 기본값 사용" sentinel 의미이며, 구 기본 한글값은 마이그레이션 시 sentinel로 정규화
+- Batch 출력 경로는 일반/분류/멀티포토 모두 per-run thread-safe reservation을 거쳐 동시 저장 충돌을 방지
+- Library SQLite 연결은 `foreign_keys=ON`, WAL, busy timeout을 설정하고, 폴더 import는 UI thread 밖에서 실행
+- Undo/Redo는 세션 내 설정 변경, 수동 crop, 라이브러리/컬렉션/레시피 수동 변경을 대상으로 하며 Batch/Watch 산출물 rollback은 제외
 
 ## 빌드
 
@@ -171,7 +180,7 @@ pyinstaller photo_cropper.spec --clean
 
 ### 한글 경로 관련 오류
 
-- `cv2.imread` 대신 `np.fromfile + cv2.imdecode` 사용
+- `cv2.imread` 대신 `utils.image_io.load_image_unicode()` 사용
 
 ### Watch/Batch 결과 불일치
 
@@ -293,6 +302,14 @@ pyinstaller photo_cropper.spec --clean
   - `python -m compileall -q photo_cropper`
   - `python -m photo_cropper.selftest`
   - `pyright --project pyrightconfig.json`
+
+## 2026-04-30 안정화 완료 상태
+
+- `utils.image_io.load_image_unicode()`가 core/UI 이미지 로딩 기준 API입니다.
+- settings tab의 남은 legacy 표시 문자열은 `ui/widgets/settings/i18n_bindings.py`를 통해 locale key에 바인딩됩니다.
+- CLI invalid config는 병합 후 `validate_settings()`에서 차단하며 exit code `2`를 반환해야 합니다.
+- Scheduler callback 결과는 `ScheduleRunStatus`로 정규화되고 `once`는 실제 `STARTED`일 때만 소비됩니다.
+- 2026-04-14/2026-04-19 standalone refactor snapshot 문서는 삭제 상태를 반영하고, README/GEMINI/CLAUDE가 최신 기준 문서입니다.
 
 ## 2026-04-06 Implementation Alignment Update
 

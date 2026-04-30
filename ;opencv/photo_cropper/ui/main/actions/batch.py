@@ -111,14 +111,35 @@ class BatchActions:
         )
         return False
 
-    def _resolve_batch_io_paths(self) -> Optional[tuple[str, str]]:
+    def _resolve_batch_io_paths(
+        self,
+        *,
+        input_path_override: Optional[str] = None,
+        output_path_override: Optional[str] = None,
+        update_output_edit: bool = True,
+    ) -> Optional[tuple[str, str]]:
         input_edit = self.refs.input_path_edit
         output_edit = self.refs.output_path_edit
-        if input_edit is None or output_edit is None:
+        if (
+            input_path_override is None
+            and output_path_override is None
+            and (input_edit is None or output_edit is None)
+        ):
             return None
 
-        input_path = input_edit.text().strip()
-        output_path = output_edit.text().strip()
+        if input_path_override is None:
+            if input_edit is None:
+                return None
+            input_path = input_edit.text().strip()
+        else:
+            input_path = str(input_path_override).strip()
+
+        if output_path_override is None:
+            if output_edit is None:
+                return None
+            output_path = output_edit.text().strip()
+        else:
+            output_path = str(output_path_override).strip()
         recursive = bool(
             getattr(self.state.settings.file_management, "recursive_search", False)
         )
@@ -135,7 +156,7 @@ class BatchActions:
                 resolved.message,
             )
             return None
-        if resolved.output_path != output_path:
+        if update_output_edit and output_edit is not None and resolved.output_path != output_path:
             output_edit.setText(resolved.output_path)
         return resolved.input_path, resolved.output_path
 
@@ -269,28 +290,39 @@ class BatchActions:
         self.update_batch_edit_controls()
         return True
 
-    def start_processing(self) -> None:
+    def start_processing(
+        self,
+        checked: bool = False,
+        *,
+        input_path_override: Optional[str] = None,
+        output_path_override: Optional[str] = None,
+        job_kind: str = "batch",
+    ) -> bool:
         if self.state.manual_extract_running:
             QMessageBox.warning(
                 self.services.host_window,
                 self.messages.warning_title,
                 t("batch.manual_extract_running"),
             )
-            return
+            return False
 
         if self._is_batch_running():
             self._show_batch_running_warning()
-            return
+            return False
 
         if self._is_watch_running():
             self._show_watch_running_warning()
-            return
+            return False
         if not self._validate_runtime_settings():
-            return
+            return False
 
-        paths = self._resolve_batch_io_paths()
+        paths = self._resolve_batch_io_paths(
+            input_path_override=input_path_override,
+            output_path_override=output_path_override,
+            update_output_edit=input_path_override is None and output_path_override is None,
+        )
         if paths is None:
-            return
+            return False
         input_path, output_path = paths
 
         recursive = bool(
@@ -316,10 +348,10 @@ class BatchActions:
                 self.messages.info_title,
                 t("batch.no_files"),
             )
-            return
+            return False
 
-        self.start_processing_with_files(
-            job_kind="batch",
+        return self.start_processing_with_files(
+            job_kind=job_kind,
             input_path=input_path,
             output_path=output_path,
             files=files,

@@ -117,6 +117,8 @@ class BatchProcessor(
         # Naming rule engine
         self._naming_engine: Optional[NamingRuleEngine] = None
         self._naming_lock = threading.Lock()
+        self._output_reservation_lock = threading.Lock()
+        self._reserved_output_paths: set[str] = set()
         self._skip_processed_notice_shown = False
         self._processed_index_stores: Dict[str, ProcessedIndexStore] = {}
         self._processed_index_warned_roots: set[str] = set()

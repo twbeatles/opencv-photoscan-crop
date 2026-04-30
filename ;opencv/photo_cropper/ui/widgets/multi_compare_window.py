@@ -25,6 +25,7 @@ from PyQt6.QtCore import Qt, pyqtSignal, QRectF, QPointF
 from PyQt6.QtGui import QPixmap, QImage, QWheelEvent, QMouseEvent, QAction, QIcon
 
 from ...i18n.catalog import t
+from ...utils.image_io import load_image_unicode
 from ..widgets.toast_notification import ToastManager
 from ...core.smart_enhancer import SmartEnhancer, EnhancementPreset, get_smart_enhancer
 
@@ -306,10 +307,7 @@ class ImagePanel(QFrame):
         )
         
         if file_path:
-            image = cv2.imdecode(
-                np.fromfile(file_path, dtype=np.uint8),
-                cv2.IMREAD_COLOR
-            )
+            image = load_image_unicode(file_path, cv2.IMREAD_COLOR, normalize_exif=True)
             if image is not None:
                 title = file_path.split('/')[-1].split('\\')[-1]
                 self.set_image(image, title)

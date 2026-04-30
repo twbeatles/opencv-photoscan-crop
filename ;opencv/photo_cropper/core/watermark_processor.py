@@ -14,6 +14,8 @@ from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
 
+from ..utils.image_io import load_image_unicode
+
 logger = logging.getLogger(__name__)
 
 
@@ -357,9 +359,7 @@ class WatermarkProcessor:
             return self._cached_watermark_image.copy()
 
         try:
-            # Load with Unicode path support
-            img_array = np.fromfile(path, dtype=np.uint8)
-            watermark = cv2.imdecode(img_array, cv2.IMREAD_UNCHANGED)
+            watermark = load_image_unicode(path, cv2.IMREAD_UNCHANGED)
             if watermark is None:
                 return None
 

@@ -304,7 +304,13 @@ class LibrarySqliteStore:
 
     @contextmanager
     def connect(self):
-        conn = sqlite3.connect(self.db_path)
+        conn = sqlite3.connect(self.db_path, timeout=30.0)
+        try:
+            conn.execute("PRAGMA busy_timeout = 30000")
+            conn.execute("PRAGMA foreign_keys = ON")
+            conn.execute("PRAGMA journal_mode = WAL")
+        except Exception:
+            pass
         conn.row_factory = sqlite3.Row
         try:
             yield conn

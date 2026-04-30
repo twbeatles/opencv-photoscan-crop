@@ -7,6 +7,10 @@ import logging
 from typing import Iterable, List, Optional, Sequence, Tuple
 from datetime import datetime
 
+import cv2
+
+from .image_io import load_image_unicode
+
 logger = logging.getLogger(__name__)
 
 
@@ -18,7 +22,10 @@ SUPPORTED_IMAGE_FORMATS = (
 
 def normalize_path(path: str) -> str:
     """Normalize a filesystem path for case-insensitive comparisons."""
-    return os.path.normcase(os.path.abspath(str(path or "")))
+    text = str(path or "").strip()
+    if not text:
+        return ""
+    return os.path.normcase(os.path.abspath(text))
 
 
 def is_path_within(parent_path: str, child_path: str) -> bool:
@@ -482,11 +489,7 @@ def get_image_dimensions(filepath: str) -> Optional[Tuple[int, int]]:
         pass
     
     try:
-        # Fallback to OpenCV with Unicode path support
-        import cv2
-        import numpy as np
-        img_array = np.fromfile(filepath, np.uint8)
-        img = cv2.imdecode(img_array, cv2.IMREAD_UNCHANGED)
+        img = load_image_unicode(filepath, cv2.IMREAD_UNCHANGED)
         if img is not None:
             h, w = img.shape[:2]
             return (w, h)

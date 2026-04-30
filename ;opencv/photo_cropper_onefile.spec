@@ -169,6 +169,7 @@ a = Analysis(
         'photo_cropper.ui.main.watch_actions',
         'photo_cropper.ui.widgets.management_pages',
         'photo_cropper.ui.widgets.settings',
+        'photo_cropper.ui.widgets.settings.i18n_bindings',
         'photo_cropper.i18n.catalog',
         'photo_cropper.i18n.catalog.locales',
         'photo_cropper.i18n.catalog.locales.en',
@@ -176,6 +177,7 @@ a = Analysis(
         'photo_cropper.i18n.catalog.locales.ja',
         'photo_cropper.i18n.catalog.locales.zh',
         'photo_cropper.i18n.catalog.locales.es',
+        'photo_cropper.utils.image_io',
         'photo_cropper.utils.path_validation',
         'PyQt6.QtCore',
         'PyQt6.QtGui',
@@ -244,4 +246,11 @@ exe = EXE(
       families introduced by the management-shell and core refactors.
     - `runtime_tmpdir` is derived from `LOCALAPPDATA`/temp at build time to
       avoid username-specific hardcoded paths in the checked-in spec.
+
+2026-04-30 note:
+    - Added explicit hidden imports for `utils.image_io` and
+      `ui.widgets.settings.i18n_bindings` after Unicode-safe image loading and
+      runtime settings-tab i18n binding were introduced.
+    - These changes add no new third-party runtime dependency; Pillow/OpenCV
+      were already part of the packaging contract.
 """

@@ -20,6 +20,9 @@ logger = logging.getLogger(__name__)
 
 class CommandType(Enum):
     """Command type enumeration."""
+    GENERIC = "generic"
+    SETTINGS = "settings"
+    LIBRARY = "library"
     CROP = "crop"
     ROTATE = "rotate"
     RESIZE = "resize"
@@ -43,6 +46,7 @@ class Command(ABC):
     def __init__(self, command_type: CommandType, description: str = ""):
         self.command_type = command_type
         self.description = description
+        self.merge_key: Optional[str] = None
         self._state: Optional[CommandState] = None
     
     @abstractmethod
@@ -58,6 +62,54 @@ class Command(ABC):
     def redo(self) -> bool:
         """Redo the command. Default implementation re-executes."""
         return self.execute()
+
+    def merge_with(self, other: "Command") -> bool:
+        """Merge another command into this one when both represent one gesture."""
+        return False
+
+
+class CallableCommand(Command):
+    """Command backed by callables for already-applied UI or repository changes."""
+
+    def __init__(
+        self,
+        *,
+        do: Callable[[], bool | None],
+        undo: Callable[[], bool | None],
+        redo: Optional[Callable[[], bool | None]] = None,
+        description: str = "",
+        command_type: CommandType = CommandType.GENERIC,
+        merge_key: Optional[str] = None,
+    ):
+        super().__init__(command_type, description)
+        self._do = do
+        self._undo = undo
+        self._redo = redo or do
+        self.merge_key = merge_key
+
+    @staticmethod
+    def _run(callback: Callable[[], bool | None]) -> bool:
+        result = callback()
+        return True if result is None else bool(result)
+
+    def execute(self) -> bool:
+        return self._run(self._do)
+
+    def undo(self) -> bool:
+        return self._run(self._undo)
+
+    def redo(self) -> bool:
+        return self._run(self._redo)
+
+    def merge_with(self, other: Command) -> bool:
+        if not isinstance(other, CallableCommand):
+            return False
+        if not self.merge_key or self.merge_key != other.merge_key:
+            return False
+        self._do = other._do
+        self._redo = other._redo
+        self.description = other.description
+        return True
 
 
 class ImageCommand(Command):
@@ -238,6 +290,31 @@ class HistoryManager:
             return True
         
         return False
+
+    def record_applied(self, command: Command, merge_key: Optional[str] = None) -> bool:
+        """Record a command after the caller has already applied the change."""
+        if merge_key is not None:
+            command.merge_key = merge_key
+
+        self._redo_stack.clear()
+        self._history = self._history[:self._current_index + 1]
+
+        if (
+            command.merge_key
+            and self._history
+            and self._current_index == len(self._history) - 1
+            and getattr(self._history[-1], "merge_key", None) == command.merge_key
+            and self._history[-1].merge_with(command)
+        ):
+            self._notify_change()
+            return True
+
+        self._history.append(command)
+        self._current_index += 1
+        self._enforce_limits()
+        self._notify_change()
+        logger.debug(f"Recorded applied command: {command.description}")
+        return True
     
     def undo(self) -> bool:
         """

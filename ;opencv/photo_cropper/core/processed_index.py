@@ -66,11 +66,13 @@ def _normalize_record_status(value: Any) -> str:
 def build_pipeline_signature(settings_obj: Any) -> str:
     """Build deterministic pipeline signature from settings payload."""
     if hasattr(settings_obj, "to_dict"):
-        payload = dict(settings_obj.to_dict())
+        source_payload = dict(settings_obj.to_dict())
     elif isinstance(settings_obj, dict):
-        payload = dict(settings_obj)
+        source_payload = dict(settings_obj)
     else:
-        payload = {}
+        source_payload = {}
+
+    payload = dict(source_payload)
 
     # Exclude runtime/UI-only fields that do not change output rendering/routing.
     for key in (
@@ -80,9 +82,26 @@ def build_pipeline_signature(settings_obj: Any) -> str:
         "watch_mode",
         "notification",
         "debug",
-        "create_backup",
     ):
         payload.pop(key, None)
+
+    try:
+        from ..utils.path_validation import resolve_category_folder_map
+
+        classification_payload = source_payload.get("classification", {})
+        ui_payload = source_payload.get("ui", {})
+        if isinstance(classification_payload, dict):
+            language = (
+                ui_payload.get("language")
+                if isinstance(ui_payload, dict)
+                else None
+            )
+            payload["_resolved_category_folders"] = resolve_category_folder_map(
+                classification_payload.get("category_folders", {}) or {},
+                language=language,
+            )
+    except Exception as exc:
+        logger.debug("Could not add resolved category folders to signature: %s", exc)
 
     encoded = json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
     return hashlib.sha256(encoded.encode("utf-8")).hexdigest()

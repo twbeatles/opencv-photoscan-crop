@@ -312,6 +312,7 @@ def build_central_widget(
             services.library_ingest_service,
             services.thumbnail_service,
             services.library_repository,
+            history_manager=services.history_manager,
         )
         review_page = ReviewPage(services.review_service)
         duplicates_page = DuplicatesPage(services.duplicate_service)
@@ -319,10 +320,12 @@ def build_central_widget(
         collections_page = CollectionsPage(
             services.query_service,
             services.library_repository,
+            history_manager=services.history_manager,
         )
         recipes_page = RecipesPage(
             services.recipe_manager,
             get_settings=lambda: state.settings,
+            history_manager=services.history_manager,
         )
         settings_page = SettingsInfoPage(
             services.library_repository,

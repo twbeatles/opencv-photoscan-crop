@@ -468,10 +468,9 @@ class JobOrchestrator:
     def _load_image_for_ai(self, image_path: str):
         try:
             import cv2
-            import numpy as np
+            from ...utils.image_io import load_image_unicode
 
-            data = np.fromfile(image_path, dtype=np.uint8)
-            return cv2.imdecode(data, cv2.IMREAD_COLOR)
+            return load_image_unicode(image_path, cv2.IMREAD_COLOR)
         except Exception:
             return None
 

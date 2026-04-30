@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import math
+import threading
 from typing import Optional
 
 from PyQt6.QtCore import QSize, Qt, pyqtSignal
@@ -29,6 +30,7 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
+from ....core.history_manager import CallableCommand, CommandType, HistoryManager
 from ....core.library import AssetQuery, get_provider_status
 from ....i18n.catalog import t
 from .shared import (
@@ -42,19 +44,47 @@ from .shared import (
 
 class LibraryPage(QWidget):
     open_requested = pyqtSignal(str)
+    import_progress = pyqtSignal(int, int)
+    import_finished = pyqtSignal(int, str)
 
-    def __init__(self, query_service, ingest_service, thumbnail_service, repository, parent=None):
+    def __init__(
+        self,
+        query_service,
+        ingest_service,
+        thumbnail_service,
+        repository,
+        history_manager: HistoryManager | None = None,
+        parent=None,
+    ):
         super().__init__(parent)
         self.query_service = query_service
         self.ingest_service = ingest_service
         self.thumbnail_service = thumbnail_service
         self.repository = repository
+        self.history_manager = history_manager
         self._assets: list[dict] = []
         self._asset_detail: dict | None = None
         self._building_filters = False
         self._total_assets = 0
         self._current_page = 1
         self._page_size = 200
+        self._import_thread: threading.Thread | None = None
+        self._import_cancel_event: threading.Event | None = None
+        self.import_progress.connect(self._on_import_progress)
+        self.import_finished.connect(self._on_import_finished)
+
+    def _record_history(self, description: str, undo, redo) -> None:
+        if self.history_manager is None:
+            return
+        self.history_manager.record_applied(
+            CallableCommand(
+                do=redo,
+                undo=undo,
+                redo=redo,
+                description=description,
+                command_type=CommandType.LIBRARY,
+            )
+        )
 
         layout = QVBoxLayout(self)
 
@@ -400,6 +430,12 @@ class LibraryPage(QWidget):
         self._render_people(detail)
 
     def _import_folder(self) -> None:
+        if self._import_thread is not None and self._import_thread.is_alive():
+            if self._import_cancel_event is not None:
+                self._import_cancel_event.set()
+            self.import_btn.setEnabled(False)
+            return
+
         folder = QFileDialog.getExistingDirectory(
             self,
             t("management.library.import_dialog.title"),
@@ -407,10 +443,60 @@ class LibraryPage(QWidget):
         )
         if not folder:
             return
-        count = self.ingest_service.import_directory(
-            folder,
-            recursive=self.recursive_checkbox.isChecked(),
+        cancel_event = threading.Event()
+        self._import_cancel_event = cancel_event
+        self.import_btn.setEnabled(True)
+        self.import_btn.setText(t("dialog.cancel"))
+
+        def progress(processed: int, total: int, _path: str) -> None:
+            self.import_progress.emit(int(processed), int(total))
+
+        def worker() -> None:
+            try:
+                count = self.ingest_service.import_directory(
+                    folder,
+                    recursive=self.recursive_checkbox.isChecked(),
+                    progress_callback=progress,
+                    cancel_event=cancel_event,
+                )
+                status = "cancelled" if cancel_event.is_set() else "ok"
+                self.import_finished.emit(int(count), status)
+            except Exception as exc:
+                self.import_finished.emit(0, f"error:{exc}")
+
+        self._import_thread = threading.Thread(
+            target=worker,
+            name="photocropper-library-import",
+            daemon=True,
         )
+        self._import_thread.start()
+
+    def _on_import_progress(self, processed: int, total: int) -> None:
+        if total > 0:
+            self.import_btn.setText(
+                t("management.library.importing_progress", count=processed, total=total)
+            )
+
+    def _on_import_finished(self, count: int, status: str) -> None:
+        self._import_thread = None
+        self._import_cancel_event = None
+        self.import_btn.setEnabled(True)
+        self.import_btn.setText(t("management.library.import_button"))
+        if str(status or "").startswith("error:"):
+            QMessageBox.warning(
+                self,
+                t("management.library.import_result.title"),
+                t("management.library.import_result.error", error=status[6:]),
+            )
+            return
+        if status == "cancelled":
+            QMessageBox.information(
+                self,
+                t("management.library.import_result.title"),
+                t("management.library.import_result.cancelled", count=count),
+            )
+            self.refresh()
+            return
         QMessageBox.information(
             self,
             t("management.library.import_result.title"),
@@ -436,10 +522,23 @@ class LibraryPage(QWidget):
     def _save_note(self) -> None:
         if not self._asset_detail:
             return
+        asset_id = int(self._asset_detail["id"])
+        previous = str(self._asset_detail.get("note", "") or "")
+        next_note = self.note_edit.toPlainText()
         self.repository.set_asset_note(
-            int(self._asset_detail["id"]),
-            self.note_edit.toPlainText(),
+            asset_id,
+            next_note,
         )
+        if previous != next_note:
+            self._record_history(
+                t("history.library.note"),
+                undo=lambda asset_id=asset_id, previous=previous: (
+                    self.repository.set_asset_note(asset_id, previous) or self.refresh() or True
+                ),
+                redo=lambda asset_id=asset_id, next_note=next_note: (
+                    self.repository.set_asset_note(asset_id, next_note) or self.refresh() or True
+                ),
+            )
         self.refresh()
 
     def _add_to_collection(self) -> None:
@@ -470,9 +569,21 @@ class LibraryPage(QWidget):
         )
         if target is None:
             return
-        self.repository.add_asset_to_collection(
-            int(self._asset_detail["id"]),
-            int(target["id"]),
+        asset_id = int(self._asset_detail["id"])
+        collection_id = int(target["id"])
+        self.repository.add_asset_to_collection(asset_id, collection_id)
+        self._record_history(
+            t("history.library.collection_add"),
+            undo=lambda asset_id=asset_id, collection_id=collection_id: (
+                self.repository.remove_asset_from_collection(asset_id, collection_id)
+                or self.refresh()
+                or True
+            ),
+            redo=lambda asset_id=asset_id, collection_id=collection_id: (
+                self.repository.add_asset_to_collection(asset_id, collection_id)
+                or self.refresh()
+                or True
+            ),
         )
         self.refresh()
 
@@ -505,7 +616,26 @@ class LibraryPage(QWidget):
         target = next((item for item in collections if str(item["name"]) == str(choice)), None)
         if target is None:
             return
-        added = self.repository.add_assets_to_collection(asset_ids, int(target["id"]))
+        collection_id = int(target["id"])
+        added = self.repository.add_assets_to_collection(asset_ids, collection_id)
+        if added:
+            tracked_ids = list(asset_ids)
+            self._record_history(
+                t("history.library.collection_add"),
+                undo=lambda tracked_ids=tracked_ids, collection_id=collection_id: (
+                    [
+                        self.repository.remove_asset_from_collection(asset_id, collection_id)
+                        for asset_id in tracked_ids
+                    ]
+                    and self.refresh()
+                    or True
+                ),
+                redo=lambda tracked_ids=tracked_ids, collection_id=collection_id: (
+                    self.repository.add_assets_to_collection(tracked_ids, collection_id)
+                    or self.refresh()
+                    or True
+                ),
+            )
         QMessageBox.information(
             self,
             t("management.collections.title"),
@@ -523,7 +653,18 @@ class LibraryPage(QWidget):
         )
         if not ok or not tag_name.strip():
             return
-        self.repository.add_asset_tag(int(self._asset_detail["id"]), tag_name.strip())
+        asset_id = int(self._asset_detail["id"])
+        tag_text = tag_name.strip()
+        self.repository.add_asset_tag(asset_id, tag_text)
+        self._record_history(
+            t("history.library.tag_add"),
+            undo=lambda asset_id=asset_id, tag_text=tag_text: (
+                self.repository.remove_asset_tag(asset_id, tag_text) or self.refresh() or True
+            ),
+            redo=lambda asset_id=asset_id, tag_text=tag_text: (
+                self.repository.add_asset_tag(asset_id, tag_text) or self.refresh() or True
+            ),
+        )
         self.refresh()
 
     def _remove_tag(self) -> None:
@@ -548,7 +689,17 @@ class LibraryPage(QWidget):
         )
         if not ok or not choice:
             return
-        self.repository.remove_asset_tag(int(self._asset_detail["id"]), choice)
+        asset_id = int(self._asset_detail["id"])
+        self.repository.remove_asset_tag(asset_id, choice)
+        self._record_history(
+            t("history.library.tag_remove"),
+            undo=lambda asset_id=asset_id, choice=choice: (
+                self.repository.add_asset_tag(asset_id, choice) or self.refresh() or True
+            ),
+            redo=lambda asset_id=asset_id, choice=choice: (
+                self.repository.remove_asset_tag(asset_id, choice) or self.refresh() or True
+            ),
+        )
         self.refresh()
 
     def _open_selected_asset(self) -> None:

@@ -16,6 +16,7 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
+from ....core.history_manager import CallableCommand, CommandType, HistoryManager
 from ....core.recipes import RecipeManager
 from ....core.settings_model import AppSettings
 from ....i18n.catalog import t
@@ -27,11 +28,13 @@ class RecipesPage(QWidget):
         self,
         recipe_manager: RecipeManager,
         get_settings: Callable[[], AppSettings],
+        history_manager: HistoryManager | None = None,
         parent=None,
     ):
         super().__init__(parent)
         self.recipe_manager = recipe_manager
         self.get_settings = get_settings
+        self.history_manager = history_manager
 
         layout = QVBoxLayout(self)
         controls = QHBoxLayout()
@@ -66,6 +69,19 @@ class RecipesPage(QWidget):
         self.description_label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
         layout.addWidget(self.description_label)
         self.retranslate_ui()
+
+    def _record_history(self, description: str, undo, redo) -> None:
+        if self.history_manager is None:
+            return
+        self.history_manager.record_applied(
+            CallableCommand(
+                do=redo,
+                undo=undo,
+                redo=redo,
+                description=description,
+                command_type=CommandType.LIBRARY,
+            )
+        )
 
     def refresh(self) -> None:
         current_name = self.current_recipe_name()
@@ -121,7 +137,18 @@ class RecipesPage(QWidget):
             t("management.recipes.save_dialog.title"),
             t("management.common.description"),
         )
-        if self.recipe_manager.save_preset(name.strip(), self.get_settings(), description):
+        recipe_name = name.strip()
+        previous = self.recipe_manager.get_recipe(recipe_name)
+        if self.recipe_manager.save_preset(recipe_name, self.get_settings(), description):
+            current = self.recipe_manager.get_recipe(recipe_name)
+            if current is not None:
+                current_snapshot = current.to_dict()
+                previous_snapshot = previous.to_dict() if previous is not None else None
+                self._record_history(
+                    t("history.recipes.save"),
+                    undo=lambda previous_snapshot=previous_snapshot, recipe_name=recipe_name: self._restore_recipe_snapshot(previous_snapshot, recipe_name),
+                    redo=lambda current_snapshot=current_snapshot: self._save_recipe_snapshot(current_snapshot),
+                )
             self.refresh()
 
     def _delete_selected(self) -> None:
@@ -135,7 +162,17 @@ class RecipesPage(QWidget):
                 t("management.recipes.default_delete_forbidden"),
             )
             return
+        recipe = self.recipe_manager.get_recipe(name)
+        snapshot = recipe.to_dict() if recipe is not None else None
         if self.recipe_manager.delete_recipe(name):
+            if snapshot is not None:
+                self._record_history(
+                    t("history.recipes.delete"),
+                    undo=lambda snapshot=snapshot: self._save_recipe_snapshot(snapshot),
+                    redo=lambda name=name: (
+                        self.recipe_manager.delete_recipe(name) and self.refresh()
+                    ),
+                )
             self.refresh()
 
     def _export_selected(self) -> None:
@@ -159,8 +196,32 @@ class RecipesPage(QWidget):
             t("management.recipes.import_dialog.filter"),
         )
         if path:
-            self.recipe_manager.import_recipe(path)
+            recipe = self.recipe_manager.import_recipe(path)
+            if recipe is not None:
+                name = recipe.name
+                snapshot = recipe.to_dict()
+                self._record_history(
+                    t("history.recipes.import"),
+                    undo=lambda name=name: (
+                        self.recipe_manager.delete_recipe(name) and self.refresh()
+                    ),
+                    redo=lambda snapshot=snapshot: self._save_recipe_snapshot(snapshot),
+                )
+                self.refresh()
+
+    def _save_recipe_snapshot(self, snapshot: dict) -> bool:
+        from ....core.recipes.manager import RecipeRecord
+
+        self.recipe_manager.save_recipe(RecipeRecord.from_payload(snapshot))
+        self.refresh()
+        return True
+
+    def _restore_recipe_snapshot(self, snapshot: dict | None, recipe_name: str) -> bool:
+        if snapshot is None:
+            self.recipe_manager.delete_recipe(recipe_name)
             self.refresh()
+            return True
+        return self._save_recipe_snapshot(snapshot)
 
     def retranslate_ui(self) -> None:
         self.apply_btn.setText(t("management.recipes.apply"))

@@ -61,6 +61,7 @@ from .controls import (
     NoScrollSlider,
     NoScrollSpinBox,
 )
+from .i18n_bindings import apply_settings_i18n_bindings
 from .tab_ai import create_ai_settings_tab, on_schedule_type_changed, schedule_hint_text
 from .tab_algorithm import create_algorithm_tab
 from .tab_basic import create_basic_tab
@@ -766,7 +767,7 @@ class SettingsPanel(QWidget):
 
                 self,
 
-                "폰트 파일 선택",
+                t("settings.watermark_font.dialog_title"),
 
                 "",
 
@@ -794,7 +795,7 @@ class SettingsPanel(QWidget):
 
                 self,
 
-                "디버그 폴더 선택",
+                t("settings.debug_output_dir.dialog_title"),
 
                 "",
 
@@ -827,6 +828,8 @@ class SettingsPanel(QWidget):
                 label_widget.setText(labels.get(key, key))
 
     def retranslate_ui(self):
+        apply_settings_i18n_bindings(self)
+
         self.tab_widget.setTabText(0, t("settings.tab.basic"))
         self.tab_widget.setTabText(1, t("settings.tab.algorithm"))
         self.tab_widget.setTabText(2, t("settings.tab.processing"))

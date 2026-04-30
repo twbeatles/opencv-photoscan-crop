@@ -27,6 +27,16 @@ class ScheduleType(Enum):
     HOURLY = "hourly"      # Run every hour
 
 
+class ScheduleRunStatus(Enum):
+    """Normalized result from a scheduled processing callback."""
+
+    STARTED = "started"
+    SKIPPED_BUSY = "skipped_busy"
+    SKIPPED_NO_WORK = "skipped_no_work"
+    FAILED_CONFIG = "failed_config"
+    FAILED = "failed"
+
+
 @dataclass
 class ScheduleTask:
     """Represents a scheduled task."""
@@ -62,7 +72,7 @@ class Scheduler(QObject):
     
     def __init__(
         self,
-        process_callback: Optional[Callable[[str, str], bool]] = None,
+        process_callback: Optional[Callable[[str, str], object]] = None,
         parent: Optional[QObject] = None
     ):
         """
@@ -159,6 +169,20 @@ class Scheduler(QObject):
         logger.info(f"Removed task: {task_id}")
         
         return True
+
+    @staticmethod
+    def _normalize_run_status(value: object) -> ScheduleRunStatus:
+        """Coerce legacy bool/string callback results into ScheduleRunStatus."""
+        if isinstance(value, ScheduleRunStatus):
+            return value
+        if isinstance(value, str):
+            normalized = value.strip().lower()
+            for status in ScheduleRunStatus:
+                if normalized in {status.value, status.name.lower()}:
+                    return status
+        if isinstance(value, bool):
+            return ScheduleRunStatus.STARTED if value else ScheduleRunStatus.FAILED
+        return ScheduleRunStatus.FAILED
     
     def get_task(self, task_id: str) -> Optional[ScheduleTask]:
         """Get task by ID."""
@@ -190,7 +214,7 @@ class Scheduler(QObject):
         
         return self._execute_task(task)
     
-    def set_process_callback(self, callback: Callable[[str, str], bool]):
+    def set_process_callback(self, callback: Callable[[str, str], object]):
         """Set the processing callback function."""
         self._process_callback = callback
     
@@ -254,14 +278,23 @@ class Scheduler(QObject):
         logger.info(f"Starting scheduled task: {task.name}")
         
         try:
-            success = bool(self._process_callback(task.input_path, task.output_path))
-            task.last_run = datetime.now()
+            status = self._normalize_run_status(
+                self._process_callback(task.input_path, task.output_path)
+            )
+            success = status == ScheduleRunStatus.STARTED
+            if success:
+                task.last_run = datetime.now()
             
             self.task_completed.emit(task.task_id, success)
-            logger.info(f"Task completed: {task.name} (success={success})")
+            logger.info(
+                "Task completed: %s (status=%s, success=%s)",
+                task.name,
+                status.value,
+                success,
+            )
             
-            # For one-time tasks, disable after execution
-            if task.schedule_type == ScheduleType.ONCE:
+            # For one-time tasks, disable only after processing actually starts.
+            if success and task.schedule_type == ScheduleType.ONCE:
                 task.enabled = False
                 self.schedule_updated.emit()
             

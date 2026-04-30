@@ -68,6 +68,7 @@
 | `watermark_processor.py` | 텍스트/이미지 워터마크 |
 | `resize_processor.py` | 이미지 리사이즈 |
 | `processed_index.py` | `skip_processed` 로컬 처리 이력 인덱스 |
+| `utils/image_io.py` | 유니코드 경로 안전 이미지 로딩 헬퍼 |
 | `utils/path_validation.py` | 안전한 경로/파일명 segment validator |
 
 ### Stability-Critical Flow
@@ -78,6 +79,7 @@
 - 재귀 출력/실패 보관/멀티포토 `*_photos`는 입력 기준 상대 경로를 유지합니다.
 - `performance.max_image_size_mb`는 실제 처리 전에 파일 크기 제한으로 적용됩니다.
 - `skip_processed`는 `.photocropper/processed_index.json` 인덱스를 우선 사용하고, 실패 시 자동 분류 하위 폴더까지 포함해 fallback 탐지합니다.
+- `skip_processed` signature에는 언어별로 해석된 분류 폴더명과 `create_backup` 옵션이 포함됩니다.
 - processed index v2는 레코드별 `status=success|partial`를 저장하며, `partial`은 경고 후 재처리하고 full skip하지 않습니다.
 - `BatchProgress.partial_success`는 full success와 분리 집계되며, CLI는 항상 `processed/success/partial_success/failed/skipped`를 출력합니다.
 - CLI `--strict-partial`은 partial-only run도 종료코드 `1`로 바꾸고, 분류 모델 `custom`은 `advanced` alias로만 유지됩니다.
@@ -85,10 +87,14 @@
 - 멀티스레드 취소는 완료 future를 drain하고 남은 미실행 항목을 `CANCELLED`로 집계해 통계 정합성을 유지합니다.
 - 스케줄러는 `watch_mode.scheduler_*` 설정과 런타임 연결되어 앱 실행 중 자동 배치를 트리거합니다.
 - scheduler `once`는 날짜 없는 "다음 도래 HH:MM 1회 실행" 의미입니다.
+- `once` 예약은 `ScheduleRunStatus.STARTED`일 때만 소비되며 busy/no-files/config-error skip에서는 보존됩니다.
 - 재귀 Watch Mode는 output path가 input root 내부면 시작을 거부합니다.
 - Watch 처리 경로는 settings snapshot에서 `move_failed_files=False`를 강제해 `_failed` 피드백 루프를 막습니다.
 - `FolderWatcher.fileChanged`는 overwrite된 동일 경로도 size/mtime signature가 바뀌었을 때만 재큐잉합니다.
 - 수동 contour preview는 `core.manual_extract.crop_manual_contour()`를 사용해 save와 같은 crop 규칙을 공유합니다.
+- 일반/분류/멀티포토 출력 경로는 batch 단위 thread-safe reservation을 거쳐 같은 batch 안의 파일명 충돌을 방지합니다.
+- 라이브러리 폴더 가져오기는 UI thread 밖에서 실행되고, SQLite 연결은 WAL, foreign key, busy timeout을 켭니다.
+- Undo/Redo는 세션 내 설정 변경, 수동 crop, 라이브러리/컬렉션/레시피 수동 변경을 대상으로 하며 Batch/Watch 산출물 rollback은 제외합니다.
 
 ### UI Components
 
@@ -115,6 +121,15 @@
   - `ui/widgets/management_pages.py`는 호환용 파사드로 축소되고 실제 구현은 `ui/widgets/management/` 패키지로 이동
 - packaging note:
   - PyInstaller spec는 `photo_cropper.i18n.catalog.locales.*`와 분할된 패키지 하위 모듈을 안정적으로 포함해야 하므로 `collect_submodules(...)` 기반 자동 수집을 유지해야 함
+
+## 2026-04-30 Stability Completion Status
+
+- `utils.image_io.load_image_unicode()`가 core/UI 이미지 로딩 기준 API입니다.
+- `ui/widgets/settings/i18n_bindings.py`는 기존 settings tab 리터럴을 locale key에 연결하고, selftest가 key coverage와 placeholder 일치를 검증합니다.
+- CLI는 병합된 settings에 `validate_settings()`를 적용해 잘못된 naming/category path segment를 exit code `2`로 차단합니다.
+- Scheduler callback 결과는 `ScheduleRunStatus`로 정규화되며, stored task input/output 경로를 실행 기준으로 사용합니다.
+- PyInstaller spec는 `utils.image_io`, `ui.widgets.settings.i18n_bindings`, split package submodules를 frozen build에 포함해야 합니다.
+- 2026-04-14/2026-04-19 standalone refactor snapshot docs are intentionally deleted; this guide plus README/CLAUDE are the current references.
 
 ## Detection Algorithm Pipeline
 
@@ -245,11 +260,13 @@ class SmartEnhancementSettings:
 1. **유니코드 경로 처리**
    ```python
    # 올바른 방법
-   img = cv2.imdecode(np.fromfile(path, np.uint8), cv2.IMREAD_COLOR)
+   from photo_cropper.utils.image_io import load_image_unicode
+
+   img = load_image_unicode(path)
    # 피해야 할 방법
    img = cv2.imread(path)  # 한글 경로 오류
    ```
-   - 워터마크 이미지 로딩도 동일한 패턴을 사용해야 합니다.
+   - core/UI/워터마크 이미지 로딩은 같은 helper를 사용해야 합니다.
 
 2. **CLAHE/커널 캐싱**
    - `ImageProcessor._get_clahe_with_settings()` 사용
@@ -286,7 +303,7 @@ pyinstaller photo_cropper_onefile.spec --clean
 
 | 문제 | 해결 |
 |------|------|
-| 한글 경로 오류 | np.fromfile + cv2.imdecode 사용 |
+| 한글 경로 오류 | `utils.image_io.load_image_unicode()` 사용 |
 | 메모리 부족 | max_image_size_mb 조정 |
 | GPU 미사용 | OpenCV CUDA 빌드 필요 |
 | 감지 실패 | canny_min/max 조정, CLAHE 활성화 |

@@ -96,18 +96,40 @@ class BatchProcessorPipelineMixin:
     def _ensure_unique_output_path(
         self: Any, path: str, reserved: Optional[set] = None
     ) -> str:
-        """Ensure output path is unique against disk and reserved set."""
-        reserved = reserved or set()
-        if not os.path.exists(path) and path not in reserved:
-            return path
+        """Ensure output path is unique against disk and in-flight reservations."""
+        lock = getattr(self, "_output_reservation_lock", None)
+        if lock is None:
+            lock = threading.Lock()
+            self._output_reservation_lock = lock
+        if not hasattr(self, "_reserved_output_paths"):
+            self._reserved_output_paths = set()
 
-        base, ext = os.path.splitext(path)
-        counter = 1
-        candidate = f"{base}_{counter}{ext}"
-        while os.path.exists(candidate) or candidate in reserved:
-            counter += 1
-            candidate = f"{base}_{counter}{ext}"
-        return candidate
+        def _key(value: str) -> str:
+            return os.path.normcase(os.path.abspath(str(value or "")))
+
+        local_reserved = {_key(item) for item in (reserved or set())}
+        with lock:
+            reserved_keys = set(getattr(self, "_reserved_output_paths", set()))
+            reserved_keys.update(local_reserved)
+
+            candidate = path
+            base, ext = os.path.splitext(path)
+            counter = 1
+            while os.path.exists(candidate) or _key(candidate) in reserved_keys:
+                candidate = f"{base}_{counter}{ext}"
+                counter += 1
+
+            self._reserved_output_paths.add(_key(candidate))
+            return candidate
+
+    def _reset_output_reservations(self: Any) -> None:
+        """Clear per-run output reservations."""
+        lock = getattr(self, "_output_reservation_lock", None)
+        if lock is None:
+            self._reserved_output_paths = set()
+            return
+        with lock:
+            self._reserved_output_paths.clear()
     @staticmethod
     def _to_bgr(image: np.ndarray) -> Tuple[np.ndarray, str]:
         """
