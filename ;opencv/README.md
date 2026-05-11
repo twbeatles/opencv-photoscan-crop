@@ -296,9 +296,14 @@ python -m photo_cropper.cli --help
 photo_cropper/
 ├── main.py
 ├── cli.py
+├── cli_support/
+├── selftest.py
+├── selftests/
 ├── core/
+│   ├── advanced/
 │   ├── app_paths.py
 │   ├── batch/
+│   ├── file_watch/
 │   ├── image/
 │   ├── jobs/
 │   ├── library/
@@ -313,8 +318,10 @@ photo_cropper/
 │   └── watermark_processor.py
 ├── ui/
 │   ├── main/
+│   │   └── composition/
 │   └── widgets/
 │       ├── management/
+│       │   └── library/
 │       └── settings/
 ├── i18n/
 │   └── catalog/
@@ -354,11 +361,16 @@ pyinstaller photo_cropper_onefile.spec --clean
 | 기본 빌드 | `photo_cropper.spec`는 onedir 앱 폴더를 생성 |
 | 실험 빌드 | `photo_cropper_onefile.spec`는 단일 `.exe`를 생성 |
 | 불필요 모듈 제외 | matplotlib, scipy, pandas, tkinter 등 |
-| 분할 모듈 자동 수집 | 리팩터링된 `core/*`, `ui/*` 하위 모듈을 자동 수집 |
+| 분할 모듈 자동 수집 | 리팩터링된 `cli_support`, `core/*`, `ui/*` 하위 모듈을 자동 수집 |
 | OpenCV/Qt 경량화 | `cv2.gapi` 제외 및 불필요한 Qt/OpenCV 런타임 바이너리 선별 제외 |
 | 압축 정책 | App Control / PyQt 안정성을 위해 UPX 비활성화 |
 
 ## 📋 변경 이력
+
+### v9.0 전역 코드 분할 리팩터링 (2026-05-11)
+- `selftest.py`를 실행 호환 래퍼로 유지하고 실제 테스트를 `selftests/` 책임별 모듈로 분리했습니다.
+- CLI, Watch runtime, Advanced image operations, MainWindow composition, SettingsPanel helper, LibraryPage layout을 얇은 public facade와 내부 패키지로 나눴습니다.
+- `photo_cropper.spec`와 `photo_cropper_onefile.spec`의 hidden import 수집 범위를 새 내부 패키지까지 확장했습니다.
 
 ### v9.0 구현 정합성 업데이트 (2026-04-06)
 - 🛡️ recursive batch/watch/CLI에서 output-inside-input 조합을 공통 규칙으로 차단하고, recursive scan exclusion(`output_root`, `_failed`, `backup`, `.photocropper`)을 일원화

@@ -28,13 +28,8 @@
 └─────────────────┬─────────────────────────┘
                   ▼
 ┌───────────────────────────────────────────┐
-│         ui/main/actions/                  │
-│  preview/batch/input/watch/tools/...      │
-└─────────────────┬─────────────────────────┘
-                  ▼
-┌───────────────────────────────────────────┐
-│         ui/main/builders/                 │
-│  menu/toolbar/central/statusbar/fab       │
+│ ui/main/composition/actions/builders/...  │
+│ services/actions/layout/runtime/i18n      │
 └─────────────────┬─────────────────────────┘
                   ▼
 ┌───────────────────────────────────────────┐
@@ -56,10 +51,13 @@
 
 | 파일 | 역할 |
 |------|------|
+| `cli_support/runtime.py` | CLI parser/settings merge/validation/execution runtime |
 | `image/processor.py` | 핵심 크롭 알고리즘 (Canny, CLAHE, Sobel) |
 | `image/types.py` | 크롭/미리보기 결과 타입 |
 | `batch/processor.py` | 다중 이미지 배치 처리 |
 | `batch/types.py` | 배치 진행/결과 타입 |
+| `file_watch/` | `FolderWatcher`, `AutoProcessor`, watch result 타입 실제 구현 |
+| `advanced/processor.py` | advanced image operation facade |
 | `settings_model/app_settings.py` | 모든 설정 dataclass 정의 |
 | `settings_model/manager.py` | 설정 저장/로드 진입점 |
 | `settings_model/migration.py` | 레거시 설정/분류 폴더 기본값 마이그레이션 |
@@ -101,11 +99,14 @@
 | 파일 | 역할 |
 |------|------|
 | `main/window.py` | 메인 윈도우 composition root |
+| `main/composition/` | 서비스 생성, 액션 바인딩, 레이아웃 조립 |
 | `main/actions/` | preview/batch/input/watch/tools/settings/lifecycle 계층 |
 | `main/builders/` | menu/toolbar/central/statusbar/fab 빌더 |
 | `main/services/` | runtime flow/message helper 계층 |
-| `widgets/settings/` | 설정 패널 coordinator + 탭 분리 구현 |
-| `widgets/management/` | Library/Review/Duplicates/Jobs/Collections/Recipes/Settings 페이지 |
+| `main/management_runtime.py` | 관리탭 signal/runtime 연결 |
+| `main/translation.py` | 메인 윈도우 런타임 번역 갱신 |
+| `widgets/settings/` | 설정 패널 facade + 탭/검증/i18n helper 구현 |
+| `widgets/management/` | Library/Review/Duplicates/Jobs/Collections/Recipes/Settings 페이지와 library helper |
 | `preview_widget.py` | 이미지 미리보기 위젯 |
 | `toast_notification.py` | 토스트 알림 시스템 |
 
@@ -130,6 +131,14 @@
 - Scheduler callback 결과는 `ScheduleRunStatus`로 정규화되며, stored task input/output 경로를 실행 기준으로 사용합니다.
 - PyInstaller spec는 `utils.image_io`, `ui.widgets.settings.i18n_bindings`, split package submodules를 frozen build에 포함해야 합니다.
 - 2026-04-14/2026-04-19 standalone refactor snapshot docs are intentionally deleted; this guide plus README/CLAUDE are the current references.
+
+## 2026-05-11 Global Code-Splitting Status
+
+- `selftest.py` is a compatibility runner; the actual registry and test bodies live under `selftests/`.
+- `cli.py`, `core/folder_watcher.py`, and `core/advanced/processor.py` remain public facades while implementation moved into `cli_support`, `core/file_watch`, and `core/advanced/ops_*`.
+- `ui/main/window.py` now delegates service creation/action binding/layout assembly to `ui/main/composition/`; management runtime and translation refresh live in dedicated modules.
+- `SettingsPanel` and `LibraryPage` keep their public import paths while helper responsibilities moved into settings panel helper modules and `widgets/management/library/`.
+- PyInstaller specs collect `cli_support` plus the split core/UI packages with `collect_submodules(...)`; selftests are source validation modules, not frozen GUI runtime dependencies.
 
 ## Detection Algorithm Pipeline
 

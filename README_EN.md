@@ -299,10 +299,15 @@ python -m photo_cropper.cli --help
 └── photo_cropper/
     ├── main.py
     ├── cli.py
+    ├── cli_support/
+    ├── selftest.py
+    ├── selftests/
     ├── benchmark.py
     ├── core/
+    │   ├── advanced/
     │   ├── app_paths.py
     │   ├── batch/
+    │   ├── file_watch/
     │   ├── image/
     │   ├── jobs/
     │   ├── library/
@@ -317,8 +322,10 @@ python -m photo_cropper.cli --help
     │   └── watermark_processor.py
     ├── ui/
     │   ├── main/
+    │   │   └── composition/
     │   └── widgets/
     │       ├── management/
+    │       │   └── library/
     │       └── settings/
     ├── i18n/catalog/
     └── utils/
@@ -357,11 +364,16 @@ Built executables:
 | Stable target | `photo_cropper.spec` builds an onedir app folder |
 | Experimental target | `photo_cropper_onefile.spec` builds a single-file `.exe` |
 | Excluded Modules | matplotlib, scipy, pandas, tkinter, etc. |
-| Split-module collection | package submodules are auto-collected for refactored `core/*` and `ui/*` packages |
+| Split-module collection | package submodules are auto-collected for refactored `cli_support`, `core/*`, and `ui/*` packages |
 | OpenCV/Qt Trimming | Excludes `cv2.gapi` plus unneeded Qt/OpenCV runtime binaries |
 | Compression policy | UPX disabled for App Control / PyQt stability |
 
 ## 📋 Changelog
+
+### v9.0 Global Code-Splitting Refactor (2026-05-11)
+- Kept `selftest.py` as the compatible runner and moved the actual suite into focused `selftests/` modules.
+- Split the CLI, watch runtime, advanced image operations, MainWindow composition, SettingsPanel helpers, and LibraryPage layout behind thin public facades.
+- Expanded `photo_cropper.spec` and `photo_cropper_onefile.spec` hidden-import coverage for the new internal packages.
 
 ### v9.0 Implementation Alignment Update (2026-04-06)
 - 🛡️ Unified the recursive output-inside-input guard across batch/watch/CLI, and centralized recursive scan exclusion for `output_root`, `_failed`, `backup`, and `.photocropper`

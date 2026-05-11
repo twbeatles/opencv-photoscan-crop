@@ -24,10 +24,15 @@ winotify>=1.1.0  # Windows 알림(선택)
 photo_cropper/
 ├── main.py
 ├── cli.py
+├── cli_support/
+├── selftest.py
+├── selftests/
 ├── core/
+│   ├── advanced/
 │   ├── app_paths.py
 │   ├── image/
 │   ├── batch/
+│   ├── file_watch/
 │   ├── jobs/
 │   ├── library/
 │   ├── recipes/
@@ -35,12 +40,12 @@ photo_cropper/
 │   ├── multi_photo_detector.py
 │   ├── watermark_processor.py
 │   ├── resize_processor.py
-│   ├── folder_watcher.py
+│   ├── folder_watcher.py   # compatibility re-export for core.file_watch
 │   ├── scheduler.py
 │   ├── processed_index.py
 │   └── history_manager.py
 ├── ui/
-│   ├── main/                # composition root + actions/builders/services
+│   ├── main/                # composition root + composition/actions/builders/services
 │   ├── styles/
 │   └── widgets/
 │       ├── management/
@@ -89,6 +94,8 @@ UI composition root입니다.
 - `window.py`는 객체 생성, signal wiring, Qt 이벤트 위임만 담당합니다.
 - 실제 동작은 `ui/main/actions/` 하위 클래스로 분리되었습니다.
 - 위젯 생성은 `ui/main/builders/` 하위 함수로 분리되었습니다.
+- 서비스 생성, 액션 바인딩, 메인 레이아웃 조립은 `ui/main/composition/`에 모였습니다.
+- 관리탭 런타임 연결과 번역 갱신은 각각 `ui/main/management_runtime.py`, `ui/main/translation.py`가 담당합니다.
 - 기존 `batch_actions.py` 등 평면 모듈은 호환용 shim으로 유지됩니다.
 
 ### 4) Settings (`core/settings_model/app_settings.py`)
@@ -132,6 +139,7 @@ UI composition root입니다.
 - `cv2.imread` 직접 호출은 한글 경로에서 실패 가능
 - worker thread에서는 `QPixmap`을 만들지 말고 `QImage`/bytes를 emit한 뒤 GUI thread에서 변환
 - frozen build에서는 `photo_cropper.utils.image_io`와 `photo_cropper.ui.widgets.settings.i18n_bindings` hidden import를 유지
+- `cli.py`는 `cli_support.runtime` 호환 래퍼이므로 PyInstaller split package 수집 목록에 `photo_cropper.cli_support`를 유지
 
 ### 처리 파이프라인
 
@@ -310,6 +318,13 @@ pyinstaller photo_cropper.spec --clean
 - CLI invalid config는 병합 후 `validate_settings()`에서 차단하며 exit code `2`를 반환해야 합니다.
 - Scheduler callback 결과는 `ScheduleRunStatus`로 정규화되고 `once`는 실제 `STARTED`일 때만 소비됩니다.
 - 2026-04-14/2026-04-19 standalone refactor snapshot 문서는 삭제 상태를 반영하고, README/GEMINI/CLAUDE가 최신 기준 문서입니다.
+
+## 2026-05-11 전역 코드 분할 상태
+
+- `selftest.py`는 실행 호환 래퍼이며 실제 suite registry는 `selftests/runner.py`와 책임별 selftests 모듈에 있습니다.
+- `cli.py`, `core/folder_watcher.py`, `core/advanced/processor.py`는 public import 호환을 유지하는 facade이고 실제 구현은 `cli_support`, `core/file_watch`, `core/advanced/ops_*`로 분리되었습니다.
+- `ui/widgets/settings/panel.py`와 `ui/widgets/management/library_page.py`는 public widget facade를 유지하고 설정 빌드/검증/i18n 및 library layout 세부 동작은 helper 패키지로 이동했습니다.
+- `photo_cropper.spec`와 `photo_cropper_onefile.spec`는 `cli_support`, file-watch, advanced, settings, management, main composition split packages를 `collect_submodules(...)` 기반으로 수집합니다.
 
 ## 2026-04-06 Implementation Alignment Update
 

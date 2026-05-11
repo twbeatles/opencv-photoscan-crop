@@ -26,11 +26,13 @@ block_cipher = None
 CV2_DATA_FILES = collect_data_files('cv2', includes=['data/*.xml'])
 
 SPLIT_PACKAGES = [
+    'photo_cropper.cli_support',
     'photo_cropper.core.settings_model',
     'photo_cropper.core.advanced',
     'photo_cropper.core.face',
     'photo_cropper.core.batch',
     'photo_cropper.core.image',
+    'photo_cropper.core.file_watch',
     'photo_cropper.core.watch_mode',
     'photo_cropper.core.manual_extract',
     'photo_cropper.core.library',
@@ -38,6 +40,7 @@ SPLIT_PACKAGES = [
     'photo_cropper.core.recipes',
     'photo_cropper.ui.main.actions',
     'photo_cropper.ui.main.builders',
+    'photo_cropper.ui.main.composition',
     'photo_cropper.ui.main.services',
     'photo_cropper.ui.widgets.settings',
     'photo_cropper.ui.widgets.management',
@@ -101,10 +104,17 @@ a = Analysis(
         'numpy',
         'PIL',
         'PIL.ImageOps',
+        'photo_cropper.cli',
+        'photo_cropper.cli_support',
+        'photo_cropper.cli_support.runtime',
         'photo_cropper.core.settings_model',
         'photo_cropper.core.batch_profile_manager',
         'photo_cropper.core.app_paths',
         'photo_cropper.core.folder_watcher',
+        'photo_cropper.core.file_watch',
+        'photo_cropper.core.file_watch.auto_processor',
+        'photo_cropper.core.file_watch.folder_watcher',
+        'photo_cropper.core.file_watch.types',
         'photo_cropper.core.jobs',
         'photo_cropper.core.jobs.orchestrator',
         'photo_cropper.core.library',
@@ -159,6 +169,11 @@ a = Analysis(
         'photo_cropper.ui.main.builders.menu',
         'photo_cropper.ui.main.builders.statusbar',
         'photo_cropper.ui.main.builders.toolbar',
+        'photo_cropper.ui.main.composition',
+        'photo_cropper.ui.main.composition.actions',
+        'photo_cropper.ui.main.composition.layout',
+        'photo_cropper.ui.main.management_runtime',
+        'photo_cropper.ui.main.translation',
         'photo_cropper.ui.main.batch_actions',
         'photo_cropper.ui.main.dialog_actions',
         'photo_cropper.ui.main.feature_actions',
@@ -170,6 +185,12 @@ a = Analysis(
         'photo_cropper.ui.widgets.management_pages',
         'photo_cropper.ui.widgets.settings',
         'photo_cropper.ui.widgets.settings.i18n_bindings',
+        'photo_cropper.ui.widgets.settings.panel_i18n',
+        'photo_cropper.ui.widgets.settings.panel_layout',
+        'photo_cropper.ui.widgets.settings.panel_settings',
+        'photo_cropper.ui.widgets.settings.panel_validation',
+        'photo_cropper.ui.widgets.management.library',
+        'photo_cropper.ui.widgets.management.library.layout',
         'photo_cropper.i18n.catalog',
         'photo_cropper.i18n.catalog.locales',
         'photo_cropper.i18n.catalog.locales.en',
@@ -253,4 +274,11 @@ exe = EXE(
       runtime settings-tab i18n binding were introduced.
     - These changes add no new third-party runtime dependency; Pillow/OpenCV
       were already part of the packaging contract.
+
+2026-05-11 note:
+    - Added `cli_support` to the collected split-package set after `cli.py`
+      became a compatibility wrapper around the runtime implementation.
+    - Existing collect-submodules coverage now also tracks the file-watch,
+      advanced-operation, settings-panel helper, management-library, and
+      main-window composition splits from the SOLID refactor.
 """
