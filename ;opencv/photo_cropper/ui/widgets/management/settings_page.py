@@ -33,6 +33,7 @@ class SettingsInfoPage(QWidget):
             ("maintenance_thumbnails", "maintenance_thumbnails"),
             ("maintenance_exact_duplicates", "maintenance_exact_duplicates"),
             ("maintenance_near_duplicates", "maintenance_near_duplicates"),
+            ("maintenance_search_index", "maintenance_search_index"),
             ("maintenance_ocr_refresh", "maintenance_ocr_refresh"),
             ("maintenance_people_refresh", "maintenance_people_refresh"),
         ]
@@ -45,7 +46,7 @@ class SettingsInfoPage(QWidget):
             self.maintenance_buttons.append((label_key, button))
         self.workbench_btn = QPushButton()
         self.workbench_btn.clicked.connect(self.workbench_requested.emit)
-        actions.addWidget(self.workbench_btn, 3, 0, 1, 2)
+        actions.addWidget(self.workbench_btn, (len(buttons) + 1) // 2, 0, 1, 2)
         layout.addLayout(actions)
         layout.addStretch()
         self.retranslate_ui()

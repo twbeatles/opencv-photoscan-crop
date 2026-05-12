@@ -25,10 +25,12 @@ from .shared import (
 
 class DuplicatesPage(QWidget):
     open_requested = pyqtSignal(str)
+    maintenance_requested = pyqtSignal(str)
 
     def __init__(self, duplicate_service, parent=None):
         super().__init__(parent)
         self.duplicate_service = duplicate_service
+        self._busy = False
 
         layout = QVBoxLayout(self)
         controls = QHBoxLayout()
@@ -92,22 +94,21 @@ class DuplicatesPage(QWidget):
             self.group_table.selectRow(0)
 
     def _rebuild(self) -> None:
-        created = self.duplicate_service.rebuild_exact_groups()
-        QMessageBox.information(
-            self,
-            t("management.duplicates.title"),
-            t("management.duplicates.rebuild_exact_result", count=created),
-        )
-        self.refresh()
+        self.maintenance_requested.emit("maintenance_exact_duplicates")
 
     def _rebuild_near(self) -> None:
-        created = self.duplicate_service.rebuild_near_groups()
-        QMessageBox.information(
-            self,
-            t("management.duplicates.title"),
-            t("management.duplicates.rebuild_near_result", count=created),
-        )
-        self.refresh()
+        self.maintenance_requested.emit("maintenance_near_duplicates")
+
+    def set_busy(self, busy: bool) -> None:
+        self._busy = bool(busy)
+        for button in (
+            self.refresh_btn,
+            self.rebuild_near_btn,
+            self.representative_btn,
+            self.exclude_btn,
+            self.add_collection_btn,
+        ):
+            button.setEnabled(not self._busy)
 
     def _selected_group(self):
         return _selected_row_payload(self.group_table)

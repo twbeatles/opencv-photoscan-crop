@@ -46,6 +46,7 @@ from .batch_cli import (
     _test_processed_index_backward_compat_and_partial_status,
     _test_retry_failed_files_normalizes_empty_output_path,
     _test_batch_actions_recursive_output_guard,
+    _test_management_preflight_file_batch_guard,
     _test_profile_apply_rebuild_validation,
     _test_cli_cancel_exit_code_130,
     _test_cli_partial_exit_code_rules,
@@ -108,11 +109,15 @@ from .library import (
     _test_duplicate_preferences_preserved_on_rebuild,
     _test_source_relink_unique_and_ambiguous,
     _test_asset_query_filters_and_timeline,
+    _test_library_sqlite_pragmas_and_invalid_sources,
+    _test_search_index_dirty_and_rebuild,
+    _test_timeline_review_query_not_limited_to_5000,
 )
 from .jobs_recipes import (
     _test_job_orchestrator_records_variants_and_review_queue,
     _test_recipe_determinism_and_preserved_global_state,
     _test_review_service_guard_and_reprocess_queue,
+    _test_job_summary_metadata_warnings_and_near_summary,
 )
 
 TESTS = [
@@ -165,6 +170,7 @@ TESTS = [
     _test_batch_actions_block_when_watch_running,
     _test_retry_failed_files_normalizes_empty_output_path,
     _test_batch_actions_recursive_output_guard,
+    _test_management_preflight_file_batch_guard,
     _test_profile_apply_rebuild_validation,
     _test_settings_panel_classification_folder_roundtrip,
     _test_classification_folder_default_sentinel_migration,
@@ -209,6 +215,10 @@ TESTS = [
     _test_recipe_determinism_and_preserved_global_state,
     _test_review_service_guard_and_reprocess_queue,
     _test_asset_query_filters_and_timeline,
+    _test_library_sqlite_pragmas_and_invalid_sources,
+    _test_search_index_dirty_and_rebuild,
+    _test_timeline_review_query_not_limited_to_5000,
+    _test_job_summary_metadata_warnings_and_near_summary,
 ]
 
 def main() -> int:

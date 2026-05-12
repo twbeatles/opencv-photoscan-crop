@@ -695,6 +695,9 @@ def _test_retry_failed_files_normalizes_empty_output_path() -> None:
         with tempfile.TemporaryDirectory(prefix="photocropper_retry_failed_") as td:
             input_dir = os.path.join(td, "input")
             os.makedirs(input_dir, exist_ok=True)
+            for filename in ("failed_a.jpg", "failed_b.jpg"):
+                with open(os.path.join(input_dir, filename), "wb") as f:
+                    f.write(b"placeholder")
             refs.input_path_edit.setText(input_dir)
             refs.output_path_edit.setText("")
 
@@ -818,6 +821,46 @@ def _test_batch_actions_recursive_output_guard() -> None:
         refs.output_path_edit.deleteLater()
         if owned_app:
             app.quit()
+
+def _test_management_preflight_file_batch_guard() -> None:
+    import os
+    import tempfile
+
+    from ..ui.main.services.batch_flow import BatchRuntimeFlow
+
+    with tempfile.TemporaryDirectory(prefix="photocropper_preflight_") as td:
+        input_dir = os.path.join(td, "input")
+        output_dir = os.path.join(input_dir, "output_cropped")
+        os.makedirs(input_dir, exist_ok=True)
+        source = os.path.join(input_dir, "source.jpg")
+        with open(source, "wb") as f:
+            f.write(b"not a real image but present")
+
+        flow = BatchRuntimeFlow()
+        blocked = flow.resolve_file_batch_paths(
+            input_path=input_dir,
+            output_path=output_dir,
+            files=[source],
+            recursive=True,
+            failed_folder_name="_failed",
+        )
+        assert blocked.ok is False
+        allowed = flow.resolve_file_batch_paths(
+            input_path=input_dir,
+            output_path=os.path.join(td, "out"),
+            files=[source],
+            recursive=True,
+            failed_folder_name="_failed",
+        )
+        assert allowed.ok is True
+        missing = flow.resolve_file_batch_paths(
+            input_path=input_dir,
+            output_path=os.path.join(td, "out2"),
+            files=[os.path.join(input_dir, "missing.jpg")],
+            recursive=False,
+            failed_folder_name="_failed",
+        )
+        assert missing.ok is False
 
 def _test_profile_apply_rebuild_validation() -> None:
     import tempfile
@@ -1087,6 +1130,7 @@ __all__ = [
     "_test_processed_index_backward_compat_and_partial_status",
     "_test_retry_failed_files_normalizes_empty_output_path",
     "_test_batch_actions_recursive_output_guard",
+    "_test_management_preflight_file_batch_guard",
     "_test_profile_apply_rebuild_validation",
     "_test_cli_cancel_exit_code_130",
     "_test_cli_partial_exit_code_rules",

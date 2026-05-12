@@ -1,4 +1,3 @@
-# pyright: reportAttributeAccessIssue=false
 from __future__ import annotations
 
 import os
@@ -96,7 +95,7 @@ class BatchProcessorIoPathsMixin:
         resolved = os.path.join(output_dir, rel_parent) if rel_parent else output_dir
         os.makedirs(resolved, exist_ok=True)
         return resolved
-    def _ensure_naming_engine(self) -> Optional[NamingRuleEngine]:
+    def _ensure_naming_engine(self: Any) -> Optional[NamingRuleEngine]:
         """Initialize naming engine if enabled in settings."""
         if not self.settings.file_management.use_naming_rules:
             self._naming_engine = None
@@ -168,7 +167,8 @@ class BatchProcessorIoPathsMixin:
             add_timestamp=self.settings.output.add_timestamp,
         )
         return self._ensure_unique_output_path(path)
-    def _pipeline_signature(self) -> str:
+
+    def _pipeline_signature(self: Any) -> str:
         if self._pipeline_signature_cache is None:
             self._pipeline_signature_cache = build_pipeline_signature(self.settings)
         return self._pipeline_signature_cache

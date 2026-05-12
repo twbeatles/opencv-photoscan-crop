@@ -242,8 +242,68 @@ def _test_review_service_guard_and_reprocess_queue() -> None:
         assert requested is not None
         assert requested["status"] == "reprocess_requested"
 
+def _test_job_summary_metadata_warnings_and_near_summary() -> None:
+    import os
+    import tempfile
+
+    import cv2
+    import numpy as np
+
+    from ..core.batch import BatchProgress, FileResult, ProcessStatus
+    from ..core.jobs import JobOrchestrator
+    from ..core.library import DuplicateService, ThumbnailService
+    from ..core.library.repository import LibraryRepository
+    from ..core.library.sqlite_store import LibrarySqliteStore
+    from ..core.settings_model import AppSettings
+
+    class FailingThumbnailService(ThumbnailService):
+        def ensure_thumbnail(self, file_path: str) -> str:
+            return ""
+
+    with tempfile.TemporaryDirectory(prefix="photocropper_job_warnings_") as td:
+        repository = LibraryRepository(
+            LibrarySqliteStore(db_path=os.path.join(td, "library.db"))
+        )
+        image = np.full((100, 140, 3), 200, dtype=np.uint8)
+        ok, encoded = cv2.imencode(".jpg", image)
+        assert ok
+        src = os.path.join(td, "source.jpg")
+        out = os.path.join(td, "out.jpg")
+        encoded.tofile(src)
+        encoded.tofile(out)
+        duplicate_service = DuplicateService(repository)
+        orchestrator = JobOrchestrator(
+            repository,
+            thumbnail_service=FailingThumbnailService(thumbnails_dir=os.path.join(td, "thumbs")),
+            duplicate_service=duplicate_service,
+        )
+        job_id = orchestrator.create_job(job_kind="selftest_warning", input_path=td)
+        orchestrator.finalize_job(
+            job_id=job_id,
+            progress=BatchProgress(total=1, processed=1, success=1, is_running=False),
+            results=[
+                FileResult(
+                    filename="source.jpg",
+                    status=ProcessStatus.SUCCESS,
+                    source_path=src,
+                    output_path=out,
+                    output_paths=[out],
+                )
+            ],
+            settings=AppSettings(),
+            job_kind="selftest_warning",
+        )
+        job = repository.get_job(job_id)
+        assert job is not None
+        assert int(job["summary"]["thumbnail_failed_count"]) >= 1
+
+        duplicate_service.rebuild_near_groups(limit=1)
+        assert "scanned_assets" in duplicate_service.last_near_summary
+        assert "limited" in duplicate_service.last_near_summary
+
 __all__ = [
     "_test_job_orchestrator_records_variants_and_review_queue",
     "_test_recipe_determinism_and_preserved_global_state",
     "_test_review_service_guard_and_reprocess_queue",
+    "_test_job_summary_metadata_warnings_and_near_summary",
 ]

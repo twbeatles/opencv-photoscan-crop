@@ -1,4 +1,3 @@
-# pyright: reportAttributeAccessIssue=false
 from __future__ import annotations
 
 import os
@@ -55,7 +54,7 @@ logger = logging.getLogger(__name__)
 
 
 class BatchProcessorPipelineMixin:
-    def _build_resize_settings(self) -> ResizeProcessorSettings:
+    def _build_resize_settings(self: Any) -> ResizeProcessorSettings:
         """Build resize processor settings from app settings."""
         try:
             mode = ResizeMode(self.settings.resize.mode)

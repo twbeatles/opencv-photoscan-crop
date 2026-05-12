@@ -4,6 +4,7 @@ import os
 import sqlite3
 import threading
 from contextlib import contextmanager
+from typing import Iterator
 
 from ..app_paths import get_library_db_path, ensure_library_dirs
 
@@ -263,6 +264,7 @@ class LibrarySqliteStore:
         self._lock = threading.RLock()
         self._initialized = False
         self._fts_enabled = False
+        self._wal_configured = False
 
     @property
     def fts_enabled(self) -> bool:
@@ -275,6 +277,12 @@ class LibrarySqliteStore:
                 return
             os.makedirs(os.path.dirname(self.db_path) or ".", exist_ok=True)
             with self.connect() as conn:
+                if not self._wal_configured:
+                    try:
+                        conn.execute("PRAGMA journal_mode=WAL")
+                    except sqlite3.DatabaseError:
+                        pass
+                    self._wal_configured = True
                 for statement in SCHEMA_STATEMENTS:
                     conn.execute(statement)
                 for statement in MIGRATION_STATEMENTS:
@@ -303,16 +311,22 @@ class LibrarySqliteStore:
             self._initialized = True
 
     @contextmanager
-    def connect(self):
+    def connect(self) -> Iterator[sqlite3.Connection]:
         conn = sqlite3.connect(self.db_path, timeout=30.0)
-        try:
-            conn.execute("PRAGMA busy_timeout = 30000")
-            conn.execute("PRAGMA foreign_keys = ON")
-            conn.execute("PRAGMA journal_mode = WAL")
-        except Exception:
-            pass
         conn.row_factory = sqlite3.Row
+        try:
+            conn.execute("PRAGMA foreign_keys=ON")
+            conn.execute("PRAGMA busy_timeout=30000")
+            conn.execute("PRAGMA journal_mode=WAL")
+        except sqlite3.DatabaseError:
+            pass
         try:
             yield conn
         finally:
             conn.close()
+
+    @contextmanager
+    def write_connect(self) -> Iterator[sqlite3.Connection]:
+        with self._lock:
+            with self.connect() as conn:
+                yield conn

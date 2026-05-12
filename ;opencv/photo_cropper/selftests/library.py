@@ -379,6 +379,110 @@ def _test_asset_query_filters_and_timeline() -> None:
         assert "review" in event_types
         assert "variant" in event_types
 
+def _test_library_sqlite_pragmas_and_invalid_sources() -> None:
+    import os
+    import tempfile
+
+    from ..core.library.repository import LibraryRepository
+    from ..core.library.sqlite_store import LibrarySqliteStore
+
+    with tempfile.TemporaryDirectory(prefix="photocropper_sqlite_pragmas_") as td:
+        store = LibrarySqliteStore(db_path=os.path.join(td, "library.db"))
+        repository = LibraryRepository(store)
+        with store.connect() as conn:
+            foreign_keys = conn.execute("PRAGMA foreign_keys").fetchone()
+            busy_timeout = conn.execute("PRAGMA busy_timeout").fetchone()
+            assert foreign_keys is not None and int(foreign_keys[0]) == 1
+            assert busy_timeout is not None and int(busy_timeout[0]) >= 5000
+
+        assert repository.upsert_source("")["ingest_state"] == "invalid_source"
+        assert repository.upsert_source(os.path.join(td, "missing.jpg"))["ingest_state"] == "invalid_source"
+        assert repository.upsert_source(td)["ingest_state"] == "invalid_source"
+        text_path = os.path.join(td, "note.txt")
+        with open(text_path, "w", encoding="utf-8") as f:
+            f.write("hello")
+        assert repository.upsert_source(text_path)["ingest_state"] == "invalid_source"
+        assert repository.list_assets(limit=10) == []
+
+def _test_search_index_dirty_and_rebuild() -> None:
+    import os
+    import tempfile
+
+    import cv2
+    import numpy as np
+
+    from ..core.library.repository import LibraryRepository
+    from ..core.library.sqlite_store import LibrarySqliteStore
+
+    with tempfile.TemporaryDirectory(prefix="photocropper_search_dirty_") as td:
+        repository = LibraryRepository(
+            LibrarySqliteStore(db_path=os.path.join(td, "library.db"))
+        )
+        image = np.full((80, 120, 3), 180, dtype=np.uint8)
+        ok, encoded = cv2.imencode(".jpg", image)
+        assert ok
+        path = os.path.join(td, "asset.jpg")
+        encoded.tofile(path)
+        record = repository.upsert_source(path)
+        asset_id = int(record["asset_id"])
+        repository.store._fts_enabled = False
+        repository.refresh_search_index(asset_id)
+        assert repository.get_search_index_dirty() is True
+        repository.store._fts_enabled = True
+        assert repository.rebuild_search_index() >= 1
+        assert repository.get_search_index_dirty() is False
+
+def _test_timeline_review_query_not_limited_to_5000() -> None:
+    import os
+    import tempfile
+
+    import cv2
+    import numpy as np
+
+    from ..core.library.query_service import QueryService
+    from ..core.library.repository import LibraryRepository
+    from ..core.library.sqlite_store import LibrarySqliteStore
+
+    with tempfile.TemporaryDirectory(prefix="photocropper_timeline_many_") as td:
+        repository = LibraryRepository(
+            LibrarySqliteStore(db_path=os.path.join(td, "library.db"))
+        )
+        image = np.full((80, 120, 3), 190, dtype=np.uint8)
+        ok, encoded = cv2.imencode(".jpg", image)
+        assert ok
+        target_path = os.path.join(td, "target.jpg")
+        encoded.tofile(target_path)
+        target = repository.upsert_source(target_path)
+        target_asset_id = int(target["asset_id"])
+        repository.create_review_item(
+            asset_id=target_asset_id,
+            source_id=int(target["source_id"]),
+            variant_id=None,
+            job_id=None,
+            job_item_id=None,
+            status="new",
+            reason="target_review",
+        )
+        with repository.store.write_connect() as conn:
+            for idx in range(5005):
+                stamp = f"2099-01-01T00:{idx // 60:02d}:{idx % 60:02d}"
+                conn.execute(
+                    """
+                    INSERT INTO review_items(
+                        asset_id, source_id, variant_id, job_id, job_item_id,
+                        status, reason, notes, action_context_json, created_at, updated_at
+                    )
+                    VALUES (NULL, NULL, NULL, NULL, NULL, 'new', 'other', '', '{}', ?, ?)
+                    """,
+                    (stamp, stamp),
+                )
+            conn.commit()
+        timeline = QueryService(repository).get_asset_timeline(target_asset_id)
+        assert any(
+            event.event_type == "review" and event.metadata.get("reason") == "target_review"
+            for event in timeline
+        )
+
 __all__ = [
     "_test_sqlite_pragmas_and_ingest_cancel_progress",
     "_test_library_catalog_import_and_duplicates",
@@ -387,4 +491,7 @@ __all__ = [
     "_test_duplicate_preferences_preserved_on_rebuild",
     "_test_source_relink_unique_and_ambiguous",
     "_test_asset_query_filters_and_timeline",
+    "_test_library_sqlite_pragmas_and_invalid_sources",
+    "_test_search_index_dirty_and_rebuild",
+    "_test_timeline_review_query_not_limited_to_5000",
 ]

@@ -1,4 +1,3 @@
-# pyright: reportAttributeAccessIssue=false
 from __future__ import annotations
 
 import json
@@ -8,11 +7,12 @@ from typing import Any, Optional
 from ...utils.file_helpers import compute_file_hash, get_image_dimensions
 from .types import AssetQuery, AssetTimelineEvent
 from ._repository_shared import compute_perceptual_hash, now_iso, safe_json_loads
+from ._repository_protocol import LibraryRepositoryProtocol
 
 
 class LibraryRepositoryQueryMixin:
     def _build_asset_query_sql(
-        self: Any,
+        self: LibraryRepositoryProtocol,
         asset_query: AssetQuery,
         *,
         with_limit: bool,
@@ -108,7 +108,7 @@ class LibraryRepositoryQueryMixin:
             sql.append("LIMIT ? OFFSET ?")
             params.extend([asset_query.normalized_page_size, asset_query.offset])
         return "\n".join(sql), params
-    def count_assets(self: Any, asset_query: Optional[AssetQuery] = None) -> int:
+    def count_assets(self: LibraryRepositoryProtocol, asset_query: Optional[AssetQuery] = None) -> int:
         query = asset_query or AssetQuery()
         sql, params = self._build_asset_query_sql(query, with_limit=False)
         count_sql = f"SELECT COUNT(*) AS total FROM ({sql}) AS asset_rows"
@@ -116,7 +116,7 @@ class LibraryRepositoryQueryMixin:
             row = conn.execute(count_sql, params).fetchone()
             return int(row["total"] or 0) if row is not None else 0
     def list_assets(
-        self: Any,
+        self: LibraryRepositoryProtocol,
         asset_query: Optional[AssetQuery] = None,
         *,
         search_text: str = "",
@@ -188,7 +188,7 @@ class LibraryRepositoryQueryMixin:
                     }
                 )
             return result
-    def get_asset_detail(self: Any, asset_id: int) -> Optional[dict[str, Any]]:
+    def get_asset_detail(self: LibraryRepositoryProtocol, asset_id: int) -> Optional[dict[str, Any]]:
         with self.store.connect() as conn:
             row = conn.execute(
                 "SELECT * FROM assets WHERE id = ?",
@@ -242,7 +242,7 @@ class LibraryRepositoryQueryMixin:
                 "faces": faces,
                 "people": people,
             }
-    def get_asset_visual_path(self: Any, asset_id: int) -> str:
+    def get_asset_visual_path(self: LibraryRepositoryProtocol, asset_id: int) -> str:
         with self.store.connect() as conn:
             variant = conn.execute(
                 """
@@ -261,7 +261,7 @@ class LibraryRepositoryQueryMixin:
                 (int(asset_id),),
             ).fetchone()
             return str(row["primary_source_path"] or "") if row is not None else ""
-    def get_asset_timeline(self: Any, asset_id: int) -> list[AssetTimelineEvent]:
+    def get_asset_timeline(self: LibraryRepositoryProtocol, asset_id: int) -> list[AssetTimelineEvent]:
         events: list[AssetTimelineEvent] = []
         detail = self.get_asset_detail(asset_id)
         if detail is None:
@@ -301,23 +301,22 @@ class LibraryRepositoryQueryMixin:
                         },
                     )
                 )
-        for review in self.list_review_items(limit=5000):
-            if int(review.get("asset_id", 0) or 0) == int(asset_id):
-                events.append(
-                    AssetTimelineEvent(
-                        event_type="review",
-                        timestamp=str(review.get("updated_at", "")),
-                        asset_id=int(asset_id),
-                        source_id=int(review.get("source_id", 0) or 0) or None,
-                        variant_id=int(review.get("variant_id", 0) or 0) or None,
-                        job_id=int(review.get("job_id", 0) or 0) or None,
-                        label=str(review.get("status", "") or ""),
-                        metadata={
-                            "reason": str(review.get("reason", "") or ""),
-                            "notes": str(review.get("notes", "") or ""),
-                        },
-                    )
+        for review in self.list_review_items_for_asset(asset_id):
+            events.append(
+                AssetTimelineEvent(
+                    event_type="review",
+                    timestamp=str(review.get("updated_at", "")),
+                    asset_id=int(asset_id),
+                    source_id=int(review.get("source_id", 0) or 0) or None,
+                    variant_id=int(review.get("variant_id", 0) or 0) or None,
+                    job_id=int(review.get("job_id", 0) or 0) or None,
+                    label=str(review.get("status", "") or ""),
+                    metadata={
+                        "reason": str(review.get("reason", "") or ""),
+                        "notes": str(review.get("notes", "") or ""),
+                    },
                 )
+            )
         for item in self.list_job_items_for_asset(asset_id):
             events.append(
                 AssetTimelineEvent(

@@ -1,4 +1,3 @@
-# pyright: reportAttributeAccessIssue=false
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """Image save I/O utilities.

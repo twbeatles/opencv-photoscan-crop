@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import math
-import threading
 from typing import Optional
 
 from PyQt6.QtCore import QSize, Qt, pyqtSignal
@@ -46,8 +45,7 @@ from .shared import (
 
 class LibraryPage(QWidget):
     open_requested = pyqtSignal(str)
-    import_progress = pyqtSignal(int, int)
-    import_finished = pyqtSignal(int, str)
+    import_requested = pyqtSignal(str, bool)
 
     def __init__(
         self,
@@ -70,11 +68,8 @@ class LibraryPage(QWidget):
         self._total_assets = 0
         self._current_page = 1
         self._page_size = 200
-        self._import_thread: threading.Thread | None = None
-        self._import_cancel_event: threading.Event | None = None
-        self.import_progress.connect(self._on_import_progress)
-        self.import_finished.connect(self._on_import_finished)
         build_library_page_ui(self)
+        self._busy = False
 
     def _record_history(self, description: str, undo, redo) -> None:
         if self.history_manager is None:
@@ -269,10 +264,7 @@ class LibraryPage(QWidget):
         self._render_people(detail)
 
     def _import_folder(self) -> None:
-        if self._import_thread is not None and self._import_thread.is_alive():
-            if self._import_cancel_event is not None:
-                self._import_cancel_event.set()
-            self.import_btn.setEnabled(False)
+        if self._busy:
             return
 
         folder = QFileDialog.getExistingDirectory(
@@ -282,66 +274,12 @@ class LibraryPage(QWidget):
         )
         if not folder:
             return
-        cancel_event = threading.Event()
-        self._import_cancel_event = cancel_event
-        self.import_btn.setEnabled(True)
-        self.import_btn.setText(t("dialog.cancel"))
+        self.import_requested.emit(folder, self.recursive_checkbox.isChecked())
 
-        def progress(processed: int, total: int, _path: str) -> None:
-            self.import_progress.emit(int(processed), int(total))
-
-        def worker() -> None:
-            try:
-                count = self.ingest_service.import_directory(
-                    folder,
-                    recursive=self.recursive_checkbox.isChecked(),
-                    progress_callback=progress,
-                    cancel_event=cancel_event,
-                )
-                status = "cancelled" if cancel_event.is_set() else "ok"
-                self.import_finished.emit(int(count), status)
-            except Exception as exc:
-                self.import_finished.emit(0, f"error:{exc}")
-
-        self._import_thread = threading.Thread(
-            target=worker,
-            name="photocropper-library-import",
-            daemon=True,
-        )
-        self._import_thread.start()
-
-    def _on_import_progress(self, processed: int, total: int) -> None:
-        if total > 0:
-            self.import_btn.setText(
-                t("management.library.importing_progress", count=processed, total=total)
-            )
-
-    def _on_import_finished(self, count: int, status: str) -> None:
-        self._import_thread = None
-        self._import_cancel_event = None
-        self.import_btn.setEnabled(True)
-        self.import_btn.setText(t("management.library.import_button"))
-        if str(status or "").startswith("error:"):
-            QMessageBox.warning(
-                self,
-                t("management.library.import_result.title"),
-                t("management.library.import_result.error", error=status[6:]),
-            )
-            return
-        if status == "cancelled":
-            QMessageBox.information(
-                self,
-                t("management.library.import_result.title"),
-                t("management.library.import_result.cancelled", count=count),
-            )
-            self.refresh()
-            return
-        QMessageBox.information(
-            self,
-            t("management.library.import_result.title"),
-            t("management.library.import_result.body", count=count),
-        )
-        self.refresh()
+    def set_busy(self, busy: bool) -> None:
+        self._busy = bool(busy)
+        self.import_btn.setEnabled(not self._busy)
+        self.refresh_btn.setEnabled(not self._busy)
 
     def _go_prev_page(self) -> None:
         if self._current_page > 1:

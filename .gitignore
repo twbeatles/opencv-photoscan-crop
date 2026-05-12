@@ -26,6 +26,12 @@ out/
 library.db
 library.db-shm
 library.db-wal
+*.db-shm
+*.db-wal
+*.db-journal
+*.sqlite-shm
+*.sqlite-wal
+*.sqlite-journal
 preview_cache/
 thumbnails/
 logs/
