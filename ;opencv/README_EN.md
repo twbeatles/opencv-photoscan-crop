@@ -72,6 +72,15 @@ A Python application that automatically detects and accurately crops scanned pho
 - **Library/SQLite hardening**: folder imports run off the GUI thread, and SQLite connections enable WAL, foreign keys, and busy timeout
 - **Undo/Redo wiring**: session-local settings, manual crop, library, collection, and recipe edits are reversible with `Ctrl+Z`/`Ctrl+Y`; Batch/Watch output rollback is intentionally excluded
 
+### 🛡️ Stability Hardening Update (2026-06)
+- **Batch fatal status**: output-directory creation failures, input discovery failures, and batch-level exceptions are surfaced through `BatchProgress.fatal_error/fatal_message`; CLI exits `1` and tracked jobs finalize as `failed`
+- **Failed-folder validation**: `file_management.failed_folder_name` uses the same single path-segment validator, blocking `..`, separators, drive/UNC paths, Windows reserved names, and trailing dots/spaces from settings and CLI configs
+- **Explicit file-list preflight**: rerun/reprocess file lists are blocked as a whole if any requested file is missing, and stale queued jobs are not left behind
+- **Watch stop-race hardening**: Watch callbacks use `process_single(clear_stop_event=False)` so a queued callback after stop preserves the cancel request and returns `CANCELLED`
+- **Management rerun consistency**: source paths are deduped while preserving order, and maintenance reruns return maintenance execution specs without creating queued batch jobs
+- **Non-blocking UI completion**: job finalization runs in a background thread and reports completion/failure through the existing management signal path; manual-extract state is released only from the UI completion path
+- **Scheduler once quick retry**: busy/no-files/config skips no longer push `next_run` to the next day; the task remains enabled and is retried on the next scheduler tick unless it actually `STARTED`
+
 ### 🗂️ Management Shell & Refactor Update (2026-04-19)
 - **Management shell**: the desktop UX now centers on `Library`, `Workbench`, `Review`, `Duplicates`, `Jobs`, `Collections`, `Recipes`, and `Settings`
 - **Catalog + job history**: the management-app layer now lives under dedicated `core/library/`, `core/jobs/`, and `core/recipes/` packages
@@ -224,11 +233,12 @@ python -m photo_cropper.cli --help
 #### Language and Safe Naming
 - **Live language updates**: changing the language in settings refreshes the main menu, toolbar, status bar, and other long-lived widgets immediately.
 - **Safe classification folders**: classification folder names reject separators, `..`, drive/UNC patterns, Windows reserved names, trailing dots/spaces, and control characters.
+- **Safe failed-folder name**: the failed-file collection folder uses the same single-segment validator, and invalid values are never used as move/copy destinations.
 - **Safe naming rules**: prefix/suffix use the same validator, and invalid form state blocks settings emit plus auto-preview.
 - **Locale-default sentinel**: leaving a classification folder blank means "use the current UI language default folder name."
 
 > Note: in recursive Watch Mode, the output directory must live outside the input root. If you want to keep the default `<input>/output_cropped`, disable recursive watch or choose an external output directory.
-> Note: schedule type `once` means "run once at the next upcoming HH:MM" rather than a date-based one-shot schedule. Busy/no-files/config-error skips preserve the schedule.
+> Note: schedule type `once` means "run once at the next upcoming HH:MM" rather than a date-based one-shot schedule. Busy/no-files/config-error skips preserve the schedule and retry on the next scheduler tick.
 > Note: recursive Batch/Watch/CLI scans automatically exclude generated folders such as `output_root`, `_failed`, `backup`, and `.photocropper`.
 
 ### Algorithm Settings
@@ -259,6 +269,7 @@ python -m photo_cropper.cli --help
 > Filename-based probing is used as fallback only when the index is unavailable.
 > Classification subfolders (default Korean names, user-configurable) and multi-photo subfolders (`*_photos`) are both included in fallback probing.
 > Note: CLI summaries always print `processed/success/partial_success/failed/skipped`, and `--strict-partial` turns partial-only runs into exit code `1`.
+> Note: batch-level fatal errors take precedence over partial/cancel status and become CLI exit code `1` plus tracked-job `failed`.
 
 ## 🧪 Stability Checklist
 
@@ -273,6 +284,10 @@ python -m photo_cropper.cli --help
 - **Manual preview/save parity**: with `advanced.perspective_correct=false`, confirm manual preview and saved crop shapes match
 - **Scheduler check**: with `watch_mode.scheduler_enabled=true`, confirm auto-batch starts at scheduled time and overlapping triggers are skipped
 - **CLI partial policy**: confirm partial-only runs exit `0` by default and exit `1` with `--strict-partial`
+- **CLI fatal policy**: confirm output-directory creation failures or input discovery failures print a summary and exit `1`
+- **File-list preflight**: confirm mixed valid + missing rerun/reprocess inputs are blocked as a whole and do not leave queued jobs
+- **Watch stop race**: confirm a queued callback after stop returns `CANCELLED` and creates no output
+- **Scheduler once retry**: confirm busy/no-files/config skips leave the task enabled and do not move `next_run` to the next day
 - **Unicode path test**: use a watermark image in a non-ASCII path and verify output succeeds
 - **Cancel semantics**: in multithreaded batch, request stop and verify final stats consistency and CLI exit code `130`
 - **Benchmark harness validation**:
@@ -355,6 +370,13 @@ Built executables:
 | Compression policy | UPX disabled for App Control / PyQt stability |
 
 ## 📋 Changelog
+
+### v9.0 Stability Hardening Update (2026-06-04)
+- Added `BatchProgress.fatal_error/fatal_message` so batch-level runtime failures consistently map to CLI exit code `1` and tracked-job `failed`.
+- Added `file_management.failed_folder_name` validation plus failed-file classification guards so unsafe names cannot escape the source tree.
+- Hardened explicit file-list preflight so mixed missing rerun/reprocess requests are blocked as a whole and stale queued jobs are not created.
+- Locked in Watch stop-race handling, management rerun behavior, UI background finalization, manual-extract state cleanup, and Scheduler once retry policy with selftests.
+- Added `.codegraph/` to `.gitignore` because it is a local CodeGraph MCP index artifact.
 
 ### v9.0 Global Code-Splitting Refactor (2026-05-11)
 - Kept `selftest.py` as the compatible runner and moved the actual suite into focused `selftests/` modules.
@@ -529,3 +551,13 @@ Please report bugs or feature suggestions in Issues.
 - `.gitignore` covers local `out/` folders in addition to build/dist/runtime cache outputs.
 - Standard verification now includes `compileall`, `selftest`, both root/app pyright configs, CLI help, and an invalid-config CLI smoke expecting exit code `2`.
 - The 2026-04-14 and 2026-04-19 refactor status snapshots have been removed from the tracked documentation set; the current README/GEMINI/CLAUDE files are the active project references.
+
+## 2026-06-04 Stability Hardening Notes
+
+- Added `BatchProgress.fatal_error/fatal_message` and wired batch discovery/output-creation/outer exceptions to CLI exit code `1` and tracked-job `failed`.
+- `file_management.failed_folder_name` is validated as a single path segment in settings/CLI validation and again at failed-file classification entry.
+- Explicit file-list preflight blocks the whole run when any file is missing, and rerun/maintenance rerun paths avoid stale queued batch jobs.
+- Watch Mode now calls `process_single(clear_stop_event=False)` so queued callbacks after stop take the cancel path instead of clearing the stop request.
+- UI batch completion finalizes tracked jobs in a background thread, and manual-extract state is released only from the UI completion path.
+- Scheduler `once` no longer pushes `next_run` to the next day for non-`STARTED` skip outcomes; it retries on the next tick.
+- `.codegraph/` is ignored as a local CodeGraph index artifact.

@@ -73,10 +73,11 @@ photo_cropper/
 대량 이미지 처리 엔진입니다.
 
 - `start_async(input_path, output_path, files)`
-- `process_single(input_path, output_dir, input_root=None)` (Watch Mode/수동 추출에서 재사용)
+- `process_single(input_path, output_dir, input_root=None, *, clear_stop_event=True)` (Watch Mode/수동 추출에서 재사용)
 - `apply_post_pipeline`, `build_output_path`, `find_existing_output`
 - `lookup_processed_outputs_from_index`, `record_processed_outputs` (`skip_processed` 로컬 인덱스)
 - `BatchProgress.partial_success`로 full success와 partial success를 분리 집계
+- `BatchProgress.fatal_error/fatal_message`로 batch-level runtime failure를 CLI exit code `1` 및 Job `failed`와 동기화
 
 ### 2-1) Library / Jobs / Recipes
 
@@ -152,9 +153,13 @@ UI composition root입니다.
 - `skip_processed` pipeline signature에는 언어별 분류 폴더 해석값과 `create_backup`이 포함됨
 - processed index v2는 레코드별 `status=success|partial`를 저장하며, `partial`은 skip 대신 경고 후 재처리
 - CLI는 summary에 `processed/success/partial_success/failed/skipped`를 항상 출력하고, `--strict-partial` 사용 시 partial도 종료코드 `1` 대상
+- CLI는 `fatal_error=True`인 batch-level 오류를 cancel/partial보다 우선해 종료코드 `1`로 반환해야 함
 - 분류 모델 `custom`은 legacy alias로만 유지되며 내부적으로 `advanced`로 정규화
 - scheduler `once`는 날짜 없는 "다음 도래 HH:MM 1회 실행" 의미
-- `ScheduleRunStatus.STARTED`일 때만 `once` 작업을 소비하고, busy/no-work/config 실패는 보존
+- `ScheduleRunStatus.STARTED`일 때만 `once` 작업을 소비하고, busy/no-work/config 실패는 `next_run`을 다음 날로 밀지 않고 다음 tick에서 재시도
+- 명시 파일 목록 기반 batch/rerun/reprocess는 누락 파일이 하나라도 있으면 전체 시작을 차단하고 `ResolvedIoPaths.files`만 실행에 넘겨야 함
+- Management maintenance rerun은 queued batch job을 만들지 않고 maintenance 실행 spec만 반환해야 함
+- Batch/management job finalization은 UI thread를 블로킹하지 않도록 background thread 또는 maintenance signal 경로를 사용해야 함
 - 수동 contour preview도 `core.manual_extract.crop_manual_contour()`를 통해 실제 저장과 동일한 crop 규칙을 사용
 
 ### 성능/안정성
@@ -164,10 +169,12 @@ UI composition root입니다.
 - 멀티스레드 취소 시 완료 future drain + 미실행 작업 `CANCELLED` 통계 반영
 - 재귀 Watch Mode는 output path가 input root 내부면 시작을 차단
 - Watch 처리 경로는 settings snapshot에서 `move_failed_files=False`를 강제해 `_failed` 루프를 막음
+- Watch callback에서 `process_single(..., clear_stop_event=False)`를 사용해 stop 요청을 지우지 말아야 함
 - `FolderWatcher.fileChanged`는 overwrite된 동일 경로도 size/mtime signature가 바뀐 경우에만 재큐잉
 - UI 직접 실행 경로에서도 watch/batch/manual 상호 배제를 강제
 - GUI 입력 검증과 batch/watch/manual preflight는 모두 `utils.path_validation` + `core.settings_model.validation`의 공용 API를 사용
 - CLI도 병합된 config/preset/override 설정에 `validate_settings()`를 적용하고 invalid path segment는 exit code `2`로 차단
+- `file_management.failed_folder_name`은 category folder/prefix/suffix와 같은 single segment validator를 적용하며, invalid 값은 `_failed` fallback으로 묵살하지 말고 명시 실패로 처리
 - 분류 폴더 빈 문자열은 "현재 UI 언어 기본값 사용" sentinel 의미이며, 구 기본 한글값은 마이그레이션 시 sentinel로 정규화
 - Batch 출력 경로는 일반/분류/멀티포토 모두 per-run thread-safe reservation을 거쳐 동시 저장 충돌을 방지
 - Library SQLite 연결은 `foreign_keys=ON`, WAL, busy timeout을 설정하고, 폴더 import는 UI thread 밖에서 실행
@@ -325,6 +332,17 @@ pyinstaller photo_cropper.spec --clean
 - `cli.py`, `core/folder_watcher.py`, `core/advanced/processor.py`는 public import 호환을 유지하는 facade이고 실제 구현은 `cli_support`, `core/file_watch`, `core/advanced/ops_*`로 분리되었습니다.
 - `ui/widgets/settings/panel.py`와 `ui/widgets/management/library_page.py`는 public widget facade를 유지하고 설정 빌드/검증/i18n 및 library layout 세부 동작은 helper 패키지로 이동했습니다.
 - `photo_cropper.spec`와 `photo_cropper_onefile.spec`는 `cli_support`, file-watch, advanced, settings, management, main composition split packages를 `collect_submodules(...)` 기반으로 수집합니다.
+
+## 2026-06-04 안정성 하드닝 상태
+
+- `BatchProgress.fatal_error/fatal_message`는 output directory creation, file discovery, outer batch exception 같은 batch-level failure를 표현하는 공용 계약입니다. CLI는 summary 출력 후 exit code `1`, `JobOrchestrator.finalize_job()`는 `failed`를 최우선으로 반영합니다.
+- `file_management.failed_folder_name`은 설정 검증과 `classify_failed_files()` 진입부에서 모두 `validate_single_path_segment(..., allow_empty=False)`로 검증합니다. invalid 값은 경로 fallback으로 보정하지 않습니다.
+- `BatchRuntimeFlow.resolve_file_batch_paths()`는 mixed valid/missing file list를 전체 차단하고, caller는 원본 files가 아니라 `ResolvedIoPaths.files`만 `BatchProcessor.start_async()`에 전달해야 합니다.
+- `JobOrchestrator.prepare_job_rerun()`은 source path를 순서 보존 dedupe하고, source 없는 maintenance job은 queued batch job 없이 maintenance spec만 반환합니다.
+- Watch Mode는 `BatchProcessor.process_single(..., clear_stop_event=False)`를 호출해 stop 이후 queued callback이 stop event를 지우지 않도록 합니다.
+- `BatchActions.on_batch_complete()`는 tracked job finalization을 background thread로 넘기고, `management_task_finished` signal 패턴으로 management refresh/toast를 처리합니다. 수동 추출 상태 해제도 UI completion path에서만 수행합니다.
+- Scheduler `once`는 `STARTED`가 아닌 busy/no-files/config skip에서 `_calculate_next_run()`을 호출하지 않으며 다음 scheduler tick에서 재시도합니다.
+- `.codegraph/`는 로컬 CodeGraph MCP 인덱스라 커밋하지 않고 `.gitignore`로 제외합니다.
 
 ## 2026-04-06 Implementation Alignment Update
 

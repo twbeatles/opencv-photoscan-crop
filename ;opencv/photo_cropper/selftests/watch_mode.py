@@ -71,6 +71,7 @@ def _test_watch_mode_processing_disables_failed_file_move() -> None:
             input_path: str,
             output_path: str,
             input_root: str | None = None,
+            **kwargs,
         ):
             snapshot = self.updated_settings[-1]
             self.process_calls.append(
@@ -79,6 +80,7 @@ def _test_watch_mode_processing_disables_failed_file_move() -> None:
                     output_path,
                     snapshot.file_management.move_failed_files,
                     input_root,
+                    kwargs.get("clear_stop_event"),
                 )
             )
             return SimpleNamespace(status=ProcessStatus.SUCCESS, message="ok")
@@ -94,9 +96,28 @@ def _test_watch_mode_processing_disables_failed_file_move() -> None:
     assert len(fake_batch.updated_settings) == 1
     assert fake_batch.updated_settings[0] is not settings
     assert fake_batch.updated_settings[0].file_management.move_failed_files is False
-    assert fake_batch.process_calls == [("input.jpg", "output", False, "watch-root")]
+    assert fake_batch.process_calls == [("input.jpg", "output", False, "watch-root", False)]
 
     coordinator.deleteLater()
+
+def _test_watch_process_single_preserves_stop_request() -> None:
+    import os
+    import tempfile
+
+    from ..core.batch import BatchProcessor, ProcessStatus
+    from ..core.settings_model import AppSettings
+
+    with tempfile.TemporaryDirectory(prefix="photocropper_watch_stop_") as td:
+        src = os.path.join(td, "source.jpg")
+        out = os.path.join(td, "out")
+        with open(src, "wb") as handle:
+            handle.write(b"placeholder")
+
+        processor = BatchProcessor(AppSettings())
+        processor.request_stop()
+        result = processor.process_single(src, out, clear_stop_event=False)
+        assert result.status == ProcessStatus.CANCELLED
+        assert not os.path.exists(os.path.join(out, "source_cropped.jpg"))
 
 def _test_recursive_watch_new_subdir_initial_scan() -> None:
     import os
@@ -556,6 +577,28 @@ def _test_scheduler_once_preserves_task_until_started() -> None:
     assert task.enabled is False
     assert task.last_run is not None
 
+def _test_scheduler_once_skip_keeps_next_run_due() -> None:
+    from datetime import datetime, timedelta
+
+    from ..core.scheduler import Scheduler, ScheduleRunStatus, ScheduleTask, ScheduleType
+
+    task = ScheduleTask(
+        task_id="once",
+        name="once",
+        schedule_type=ScheduleType.ONCE,
+        input_path="in",
+        output_path="out",
+        enabled=True,
+    )
+    due_time = datetime.now() - timedelta(seconds=5)
+    task.next_run = due_time
+    scheduler = Scheduler(process_callback=lambda *_args: ScheduleRunStatus.SKIPPED_BUSY)
+    scheduler._tasks[task.task_id] = task
+    scheduler._check_schedules()
+    assert task.enabled is True
+    assert task.last_run is None
+    assert task.next_run == due_time
+
 def _test_scheduled_batch_uses_task_paths() -> None:
     import os
     import tempfile
@@ -663,6 +706,7 @@ __all__ = [
     "_test_watch_mode_coordinator_invalid_input",
     "_test_watch_mode_coordinator_recursive_output_guard",
     "_test_watch_mode_processing_disables_failed_file_move",
+    "_test_watch_process_single_preserves_stop_request",
     "_test_recursive_watch_new_subdir_initial_scan",
     "_test_folder_watcher_file_changed_requeues_only_on_signature_change",
     "_test_watch_max_wait_roundtrip",
@@ -671,6 +715,7 @@ __all__ = [
     "_test_watch_actions_block_while_batch_or_manual_running",
     "_test_batch_actions_block_when_watch_running",
     "_test_scheduler_once_preserves_task_until_started",
+    "_test_scheduler_once_skip_keeps_next_run_due",
     "_test_scheduled_batch_uses_task_paths",
     "_test_folder_watcher_recursive_excluded_roots",
 ]

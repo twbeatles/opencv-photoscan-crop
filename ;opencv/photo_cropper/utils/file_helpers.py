@@ -10,6 +10,7 @@ from datetime import datetime
 import cv2
 
 from .image_io import load_image_unicode
+from .path_validation import validate_single_path_segment
 
 logger = logging.getLogger(__name__)
 
@@ -96,7 +97,14 @@ def build_recursive_excluded_roots(
     roots: List[str] = []
     candidates = [output_root]
     if failed_folder_name:
-        candidates.append(os.path.join(normalized_input, failed_folder_name))
+        valid_failed_folder, _ = validate_single_path_segment(
+            failed_folder_name,
+            allow_empty=False,
+        )
+        if valid_failed_folder:
+            candidates.append(os.path.join(normalized_input, failed_folder_name))
+        else:
+            logger.warning("Invalid failed folder name excluded from recursive roots")
     if include_backup:
         candidates.append(os.path.join(normalized_input, "backup"))
 
@@ -134,6 +142,7 @@ def get_image_files(
     recursive: bool = False,
     *,
     excluded_roots: Optional[Sequence[str]] = None,
+    raise_errors: bool = False,
 ) -> List[str]:
     """
     Get all image files in a directory.
@@ -168,6 +177,8 @@ def get_image_files(
         return sorted(files)
     except Exception as e:
         logger.error(f"Error reading directory: {e}")
+        if raise_errors:
+            raise
         return []
 
 
@@ -570,6 +581,13 @@ def classify_failed_files(
     
     success_count = 0
     errors = []
+
+    valid_failed_folder, reason = validate_single_path_segment(
+        failed_folder_name,
+        allow_empty=False,
+    )
+    if not valid_failed_folder:
+        return 0, [f"Invalid failed folder name: {reason}"]
     
     # Create failed folder
     failed_folder = os.path.join(source_dir, failed_folder_name)

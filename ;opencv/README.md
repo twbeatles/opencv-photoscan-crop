@@ -72,6 +72,15 @@
 - **Library/SQLite 안정화**: 라이브러리 폴더 가져오기는 background thread에서 진행되고 SQLite는 WAL, foreign key, busy timeout을 설정
 - **Undo/Redo 연결**: 세션 내 설정 변경, 수동 crop, 라이브러리/컬렉션/레시피 수동 변경을 `Ctrl+Z`/`Ctrl+Y`로 되돌릴 수 있음
 
+### 🛡️ 안정성 하드닝 업데이트 (2026-06)
+- **Batch fatal 상태 분리**: 출력 폴더 생성 실패, 입력 폴더 읽기 실패, batch-level 예외는 `BatchProgress.fatal_error/fatal_message`로 전달되며 CLI는 exit code `1`, 작업 이력은 `failed`로 종료
+- **실패 폴더명 검증 강화**: `file_management.failed_folder_name`도 단일 path segment 규칙으로 검증되어 `..`, 구분자, 드라이브/UNC 경로, Windows 예약어, trailing dot/space가 설정/CLI에서 차단
+- **명시 파일 목록 preflight 강화**: 재처리/재실행 파일 목록에 누락 파일이 하나라도 있으면 전체 시작을 차단하고 stale queued job을 남기지 않음
+- **Watch stop race 보강**: Watch callback은 stop 요청을 지우지 않고 `process_single(clear_stop_event=False)` 경로를 사용해 중단 후 진입한 작업을 `CANCELLED`로 종료
+- **Management 재실행 정합성**: source path는 순서 보존 dedupe를 거치고, maintenance rerun은 batch queued job을 만들지 않고 maintenance 실행 spec만 반환
+- **UI 완료 처리 비블로킹화**: 작업 finalization은 background thread에서 수행되고 완료/실패 신호로 관리 뷰 refresh와 toast를 처리하며, 수동 추출 상태 해제는 UI thread 완료 경로에서만 수행
+- **Scheduler once 즉시 재시도**: busy/no files/config skip은 다음 날로 밀리지 않고 다음 scheduler tick에서 다시 시도되며, 실제 `STARTED`일 때만 `once` 예약을 소비
+
 ### 🗂️ 관리 셸 및 리팩터링 업데이트 (2026-04-19)
 - **관리 셸 중심 UX**: 메인 화면이 `라이브러리`, `워크벤치`, `검토`, `중복`, `작업`, `컬렉션`, `레시피`, `설정` 섹션 중심으로 확장
 - **카탈로그/작업 이력 계층 도입**: 관리앱 관련 핵심 로직이 `photo_cropper/core/library/`, `core/jobs/`, `core/recipes/`로 정리
@@ -231,6 +240,7 @@ python -m photo_cropper.cli --help
 - **실시간 언어 전환**: 설정 패널 언어 변경 시 메인 메뉴, 툴바, 상태바, 진행창 등 장수명 UI가 즉시 갱신됩니다.
 - **번역 카탈로그 검증**: locale key coverage와 placeholder 일치성은 selftest에서 검사됩니다.
 - **안전한 분류 폴더명**: 자동 분류 폴더명은 폴더 구분자, `..`, 드라이브/UNC 경로, Windows 예약어, 제어문자를 허용하지 않습니다.
+- **안전한 실패 폴더명**: 실패 파일 보관 폴더명도 같은 단일 segment 검증을 적용하며, invalid 값은 실패 파일 이동/복사 경로로 사용하지 않습니다.
 - **안전한 naming 규칙**: prefix/suffix도 동일한 규칙으로 검증되며 invalid 상태에서는 설정 emit/자동 미리보기가 차단됩니다.
 - **locale 기본값 sentinel**: 분류 폴더 입력을 비워두면 현재 UI 언어 기본값을 사용합니다.
 
@@ -239,7 +249,7 @@ python -m photo_cropper.cli --help
 - **스케줄러**: 예약 시간에 자동 배치 처리
 
 > 참고: 재귀 Watch Mode에서는 출력 폴더를 입력 폴더 내부에 둘 수 없습니다. 기본 출력값(`<input>/output_cropped`)을 그대로 쓰려면 재귀 감시를 끄거나, 출력 폴더를 입력 루트 밖으로 지정하세요.
-> 참고: 스케줄 유형 `once`는 날짜 지정이 아니라 "다음 도래 HH:MM에 1회 실행" 의미입니다. busy/no files/invalid config로 시작하지 못한 경우 예약은 보존됩니다.
+> 참고: 스케줄 유형 `once`는 날짜 지정이 아니라 "다음 도래 HH:MM에 1회 실행" 의미입니다. busy/no files/invalid config로 시작하지 못한 경우 예약은 보존되고 다음 scheduler tick에서 재시도됩니다.
 > 참고: 재귀 Batch/Watch/CLI에서는 내부 생성 폴더(`output_root`, `_failed`, `backup`, `.photocropper`)를 입력 스캔에서 자동 제외합니다.
 
 ### 알고리즘 설정
@@ -270,6 +280,7 @@ python -m photo_cropper.cli --help
 > 인덱스가 비활성/오류일 때만 파일명 기반 fallback 탐지와 제한 경고가 적용됩니다.
 > 자동 분류 하위 폴더(기본 `인물/풍경/문서/흑백/기타`, 사용자 지정 가능)와 멀티포토 하위 폴더(`*_photos`)도 탐지 대상에 포함됩니다.
 > 참고: CLI summary는 항상 `processed/success/partial_success/failed/skipped`를 출력하며, `--strict-partial` 사용 시 partial만 있어도 종료코드 `1`입니다.
+> 참고: batch-level fatal 오류는 partial/cancel 상태보다 우선해 CLI exit code `1`과 작업 이력 `failed`로 반영됩니다.
 
 ## 🧪 안정성 체크 포인트
 
@@ -284,6 +295,10 @@ python -m photo_cropper.cli --help
 - **수동 preview/save parity 검증**: `advanced.perspective_correct=false`에서 수동 편집 직후 preview와 실제 저장 결과 shape이 일치하는지 확인
 - **스케줄러 검증**: `watch_mode.scheduler_enabled=true` 상태에서 예약 시각 도달 시 자동 배치 시작/중복 실행 skip 확인
 - **CLI partial 정책 검증**: partial만 발생한 run은 기본 종료코드 `0`, `--strict-partial`에서는 `1`인지 확인
+- **CLI fatal 정책 검증**: 출력 디렉터리 생성 실패 또는 입력 폴더 읽기 실패가 summary 출력 후 exit code `1`로 끝나는지 확인
+- **파일 목록 preflight 검증**: valid + missing 파일이 섞인 재처리/재실행 요청은 전체 차단되고 queued job이 남지 않는지 확인
+- **Watch stop race 검증**: stop 요청 이후 queued callback이 진입해도 `CANCELLED`가 반환되고 output이 생성되지 않는지 확인
+- **Scheduler once 재시도 검증**: busy/no files/config skip 이후 task가 enabled 상태로 남고 `next_run`이 다음 날로 밀리지 않는지 확인
 - **유니코드 경로 검증**: 한글 경로의 워터마크 이미지 파일을 지정해 저장 성공 여부 확인
 - **취소 검증**: 멀티스레드 배치 실행 중 중단 요청 시 통계/상태 정합성 확인 및 CLI 종료코드 `130` 확인
 - **벤치마크 하네스 검증**:
@@ -366,6 +381,13 @@ pyinstaller photo_cropper_onefile.spec --clean
 | 압축 정책 | App Control / PyQt 안정성을 위해 UPX 비활성화 |
 
 ## 📋 변경 이력
+
+### v9.0 안정성 하드닝 업데이트 (2026-06-04)
+- `BatchProgress.fatal_error/fatal_message`를 도입해 batch-level runtime failure를 CLI exit code `1`과 Job `failed`로 일관 반영했습니다.
+- `file_management.failed_folder_name` 검증과 실패 파일 분류 방어 로직을 추가해 unsafe 폴더명이 원본 경로 이탈로 이어지지 않도록 했습니다.
+- 명시 파일 목록 preflight를 강화해 누락 파일이 섞인 rerun/reprocess는 전체 차단하고 stale queued job을 남기지 않습니다.
+- Watch stop race, management rerun, UI background finalization, manual extract state cleanup, Scheduler once retry 정책을 selftest로 고정했습니다.
+- `.codegraph/`는 로컬 CodeGraph MCP 인덱스 산출물이므로 `.gitignore`에 추가했습니다.
 
 ### v9.0 전역 코드 분할 리팩터링 (2026-05-11)
 - `selftest.py`를 실행 호환 래퍼로 유지하고 실제 테스트를 `selftests/` 책임별 모듈로 분리했습니다.
@@ -527,6 +549,16 @@ MIT License
 - `.gitignore`는 build/dist/runtime cache 외에 로컬 `out/` 폴더도 저장소 밖으로 유지하도록 보강했습니다.
 - 표준 검증 기준은 `compileall`, `selftest`, 루트/앱 pyright, CLI help, invalid-config CLI exit code `2` 스모크를 포함합니다.
 - 2026-04-14/2026-04-19 리팩터링 상태 스냅샷 문서는 추적 대상에서 제거하고, 현재 README/GEMINI/CLAUDE 문서를 최신 기준으로 사용합니다.
+
+## 2026-06-04 안정성 하드닝 완료 메모
+
+- `BatchProgress.fatal_error/fatal_message`를 추가해 batch discovery/output creation/outer exception을 fatal로 전달하고, CLI exit code `1` 및 Job `failed` 상태와 동기화했습니다.
+- `file_management.failed_folder_name`은 설정/CLI 검증과 실패 파일 분류 진입부에서 모두 단일 path segment로 검증됩니다.
+- 명시 파일 목록 preflight는 누락 파일이 하나라도 있으면 전체 시작을 차단하며, rerun/maintenance rerun은 stale queued batch job을 만들지 않습니다.
+- Watch Mode는 `process_single(clear_stop_event=False)`를 사용해 stop 요청 이후 queued callback이 output을 만들지 않고 cancel path로 빠지게 했습니다.
+- UI batch completion은 Job finalization을 background thread에서 수행하고, manual extract 상태 해제는 UI thread 완료 경로에서 처리합니다.
+- Scheduler `once`는 `STARTED`가 아닌 skip 결과에서 `next_run`을 다음 날로 밀지 않고 다음 tick에서 재시도합니다.
+- `.codegraph/`는 로컬 CodeGraph 인덱스 산출물이라 `.gitignore`에 추가했습니다.
 
 ## 2026-03-16 정합성 점검 메모
 

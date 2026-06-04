@@ -81,17 +81,23 @@
 - processed index v2는 레코드별 `status=success|partial`를 저장하며, `partial`은 경고 후 재처리하고 full skip하지 않습니다.
 - `BatchProgress.partial_success`는 full success와 분리 집계되며, CLI는 항상 `processed/success/partial_success/failed/skipped`를 출력합니다.
 - CLI `--strict-partial`은 partial-only run도 종료코드 `1`로 바꾸고, 분류 모델 `custom`은 `advanced` alias로만 유지됩니다.
+- `BatchProgress.fatal_error/fatal_message`는 output directory creation, file discovery, outer batch exception 같은 batch-level failure를 표현하며 CLI exit code `1`과 Job `failed`로 반영됩니다.
+- `file_management.failed_folder_name`은 분류 폴더/prefix/suffix와 같은 safe path-segment validator를 사용하고, invalid 값은 실패 파일 이동/복사 경로로 사용하지 않습니다.
 - 얼굴 감지 `use_dnn=True`는 모델 자동 다운로드/체크섬 검증 후 로드하며, 실패 시 Haar로 즉시 폴백합니다.
 - 멀티스레드 취소는 완료 future를 drain하고 남은 미실행 항목을 `CANCELLED`로 집계해 통계 정합성을 유지합니다.
 - 스케줄러는 `watch_mode.scheduler_*` 설정과 런타임 연결되어 앱 실행 중 자동 배치를 트리거합니다.
 - scheduler `once`는 날짜 없는 "다음 도래 HH:MM 1회 실행" 의미입니다.
-- `once` 예약은 `ScheduleRunStatus.STARTED`일 때만 소비되며 busy/no-files/config-error skip에서는 보존됩니다.
+- `once` 예약은 `ScheduleRunStatus.STARTED`일 때만 소비되며 busy/no-files/config-error skip에서는 보존되고 다음 scheduler tick에서 재시도됩니다.
 - 재귀 Watch Mode는 output path가 input root 내부면 시작을 거부합니다.
 - Watch 처리 경로는 settings snapshot에서 `move_failed_files=False`를 강제해 `_failed` 피드백 루프를 막습니다.
+- Watch callback은 `BatchProcessor.process_single(..., clear_stop_event=False)`를 사용해 stop 요청 이후 queued callback이 cancel path를 유지하도록 합니다.
 - `FolderWatcher.fileChanged`는 overwrite된 동일 경로도 size/mtime signature가 바뀌었을 때만 재큐잉합니다.
 - 수동 contour preview는 `core.manual_extract.crop_manual_contour()`를 사용해 save와 같은 crop 규칙을 공유합니다.
 - 일반/분류/멀티포토 출력 경로는 batch 단위 thread-safe reservation을 거쳐 같은 batch 안의 파일명 충돌을 방지합니다.
 - 라이브러리 폴더 가져오기는 UI thread 밖에서 실행되고, SQLite 연결은 WAL, foreign key, busy timeout을 켭니다.
+- 명시 파일 목록 기반 rerun/reprocess는 누락 파일이 하나라도 있으면 전체 차단하며, caller는 `ResolvedIoPaths.files`만 실행에 사용해야 합니다.
+- Management maintenance rerun은 queued batch job을 만들지 않고 maintenance spec으로만 실행되어야 합니다.
+- Batch job finalization은 background thread와 `management_task_finished` signal 경로를 통해 UI refresh/toast와 연결합니다.
 - Undo/Redo는 세션 내 설정 변경, 수동 crop, 라이브러리/컬렉션/레시피 수동 변경을 대상으로 하며 Batch/Watch 산출물 rollback은 제외합니다.
 
 ### UI Components
@@ -139,6 +145,17 @@
 - `ui/main/window.py` now delegates service creation/action binding/layout assembly to `ui/main/composition/`; management runtime and translation refresh live in dedicated modules.
 - `SettingsPanel` and `LibraryPage` keep their public import paths while helper responsibilities moved into settings panel helper modules and `widgets/management/library/`.
 - PyInstaller specs collect `cli_support` plus the split core/UI packages with `collect_submodules(...)`; selftests are source validation modules, not frozen GUI runtime dependencies.
+
+## 2026-06-04 Stability Hardening Status
+
+- Batch-level runtime failures now travel through `BatchProgress.fatal_error/fatal_message`; CLI returns `1` and tracked jobs finalize as `failed` before partial/cancel status is considered.
+- `file_management.failed_folder_name` is validated as a non-empty single path segment in settings/CLI validation and again before failed-file classification.
+- `BatchRuntimeFlow.resolve_file_batch_paths(...)` blocks mixed valid/missing explicit file lists as a whole and returns normalized `ResolvedIoPaths.files` for execution.
+- `JobOrchestrator.prepare_job_rerun(...)` dedupes sources while preserving order; source-less maintenance reruns return maintenance specs without queued batch jobs.
+- Watch Mode calls `BatchProcessor.process_single(..., clear_stop_event=False)` so queued callbacks after stop return `CANCELLED` without creating outputs.
+- Batch UI completion finalizes tracked jobs in a background thread and reports completion/failure through `management_task_finished`; manual-extract state is released only from the UI completion path.
+- Scheduler `once` skips that do not reach `STARTED` do not recalculate `next_run`, so they retry on the next scheduler tick.
+- `.codegraph/` is a local CodeGraph MCP index artifact and is intentionally ignored.
 
 ## Detection Algorithm Pipeline
 

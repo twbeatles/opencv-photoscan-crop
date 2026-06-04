@@ -195,7 +195,9 @@ class JobOrchestrator:
                 )
 
         partial_count = int(getattr(progress, "partial_success", 0) or 0)
-        final_status = "cancelled" if progress.is_cancelled else (
+        fatal_error = bool(getattr(progress, "fatal_error", False))
+        final_status = "failed" if fatal_error else (
+            "cancelled" if progress.is_cancelled else
             "failed" if progress.failed > 0 and progress.success == 0 and partial_count == 0 else
             "partial_success" if partial_count > 0 or (progress.failed > 0 and progress.success > 0) else
             "success"
@@ -212,6 +214,8 @@ class JobOrchestrator:
             summary={
                 "review_candidates": review_candidates,
                 "cancelled": bool(progress.is_cancelled),
+                "fatal_error": fatal_error,
+                "fatal_message": str(getattr(progress, "fatal_message", "") or ""),
                 "metadata_warnings": list(dict.fromkeys(self._metadata_warnings)),
                 "ai_errors": list(dict.fromkeys(self._ai_errors)),
                 "thumbnail_failed_count": self._thumbnail_failed_count,
@@ -239,12 +243,35 @@ class JobOrchestrator:
             return None
         statuses = ("failed", "partial_success") if failed_only else None
         items = self.repository.list_job_items(job_id, statuses=list(statuses) if statuses else None)
-        source_paths = [
-            str(item.get("source_path", "") or item.get("primary_source_path", "") or "")
-            for item in items
-            if str(item.get("source_path", "") or item.get("primary_source_path", "") or "").strip()
-        ]
-        if failed_only and not source_paths:
+        source_paths: list[str] = []
+        seen_sources: set[str] = set()
+        for item in items:
+            source_path = str(
+                item.get("source_path", "") or item.get("primary_source_path", "") or ""
+            ).strip()
+            if not source_path or source_path in seen_sources:
+                continue
+            source_paths.append(source_path)
+            seen_sources.add(source_path)
+
+        origin_job_kind = str(origin_job.get("job_kind", "") or "")
+        origin_input_path = str(origin_job.get("input_path", "") or "")
+        if not source_paths and origin_input_path and os.path.isfile(origin_input_path):
+            source_paths.append(origin_input_path)
+
+        if origin_job_kind.startswith("maintenance_") and not source_paths:
+            return {
+                "job_id": 0,
+                "job_kind": origin_job_kind,
+                "origin_job_id": int(origin_job.get("id", 0) or 0),
+                "origin_job_kind": origin_job_kind,
+                "input_path": origin_input_path,
+                "output_path": str(origin_job.get("output_path", "") or ""),
+                "recipe_name": str(origin_job.get("recipe_name", "") or ""),
+                "source_paths": [],
+            }
+
+        if not source_paths:
             return None
         queued_job_id = self.create_job(
             job_kind="batch_retry" if failed_only else "batch_rerun",
@@ -257,7 +284,7 @@ class JobOrchestrator:
             "job_id": queued_job_id,
             "job_kind": "batch_retry" if failed_only else "batch_rerun",
             "origin_job_id": int(origin_job.get("id", 0) or 0),
-            "origin_job_kind": str(origin_job.get("job_kind", "") or ""),
+            "origin_job_kind": origin_job_kind,
             "input_path": str(origin_job.get("input_path", "") or ""),
             "output_path": str(origin_job.get("output_path", "") or ""),
             "recipe_name": str(origin_job.get("recipe_name", "") or ""),

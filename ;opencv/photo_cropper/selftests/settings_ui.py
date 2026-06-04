@@ -194,11 +194,13 @@ def _test_settings_path_validation_blocks_invalid_segments() -> None:
 
     settings = AppSettings()
     settings.file_management.naming_prefix = "scan/2026"
+    settings.file_management.failed_folder_name = ".."
     settings.classification.category_folders["portrait"] = "CON"
 
     issues = validate_settings_path_segments(settings)
     fields = {issue.field for issue in issues}
     assert "file_management.naming_prefix" in fields
+    assert "file_management.failed_folder_name" in fields
     assert "classification.category_folders.portrait" in fields
 
 def _test_settings_panel_legacy_custom_alias_and_schedule_once_hint() -> None:

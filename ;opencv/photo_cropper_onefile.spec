@@ -290,4 +290,12 @@ exe = EXE(
     - The new module is explicitly listed in hidden imports in addition to
       `collect_submodules(...)`. No onefile-specific data files or external
       runtime dependencies were added.
+
+2026-06-04 note:
+    - Stability hardening added batch fatal status fields, failed-folder-name
+      validation, explicit file-list preflight, watch stop-race preservation,
+      background job finalization, and Scheduler once retry behavior.
+    - The changes stay within packages already covered by `collect_submodules`
+      and the explicit hidden imports above. No onefile-specific runtime data,
+      third-party dependency, or extraction-path policy change is required.
 """

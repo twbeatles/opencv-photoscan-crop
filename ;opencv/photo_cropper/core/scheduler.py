@@ -227,8 +227,9 @@ class Scheduler(QObject):
                 continue
             
             if task.next_run and now >= task.next_run:
-                self._execute_task(task)
-                self._calculate_next_run(task)
+                started = self._execute_task(task)
+                if task.schedule_type != ScheduleType.ONCE or started:
+                    self._calculate_next_run(task)
     
     def _calculate_next_run(self, task: ScheduleTask):
         """Calculate next run time for a task."""

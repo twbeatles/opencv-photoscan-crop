@@ -13,6 +13,7 @@ import numpy as np
 from PyQt6.QtWidgets import QMessageBox
 
 from ....core.batch import BatchProgress
+from ....core.settings_model import AppSettings
 from ....i18n.catalog import t
 from ....core.manual_extract import (
     ManualExtractSessionRunner,
@@ -301,6 +302,7 @@ class BatchActions:
             return False
         input_path = resolved.input_path
         output_path = resolved.output_path
+        files = list(resolved.files or ())
 
         try:
             self.services.batch_session.create_processor(
@@ -320,7 +322,7 @@ class BatchActions:
         self._create_progress_dialog(output_path)
         processor = self.batch_processor
         assert processor is not None
-        if not processor.start_async(input_path, output_path, list(files)):
+        if not processor.start_async(input_path, output_path, files):
             self.state.active_job_id = None
             self.state.active_job_kind = ""
             return False
@@ -454,21 +456,47 @@ class BatchActions:
 
     def on_batch_complete(self, progress: BatchProgress, results: list) -> None:
         job_orchestrator = getattr(self.services, "job_orchestrator", None)
-        if self.state.active_job_id is not None and job_orchestrator is not None:
-            try:
-                job_orchestrator.finalize_job(
-                    job_id=int(self.state.active_job_id),
-                    progress=progress,
-                    results=list(results or []),
-                    settings=self.state.settings,
-                    recipe_name=self.state.active_recipe_name,
-                    job_kind=self.state.active_job_kind or "batch",
-                )
-            except Exception:
-                logger.debug("Failed to finalize tracked job", exc_info=True)
-            finally:
-                self.state.active_job_id = None
-                self.state.active_job_kind = ""
+        active_job_id = self.state.active_job_id
+        active_job_kind = self.state.active_job_kind or "batch"
+        active_recipe_name = self.state.active_recipe_name
+        was_manual_extract = active_job_kind == "manual_extract"
+        if active_job_id is not None and job_orchestrator is not None:
+            progress_snapshot = BatchProgress(**progress.__dict__)
+            results_snapshot = list(results or [])
+            settings_snapshot = AppSettings.from_dict(self.state.settings.to_dict())
+            finalize_signal = getattr(self.services.host_window, "management_task_finished", None)
+
+            def finalize_worker() -> None:
+                failed = False
+                try:
+                    job_orchestrator.finalize_job(
+                        job_id=int(active_job_id),
+                        progress=progress_snapshot,
+                        results=results_snapshot,
+                        settings=settings_snapshot,
+                        recipe_name=active_recipe_name,
+                        job_kind=active_job_kind,
+                    )
+                except Exception:
+                    failed = True
+                    logger.debug("Failed to finalize tracked job", exc_info=True)
+                emit = getattr(finalize_signal, "emit", None)
+                if callable(emit):
+                    emit("batch_finalize:failed" if failed else "batch_finalize")
+
+            threading.Thread(
+                target=finalize_worker,
+                name="photocropper-finalize-job",
+                daemon=True,
+            ).start()
+
+        self.state.active_job_id = None
+        self.state.active_job_kind = ""
+
+        if was_manual_extract:
+            self.state.manual_extract_running = False
+            self.state.manual_extract_thread = None
+            self.state.manual_extract_stop_event.clear()
 
         partial_count = int(getattr(progress, "partial_success", 0) or 0)
         full_success_count = int(progress.success)
@@ -793,7 +821,17 @@ class BatchActions:
                 on_log=self.signals.batch_log_received.emit,
                 on_complete=self.signals.batch_complete_received.emit,
             )
-        finally:
-            self.state.manual_extract_running = False
-            self.state.manual_extract_thread = None
-            self.state.manual_extract_stop_event.clear()
+        except Exception as exc:
+            message = f"수동 추출 오류: {exc}"
+            logger.error(message)
+            self.signals.batch_log_received.emit(message, "error")
+            self.signals.batch_complete_received.emit(
+                BatchProgress(
+                    total=len(files),
+                    processed=0,
+                    is_running=False,
+                    fatal_error=True,
+                    fatal_message=message,
+                ),
+                [],
+            )

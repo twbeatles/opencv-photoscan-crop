@@ -91,5 +91,8 @@ TRANSLATIONS.update(
         "multi_compare.image": "画像 {index}",
         "multi_compare.original": "元画像",
         "multi_compare.load_image": "画像を読み込む",
+        "validation.config_invalid_failed_folder": "Invalid failed-file folder name",
+        "batch.missing_files": "Cannot start because {count} input file(s) are missing.",
+        "management.job.kind.batch_finalize": "Library Indexing",
     }
 )

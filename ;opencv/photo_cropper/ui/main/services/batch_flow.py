@@ -25,6 +25,7 @@ class ResolvedIoPaths:
     ok: bool
     input_path: str = ""
     output_path: str = ""
+    files: tuple[str, ...] = ()
     title: str = ""
     message: str = ""
 
@@ -112,6 +113,18 @@ class BatchRuntimeFlow:
             if not os.path.isabs(path) and normalized_input:
                 path = os.path.join(normalized_input, path)
             normalized_files.append(os.path.abspath(path))
+        missing_files = [
+            path
+            for path in normalized_files
+            if not path or not os.path.isfile(path)
+        ]
+        if missing_files:
+            return ResolvedIoPaths(
+                ok=False,
+                title=t("dialog.warning"),
+                message=t("batch.missing_files", count=len(missing_files)),
+            )
+
         valid_files = [
             path
             for path in normalized_files
@@ -127,9 +140,17 @@ class BatchRuntimeFlow:
         if not normalized_input:
             normalized_input = os.path.dirname(valid_files[0]) or os.getcwd()
 
-        return self.resolve_io_paths(
+        resolved = self.resolve_io_paths(
             input_path=normalized_input,
             output_path=output_path,
             recursive=recursive,
             failed_folder_name=failed_folder_name,
+        )
+        if not resolved.ok:
+            return resolved
+        return ResolvedIoPaths(
+            ok=True,
+            input_path=resolved.input_path,
+            output_path=resolved.output_path,
+            files=tuple(valid_files),
         )

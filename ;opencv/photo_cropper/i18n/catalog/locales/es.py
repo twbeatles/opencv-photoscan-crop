@@ -91,5 +91,8 @@ TRANSLATIONS.update(
         "multi_compare.image": "Imagen {index}",
         "multi_compare.original": "Original",
         "multi_compare.load_image": "Cargar imagen",
+        "validation.config_invalid_failed_folder": "Invalid failed-file folder name",
+        "batch.missing_files": "Cannot start because {count} input file(s) are missing.",
+        "management.job.kind.batch_finalize": "Library Indexing",
     }
 )

@@ -114,6 +114,17 @@ def validate_settings_path_segments(
             )
         )
 
+    failed_folder = str(getattr(settings.file_management, "failed_folder_name", "") or "")
+    valid, _ = validate_single_path_segment(failed_folder, allow_empty=False)
+    if not valid:
+        issues.append(
+            SettingsPathIssue(
+                field="file_management.failed_folder_name",
+                key="failed_folder_name",
+                message=t("validation.config_invalid_failed_folder"),
+            )
+        )
+
     folder_map = getattr(settings.classification, "category_folders", {}) or {}
     for category in CLASSIFICATION_CATEGORY_KEYS:
         raw_value = str(folder_map.get(category, "") or "").strip()

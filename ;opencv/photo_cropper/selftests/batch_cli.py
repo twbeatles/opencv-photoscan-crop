@@ -200,6 +200,31 @@ def _test_classify_failed_files_preserves_relative_dirs() -> None:
         assert os.path.exists(source_file)
         assert os.path.exists(failed_copy)
 
+def _test_classify_failed_files_rejects_invalid_failed_folder() -> None:
+    import os
+    import tempfile
+
+    from ..utils.file_helpers import classify_failed_files
+
+    with tempfile.TemporaryDirectory(prefix="photocropper_failed_guard_") as td:
+        input_dir = os.path.join(td, "input")
+        os.makedirs(input_dir, exist_ok=True)
+        source_file = os.path.join(input_dir, "sample.jpg")
+        with open(source_file, "wb") as f:
+            f.write(b"sample")
+
+        moved_count, errors = classify_failed_files(
+            [source_file],
+            input_dir,
+            failed_folder_name="..\\outside",
+            copy_mode=False,
+            input_root=input_dir,
+        )
+        assert moved_count == 0
+        assert errors and "Invalid failed folder name" in errors[0]
+        assert os.path.exists(source_file)
+        assert not os.path.exists(os.path.join(td, "outside"))
+
 def _test_cli_settings_merge_priority() -> None:
     import json
     import os
@@ -713,7 +738,10 @@ def _test_retry_failed_files_normalizes_empty_output_path() -> None:
                 (
                     input_dir,
                     default_output,
-                    ["failed_a.jpg", "failed_b.jpg"],
+                    [
+                        os.path.join(input_dir, "failed_a.jpg"),
+                        os.path.join(input_dir, "failed_b.jpg"),
+                    ],
                 )
             ]
     finally:
@@ -853,6 +881,7 @@ def _test_management_preflight_file_batch_guard() -> None:
             failed_folder_name="_failed",
         )
         assert allowed.ok is True
+        assert allowed.files == (source,)
         missing = flow.resolve_file_batch_paths(
             input_path=input_dir,
             output_path=os.path.join(td, "out2"),
@@ -861,6 +890,14 @@ def _test_management_preflight_file_batch_guard() -> None:
             failed_folder_name="_failed",
         )
         assert missing.ok is False
+        mixed = flow.resolve_file_batch_paths(
+            input_path=input_dir,
+            output_path=os.path.join(td, "out3"),
+            files=[source, os.path.join(input_dir, "missing.jpg")],
+            recursive=False,
+            failed_folder_name="_failed",
+        )
+        assert mixed.ok is False
 
 def _test_profile_apply_rebuild_validation() -> None:
     import tempfile
@@ -1003,6 +1040,145 @@ def _test_cli_partial_exit_code_rules() -> None:
     finally:
         batch_mod.BatchProcessor = original_batch_processor
 
+def _test_batch_fatal_error_and_cli_exit_code() -> None:
+    import io
+    import os
+    import tempfile
+    from contextlib import redirect_stderr
+
+    from .. import cli as cli_mod
+    from ..core import batch as batch_mod
+    from ..core.batch import BatchProcessor
+    from ..core.settings_model import AppSettings
+
+    with tempfile.TemporaryDirectory(prefix="photocropper_batch_fatal_") as td:
+        input_dir = os.path.join(td, "in")
+        output_file = os.path.join(td, "out_file")
+        os.makedirs(input_dir, exist_ok=True)
+        with open(os.path.join(input_dir, "sample.jpg"), "wb") as handle:
+            handle.write(b"placeholder")
+        with open(output_file, "wb") as handle:
+            handle.write(b"not a directory")
+
+        processor = BatchProcessor(AppSettings())
+        assert processor.start_async(input_dir, output_file, ["sample.jpg"]) is True
+        assert processor.wait_for_completion(timeout=5.0) is True
+        assert processor.progress.fatal_error is True
+        assert "출력 폴더 생성 실패" in processor.progress.fatal_message
+
+    class FakeProgress:
+        processed = 0
+        success = 0
+        partial_success = 0
+        failed = 0
+        skipped = 0
+        is_cancelled = True
+        fatal_error = True
+        fatal_message = "fatal"
+
+    class FakeProcessor:
+        def __init__(self, _settings):
+            self._progress = FakeProgress()
+
+        def set_callbacks(self, **_kwargs):
+            return None
+
+        def start_async(self, _input, _output):
+            return True
+
+        @property
+        def is_running(self):
+            return False
+
+        @property
+        def progress(self):
+            return self._progress
+
+    original_batch_processor = batch_mod.BatchProcessor
+    batch_mod.BatchProcessor = FakeProcessor
+    try:
+        with tempfile.TemporaryDirectory(prefix="photocropper_cli_fatal_") as td:
+            in_dir = os.path.join(td, "in")
+            out_dir = os.path.join(td, "out")
+            os.makedirs(in_dir, exist_ok=True)
+            os.makedirs(out_dir, exist_ok=True)
+            parser = cli_mod.create_parser()
+            args = parser.parse_args(["-i", in_dir, "-o", out_dir])
+            error_buffer = io.StringIO()
+            with redirect_stderr(error_buffer):
+                code = cli_mod.process_batch(args)
+            assert code == 1
+            assert "ERROR: fatal" in error_buffer.getvalue()
+    finally:
+        batch_mod.BatchProcessor = original_batch_processor
+
+def _test_ui_batch_completion_finalizes_in_background_and_clears_manual_state() -> None:
+    import time
+    from types import SimpleNamespace
+
+    from ..core.batch import BatchProgress
+    from ..core.settings_model import AppSettings
+    from ..ui.main.actions.batch import BatchActions
+
+    class FakeSignal:
+        def __init__(self) -> None:
+            self.values = []
+
+        def emit(self, value):
+            self.values.append(value)
+
+    class FakeJobOrchestrator:
+        def __init__(self) -> None:
+            self.calls = []
+
+        def finalize_job(self, **kwargs):
+            time.sleep(0.2)
+            self.calls.append(kwargs)
+
+    final_signal = FakeSignal()
+    orchestrator = FakeJobOrchestrator()
+    settings = AppSettings()
+    settings.notification.enabled = False
+    settings.ui.open_output_on_complete = False
+    state = SimpleNamespace(
+        settings=settings,
+        active_job_id=42,
+        active_job_kind="manual_extract",
+        active_recipe_name="recipe",
+        manual_extract_running=True,
+        manual_extract_thread=object(),
+        manual_extract_stop_event=SimpleNamespace(clear=lambda: None),
+        failed_boundary_files=[],
+    )
+    refs = SimpleNamespace(progress_dialog=None, status_label=None)
+    services = SimpleNamespace(
+        host_window=SimpleNamespace(management_task_finished=final_signal),
+        job_orchestrator=orchestrator,
+    )
+    actions = BatchActions(
+        state=state,
+        refs=refs,
+        services=services,
+        signals=SimpleNamespace(),
+    )
+    actions.collect_boundary_failed_files = lambda _results: []
+    actions.update_batch_edit_controls = lambda: None
+
+    started = time.monotonic()
+    actions.on_batch_complete(BatchProgress(total=1, processed=1, success=1), [])
+    elapsed = time.monotonic() - started
+    assert elapsed < 0.15
+    assert state.manual_extract_running is False
+    assert state.manual_extract_thread is None
+    assert state.active_job_id is None
+    assert state.active_job_kind == ""
+
+    deadline = time.time() + 2.0
+    while not final_signal.values and time.time() < deadline:
+        time.sleep(0.02)
+    assert final_signal.values == ["batch_finalize"]
+    assert len(orchestrator.calls) == 1
+
 def _test_cli_recursive_output_guard() -> None:
     import io
     import os
@@ -1041,7 +1217,10 @@ def _test_cli_rejects_invalid_settings_segments() -> None:
         with open(config_path, "w", encoding="utf-8") as handle:
             json.dump(
                 {
-                    "file_management": {"naming_prefix": "../bad"},
+                    "file_management": {
+                        "naming_prefix": "../bad",
+                        "failed_folder_name": "CON",
+                    },
                     "classification": {
                         "category_folders": {"portrait": "bad/folder"}
                     },
@@ -1121,6 +1300,7 @@ __all__ = [
     "_test_boundary_failed_file_collection_prefers_relative_paths",
     "_test_recursive_scan_excludes_internal_generated_dirs",
     "_test_classify_failed_files_preserves_relative_dirs",
+    "_test_classify_failed_files_rejects_invalid_failed_folder",
     "_test_cli_settings_merge_priority",
     "_test_batch_thread_local_reuse",
     "_test_batch_post_pipeline_order",
@@ -1134,6 +1314,8 @@ __all__ = [
     "_test_profile_apply_rebuild_validation",
     "_test_cli_cancel_exit_code_130",
     "_test_cli_partial_exit_code_rules",
+    "_test_batch_fatal_error_and_cli_exit_code",
+    "_test_ui_batch_completion_finalizes_in_background_and_clears_manual_state",
     "_test_cli_recursive_output_guard",
     "_test_cli_rejects_invalid_settings_segments",
     "_test_processed_signature_includes_routing_and_backup",

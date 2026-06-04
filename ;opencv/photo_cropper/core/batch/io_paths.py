@@ -414,7 +414,7 @@ class BatchProcessorIoPathsMixin:
             input_path=input_path,
             input_root=input_root,
         )
-    def get_image_files(self: Any, input_dir: str) -> List[str]:
+    def get_image_files(self: Any, input_dir: str, *, raise_errors: bool = False) -> List[str]:
         """
         Get list of image files in directory.
 
@@ -433,4 +433,6 @@ class BatchProcessorIoPathsMixin:
             return sorted(files)
         except Exception as e:
             self._log(f"폴더 읽기 오류: {e}", "error")
+            if raise_errors:
+                raise
             return []

@@ -537,6 +537,11 @@ def process_batch(args: argparse.Namespace) -> int:
         f"skipped={progress.skipped}"
     )
 
+    if bool(getattr(progress, "fatal_error", False)):
+        fatal_message = str(getattr(progress, "fatal_message", "") or "")
+        if fatal_message:
+            print(f"ERROR: {fatal_message}", file=sys.stderr)
+        return 1
     if cancelled:
         return 130
     if progress.failed > 0:

@@ -71,9 +71,10 @@ class BatchProcessorBatchLoopMixin:
                         input_dir,
                         recursive=True,
                         excluded_roots=excluded_roots,
+                        raise_errors=True,
                     )
                 else:
-                    file_list = self.get_image_files(input_dir)
+                    file_list = self.get_image_files(input_dir, raise_errors=True)
 
             if not file_list:
                 self._log("처리할 이미지 파일이 없습니다", "warning")
@@ -83,7 +84,11 @@ class BatchProcessorBatchLoopMixin:
             try:
                 os.makedirs(output_dir, exist_ok=True)
             except Exception as e:
-                self._log(f"출력 폴더 생성 실패: {e}", "error")
+                message = f"출력 폴더 생성 실패: {e}"
+                self._log(message, "error")
+                with self._lock:
+                    self._progress.fatal_error = True
+                    self._progress.fatal_message = message
                 return
 
             # Create backup directory if needed
@@ -385,8 +390,12 @@ class BatchProcessorBatchLoopMixin:
                     self._log(f"실패 파일 분류 중 오류: {e}", "warning")
 
         except Exception as e:
+            message = f"배치 처리 오류: {e}"
             logger.error(f"Batch processing error: {e}")
-            self._log(f"배치 처리 오류: {e}", "error")
+            self._log(message, "error")
+            with self._lock:
+                self._progress.fatal_error = True
+                self._progress.fatal_message = message
         finally:
             with self._lock:
                 self._progress.is_running = False

@@ -182,6 +182,7 @@ class WatchModeCoordinator(QObject):
                 input_path,
                 output_path,
                 input_root=self._watch_input_root or os.path.dirname(input_path),
+                clear_stop_event=False,
             )
             if not getattr(result, "source_path", ""):
                 try:

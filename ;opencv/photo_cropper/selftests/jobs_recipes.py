@@ -242,6 +242,104 @@ def _test_review_service_guard_and_reprocess_queue() -> None:
         assert requested is not None
         assert requested["status"] == "reprocess_requested"
 
+def _test_prepare_job_rerun_avoids_stale_queued_jobs_and_dedupes_sources() -> None:
+    import os
+    import tempfile
+
+    from ..core.jobs import JobOrchestrator
+    from ..core.library.repository import LibraryRepository
+    from ..core.library.sqlite_store import LibrarySqliteStore
+
+    with tempfile.TemporaryDirectory(prefix="photocropper_rerun_guard_") as td:
+        repository = LibraryRepository(
+            LibrarySqliteStore(db_path=os.path.join(td, "library.db"))
+        )
+        orchestrator = JobOrchestrator(repository)
+
+        maintenance_id = repository.create_job(
+            job_kind="maintenance_exact_duplicates",
+            input_path="library",
+            output_path="",
+            recipe_name="",
+            status="success",
+        )
+        maintenance_spec = orchestrator.prepare_job_rerun(maintenance_id)
+        assert maintenance_spec is not None
+        assert maintenance_spec["job_id"] == 0
+        jobs_after_maintenance = repository.list_jobs(limit=20)
+        assert len(jobs_after_maintenance) == 1
+
+        source = os.path.join(td, "source.jpg")
+        with open(source, "wb") as handle:
+            handle.write(b"placeholder")
+        batch_id = repository.create_job(
+            job_kind="batch",
+            input_path=td,
+            output_path=os.path.join(td, "out"),
+            recipe_name="",
+            status="success",
+        )
+        repository.add_job_item(
+            job_id=batch_id,
+            source_path=source,
+            asset_id=None,
+            source_id=None,
+            status="success",
+            message="",
+            output_paths=[],
+            processing_time_ms=0.0,
+        )
+        repository.add_job_item(
+            job_id=batch_id,
+            source_path=source,
+            asset_id=None,
+            source_id=None,
+            status="failed",
+            message="",
+            output_paths=[],
+            processing_time_ms=0.0,
+        )
+        spec = orchestrator.prepare_job_rerun(batch_id)
+        assert spec is not None
+        assert spec["job_id"] > 0
+        assert spec["source_paths"] == [source]
+
+def _test_job_finalization_prioritizes_fatal_error() -> None:
+    import os
+    import tempfile
+
+    from ..core.batch import BatchProgress
+    from ..core.jobs import JobOrchestrator
+    from ..core.library.repository import LibraryRepository
+    from ..core.library.sqlite_store import LibrarySqliteStore
+    from ..core.settings_model import AppSettings
+
+    with tempfile.TemporaryDirectory(prefix="photocropper_job_fatal_") as td:
+        repository = LibraryRepository(
+            LibrarySqliteStore(db_path=os.path.join(td, "library.db"))
+        )
+        orchestrator = JobOrchestrator(repository)
+        job_id = orchestrator.create_job(job_kind="selftest_fatal", input_path=td)
+        orchestrator.finalize_job(
+            job_id=job_id,
+            progress=BatchProgress(
+                total=1,
+                processed=0,
+                is_running=False,
+                is_cancelled=True,
+                fatal_error=True,
+                fatal_message="fatal",
+            ),
+            results=[],
+            settings=AppSettings(),
+            job_kind="selftest_fatal",
+        )
+        job = repository.get_job(job_id)
+        assert job is not None
+        assert job["status"] == "failed"
+        assert job["summary"]["fatal_error"] is True
+        assert job["summary"]["fatal_message"] == "fatal"
+
 def _test_job_summary_metadata_warnings_and_near_summary() -> None:
     import os
     import tempfile
@@ -305,5 +403,7 @@ __all__ = [
     "_test_job_orchestrator_records_variants_and_review_queue",
     "_test_recipe_determinism_and_preserved_global_state",
     "_test_review_service_guard_and_reprocess_queue",
+    "_test_prepare_job_rerun_avoids_stale_queued_jobs_and_dedupes_sources",
+    "_test_job_finalization_prioritizes_fatal_error",
     "_test_job_summary_metadata_warnings_and_near_summary",
 ]

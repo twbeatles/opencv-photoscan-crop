@@ -5,6 +5,7 @@ build/
 dist/
 
 # Local debug / benchmark artifacts
+.codegraph/
 ;opencv/_debug/
 ;opencv/benchmark/images/
 ;opencv/benchmark/reports/

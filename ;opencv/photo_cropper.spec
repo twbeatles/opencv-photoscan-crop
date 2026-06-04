@@ -433,4 +433,14 @@ If a single-file EXE is absolutely required:
     - `collect_submodules("photo_cropper.core.library")` already covers the
       new private module; it is also listed explicitly above as a packaging
       guard for frozen builds. No new third-party packages are required.
+
+2026-06-04 note:
+    - Stability hardening added batch fatal status fields, failed-folder-name
+      validation, explicit file-list preflight, watch stop-race preservation,
+      background job finalization, and Scheduler once retry behavior.
+    - These are code-path changes inside already collected packages:
+      `cli_support`, `core.batch`, `core.jobs`, `core.watch_mode`,
+      `ui.main.actions`, `ui.main.services`, and `utils.path_validation`.
+      No new data files, third-party dependencies, or hidden imports are
+      required for frozen builds.
 """

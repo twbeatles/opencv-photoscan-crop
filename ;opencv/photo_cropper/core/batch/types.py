@@ -45,6 +45,8 @@ class BatchProgress:
     is_cancelled: bool = False
     avg_time_per_file_ms: float = 0.0
     total_time_ms: float = 0.0
+    fatal_error: bool = False
+    fatal_message: str = ""
 
     @property
     def percent(self) -> float:

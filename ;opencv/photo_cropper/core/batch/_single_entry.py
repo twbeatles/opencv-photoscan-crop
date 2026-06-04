@@ -59,6 +59,8 @@ class BatchProcessorSingleEntryMixin:
         input_path: str,
         output_dir: str,
         input_root: Optional[str] = None,
+        *,
+        clear_stop_event: bool = True,
     ) -> FileResult:
         """Process one file synchronously using the same pipeline as batch mode."""
         normalized_input_path = os.path.abspath(str(input_path or ""))
@@ -80,7 +82,8 @@ class BatchProcessorSingleEntryMixin:
                 message=f"출력 폴더 생성 실패: {e}",
             )
 
-        self._stop_event.clear()
+        if clear_stop_event:
+            self._stop_event.clear()
         self._reset_output_reservations()
         backup_dir = None
         if self.settings.create_backup:
