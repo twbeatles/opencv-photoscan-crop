@@ -139,7 +139,7 @@ UI composition root입니다.
 - 유니코드 경로는 `utils.image_io.load_image_unicode()` 사용
 - `cv2.imread` 직접 호출은 한글 경로에서 실패 가능
 - worker thread에서는 `QPixmap`을 만들지 말고 `QImage`/bytes를 emit한 뒤 GUI thread에서 변환
-- frozen build에서는 `photo_cropper.utils.image_io`와 `photo_cropper.ui.widgets.settings.i18n_bindings` hidden import를 유지
+- frozen build에서는 `photo_cropper.utils.image_io`, `photo_cropper.ui.widgets.settings.i18n_bindings`, `winotify`(Windows toast, importlib 로드) hidden import를 유지
 - `cli.py`는 `cli_support.runtime` 호환 래퍼이므로 PyInstaller split package 수집 목록에 `photo_cropper.cli_support`를 유지
 
 ### 처리 파이프라인

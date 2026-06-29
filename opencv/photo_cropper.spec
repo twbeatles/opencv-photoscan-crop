@@ -225,6 +225,7 @@ a = Analysis(
         'photo_cropper.i18n.catalog.locales.es',
         'photo_cropper.utils.image_io',
         'photo_cropper.utils.path_validation',
+        'winotify',
         'PyQt6.QtCore',
         'PyQt6.QtGui', 
         'PyQt6.QtWidgets',
@@ -453,4 +454,12 @@ If a single-file EXE is absolutely required:
       `ui.main.actions`, `ui.main.services`, and `utils.path_validation`.
       No new data files, third-party dependencies, or hidden imports are
       required for frozen builds.
+
+2026-06-29 note:
+    - App root directory renamed from `;opencv/` to `opencv/`; build paths in
+      this file header reflect both `opencv/` cwd and repository-root invocations.
+    - Windows toast notifications now load `winotify` via `importlib`; explicit
+      `winotify` hidden import keeps frozen Windows builds stable.
+    - Agent automation additions (`core/test_reset.py`, pytest, verify scripts)
+      are dev-only and remain excluded from frozen builds.
 """

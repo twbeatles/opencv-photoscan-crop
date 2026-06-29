@@ -38,6 +38,8 @@ Singleton reset helpers: `photo_cropper.core.test_reset.reset_all_singletons_for
 
 Local index lives in `.codegraph/` (gitignored). Rebuild with your CodeGraph MCP tooling before structural audits.
 
+`opencv/convert_icon.py` is a local-only icon conversion helper (gitignored) with machine-specific paths; use `opencv/icon.ico` for builds instead.
+
 ## Dev dependencies
 
 ```bash

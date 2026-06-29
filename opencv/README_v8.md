@@ -88,10 +88,15 @@
 4. **시작**: '변환 시작' 버튼을 눌러 작업을 시작합니다.
 
 ## 📦 빌드 (배포용)
-경량화된 단일 실행 파일 생성:
+> v9 기준 최신 빌드 절차는 `README.md`를 참고하세요. 아래는 v8 시절의 간단 예시입니다.
+
+`opencv/` 앱 디렉터리에서 onedir 빌드:
 ```bash
-pyinstaller photo_cropper.spec
+cd opencv
+pip install pyinstaller
+pyinstaller photo_cropper.spec --clean
 ```
+산출물: `opencv/dist/PhotoCropper_v9/PhotoCropper_v9.exe`
 
 ## 📝 라이선스
 MIT License

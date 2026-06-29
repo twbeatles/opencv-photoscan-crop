@@ -210,6 +210,7 @@ a = Analysis(
         'photo_cropper.i18n.catalog.locales.es',
         'photo_cropper.utils.image_io',
         'photo_cropper.utils.path_validation',
+        'winotify',
         'PyQt6.QtCore',
         'PyQt6.QtGui',
         'PyQt6.QtWidgets',
@@ -307,4 +308,11 @@ exe = EXE(
     - The changes stay within packages already covered by `collect_submodules`
       and the explicit hidden imports above. No onefile-specific runtime data,
       third-party dependency, or extraction-path policy change is required.
+
+2026-06-29 note:
+    - App root directory renamed from `;opencv/` to `opencv/`.
+    - `winotify` is loaded via `importlib` at runtime; explicit hidden import
+      preserves Windows toast support in onefile builds.
+    - Dev-only automation (`test_reset`, pytest, verify scripts) does not affect
+      onefile packaging or extraction policy.
 """
