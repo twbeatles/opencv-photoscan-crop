@@ -300,7 +300,10 @@ def open_file_explorer(path: str) -> bool:
                 subprocess.run(['explorer', '/select,', path], check=False)
             else:
                 try:
-                    os.startfile(path)
+                    startfile = getattr(os, "startfile", None)
+                    if startfile is None:
+                        raise OSError("os.startfile is not available on this platform")
+                    startfile(path)
                 except OSError as e:
                     logger.warning(f"os.startfile failed, trying subprocess: {e}")
                     subprocess.run(['explorer', path], check=False)

@@ -16,6 +16,7 @@
   "reportUnknownVariableType": "none",
   "reportUnknownArgumentType": "none",
   "reportPrivateImportUsage": "none",
+  "reportAttributeAccessIssue": "none",
   "executionEnvironments": [
     {
       "root": "opencv",

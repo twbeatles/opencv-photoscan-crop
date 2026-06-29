@@ -229,8 +229,13 @@ class SystemNotification:
             return
         
         try:
+            import winsound as _winsound
+
             sound_alias = self.SOUNDS.get(sound_type, "SystemDefault")
-            winsound.PlaySound(sound_alias, winsound.SND_ALIAS | winsound.SND_ASYNC)
+            _winsound.PlaySound(
+                sound_alias,
+                _winsound.SND_ALIAS | _winsound.SND_ASYNC,  # type: ignore[attr-defined]
+            )
         except Exception as e:
             logger.debug(f"Failed to play sound: {e}")
     
