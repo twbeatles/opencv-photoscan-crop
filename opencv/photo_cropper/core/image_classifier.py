@@ -570,3 +570,8 @@ def get_classifier() -> ImageClassifier:
     if _classifier_instance is None:
         _classifier_instance = ImageClassifier()
     return _classifier_instance
+
+
+def reset_classifier_for_tests() -> None:
+    global _classifier_instance
+    _classifier_instance = None

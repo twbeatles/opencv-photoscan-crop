@@ -41,6 +41,9 @@ def get_library_root() -> str:
 
 
 def get_library_db_path() -> str:
+    override = os.environ.get("PHOTOCROPPER_LIBRARY_DB", "").strip()
+    if override:
+        return os.path.abspath(override)
     return os.path.join(get_library_root(), "library.db")
 
 

@@ -439,3 +439,8 @@ def get_processing_logger(log_directory: Optional[str] = None) -> ProcessingLogg
     if _logger_instance is None:
         _logger_instance = ProcessingLogger(log_directory)
     return _logger_instance
+
+
+def reset_processing_logger_for_tests() -> None:
+    global _logger_instance
+    _logger_instance = None

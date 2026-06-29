@@ -270,6 +270,10 @@ class FaceDetector:
     @classmethod
     def _ensure_dnn_models(cls) -> Tuple[str, str]:
         """Ensure DNN model files are available locally."""
+        offline = os.environ.get("PHOTOCROPPER_OFFLINE", "").strip().lower()
+        if offline in {"1", "true", "yes", "on"}:
+            raise RuntimeError("offline mode: DNN model download disabled")
+
         if cls._DNN_CACHE:
             ptxt, pmodel = cls._DNN_CACHE
             if cls._is_valid_model_file(ptxt, cls.DNN_PROTOTXT_SHA256) and cls._is_valid_model_file(
@@ -766,3 +770,8 @@ def get_face_detector(use_dnn: bool = False, min_face_size: int = 30) -> FaceDet
             min_face_size=normalized_size,
         )
     return _detector_instance
+
+
+def reset_face_detector_for_tests() -> None:
+    global _detector_instance
+    _detector_instance = None

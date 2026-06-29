@@ -2,6 +2,16 @@
 """
 Photo Cropper v9.0 - PyInstaller Spec File
 
+Build (from opencv/ app directory):
+    pip install pyinstaller
+    pyinstaller photo_cropper.spec --clean
+
+Build (from repository root):
+    pyinstaller opencv/photo_cropper.spec --clean
+
+Output:
+    opencv/dist/PhotoCropper_v9/PhotoCropper_v9.exe
+
 Optimized for:
 - Lightweight build (excluding unused packages)
 - Windows policy-friendly onedir executable

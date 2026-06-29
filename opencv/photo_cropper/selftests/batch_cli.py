@@ -926,6 +926,7 @@ def _test_profile_apply_rebuild_validation() -> None:
 def _test_cli_cancel_exit_code_130() -> None:
     import os
     import tempfile
+    from unittest.mock import patch
 
     from .. import cli as cli_mod
     from ..core import batch as batch_mod
@@ -962,30 +963,92 @@ def _test_cli_cancel_exit_code_130() -> None:
         def progress(self):
             return self._progress
 
-    original_batch_processor = batch_mod.BatchProcessor
-    original_sleep = cli_mod.time.sleep
-    batch_mod.BatchProcessor = FakeProcessor
-    cli_mod.time.sleep = lambda _seconds: (_ for _ in ()).throw(KeyboardInterrupt())
-    try:
-        with tempfile.TemporaryDirectory(prefix="photocropper_cli_cancel_") as td:
-            in_dir = os.path.join(td, "in")
-            out_dir = os.path.join(td, "out")
-            os.makedirs(in_dir, exist_ok=True)
-            os.makedirs(out_dir, exist_ok=True)
+    def _raise_keyboard_interrupt(_seconds):
+        raise KeyboardInterrupt()
 
-            parser = cli_mod.create_parser()
-            args = parser.parse_args(["-i", in_dir, "-o", out_dir])
+    with tempfile.TemporaryDirectory(prefix="photocropper_cli_cancel_") as td:
+        in_dir = os.path.join(td, "in")
+        out_dir = os.path.join(td, "out")
+        os.makedirs(in_dir, exist_ok=True)
+        os.makedirs(out_dir, exist_ok=True)
+
+        parser = cli_mod.create_parser()
+        args = parser.parse_args(["-i", in_dir, "-o", out_dir])
+        with patch.object(batch_mod, "BatchProcessor", FakeProcessor), patch.object(
+            cli_mod.time, "sleep", _raise_keyboard_interrupt
+        ):
             code = cli_mod.process_batch(args)
-            assert code == 130
-    finally:
-        batch_mod.BatchProcessor = original_batch_processor
-        cli_mod.time.sleep = original_sleep
+        assert code == 130
+
+
+def _test_cli_cancel_with_failed_still_returns_130() -> None:
+    import io
+    import os
+    import tempfile
+    from contextlib import redirect_stdout
+    from unittest.mock import patch
+
+    from .. import cli as cli_mod
+    from ..core import batch as batch_mod
+
+    class FakeProgress:
+        processed = 3
+        success = 1
+        partial_success = 0
+        failed = 2
+        skipped = 0
+        is_cancelled = True
+
+    class FakeProcessor:
+        def __init__(self, _settings):
+            self._progress = FakeProgress()
+
+        def set_callbacks(self, **_kwargs):
+            return None
+
+        def start_async(self, _input, _output):
+            return True
+
+        @property
+        def is_running(self):
+            return True
+
+        def request_stop(self):
+            return None
+
+        def wait_for_completion(self, timeout=None):
+            return True
+
+        @property
+        def progress(self):
+            return self._progress
+
+    def _raise_keyboard_interrupt(_seconds):
+        raise KeyboardInterrupt()
+
+    with tempfile.TemporaryDirectory(prefix="photocropper_cli_cancel_fail_") as td:
+        in_dir = os.path.join(td, "in")
+        out_dir = os.path.join(td, "out")
+        os.makedirs(in_dir, exist_ok=True)
+        os.makedirs(out_dir, exist_ok=True)
+
+        parser = cli_mod.create_parser()
+        args = parser.parse_args(["-i", in_dir, "-o", out_dir])
+        buffer = io.StringIO()
+        with patch.object(batch_mod, "BatchProcessor", FakeProcessor), patch.object(
+            cli_mod.time, "sleep", _raise_keyboard_interrupt
+        ), redirect_stdout(buffer):
+            code = cli_mod.process_batch(args)
+        assert code == 130
+        assert "failed=2" in buffer.getvalue()
+
 
 def _test_cli_partial_exit_code_rules() -> None:
     import io
     import os
     import tempfile
     from contextlib import redirect_stdout
+    from unittest.mock import patch
 
     from .. import cli as cli_mod
     from ..core import batch as batch_mod
@@ -1016,35 +1079,34 @@ def _test_cli_partial_exit_code_rules() -> None:
         def progress(self):
             return self._progress
 
-    original_batch_processor = batch_mod.BatchProcessor
-    batch_mod.BatchProcessor = FakeProcessor
-    try:
-        with tempfile.TemporaryDirectory(prefix="photocropper_cli_partial_") as td:
-            in_dir = os.path.join(td, "in")
-            out_dir = os.path.join(td, "out")
-            os.makedirs(in_dir, exist_ok=True)
-            os.makedirs(out_dir, exist_ok=True)
+    with tempfile.TemporaryDirectory(prefix="photocropper_cli_partial_") as td:
+        in_dir = os.path.join(td, "in")
+        out_dir = os.path.join(td, "out")
+        os.makedirs(in_dir, exist_ok=True)
+        os.makedirs(out_dir, exist_ok=True)
 
-            parser = cli_mod.create_parser()
-            args = parser.parse_args(["-i", in_dir, "-o", out_dir])
-            buffer = io.StringIO()
-            with redirect_stdout(buffer):
-                code = cli_mod.process_batch(args)
-            assert code == 0
-            assert "partial_success=1" in buffer.getvalue()
+        parser = cli_mod.create_parser()
+        args = parser.parse_args(["-i", in_dir, "-o", out_dir])
+        buffer = io.StringIO()
+        with patch.object(batch_mod, "BatchProcessor", FakeProcessor), redirect_stdout(
+            buffer
+        ):
+            code = cli_mod.process_batch(args)
+        assert code == 0
+        assert "partial_success=1" in buffer.getvalue()
 
-            strict_args = parser.parse_args(
-                ["-i", in_dir, "-o", out_dir, "--strict-partial"]
-            )
+        strict_args = parser.parse_args(
+            ["-i", in_dir, "-o", out_dir, "--strict-partial"]
+        )
+        with patch.object(batch_mod, "BatchProcessor", FakeProcessor):
             assert cli_mod.process_batch(strict_args) == 1
-    finally:
-        batch_mod.BatchProcessor = original_batch_processor
 
 def _test_batch_fatal_error_and_cli_exit_code() -> None:
     import io
     import os
     import tempfile
     from contextlib import redirect_stderr
+    from unittest.mock import patch
 
     from .. import cli as cli_mod
     from ..core import batch as batch_mod
@@ -1094,23 +1156,48 @@ def _test_batch_fatal_error_and_cli_exit_code() -> None:
         def progress(self):
             return self._progress
 
-    original_batch_processor = batch_mod.BatchProcessor
-    batch_mod.BatchProcessor = FakeProcessor
-    try:
-        with tempfile.TemporaryDirectory(prefix="photocropper_cli_fatal_") as td:
-            in_dir = os.path.join(td, "in")
-            out_dir = os.path.join(td, "out")
-            os.makedirs(in_dir, exist_ok=True)
-            os.makedirs(out_dir, exist_ok=True)
-            parser = cli_mod.create_parser()
-            args = parser.parse_args(["-i", in_dir, "-o", out_dir])
-            error_buffer = io.StringIO()
-            with redirect_stderr(error_buffer):
-                code = cli_mod.process_batch(args)
-            assert code == 1
-            assert "ERROR: fatal" in error_buffer.getvalue()
-    finally:
-        batch_mod.BatchProcessor = original_batch_processor
+    with tempfile.TemporaryDirectory(prefix="photocropper_cli_fatal_") as td:
+        in_dir = os.path.join(td, "in")
+        out_dir = os.path.join(td, "out")
+        os.makedirs(in_dir, exist_ok=True)
+        os.makedirs(out_dir, exist_ok=True)
+        parser = cli_mod.create_parser()
+        args = parser.parse_args(["-i", in_dir, "-o", out_dir])
+        error_buffer = io.StringIO()
+        with patch.object(batch_mod, "BatchProcessor", FakeProcessor), redirect_stderr(
+            error_buffer
+        ):
+            code = cli_mod.process_batch(args)
+        assert code == 1
+        assert "ERROR: fatal" in error_buffer.getvalue()
+
+
+def _test_library_repository_singleton_reset() -> None:
+    import os
+    import tempfile
+
+    from ..core.library.repository import (
+        get_library_repository,
+        reset_library_repository_for_tests,
+    )
+    from ..core.library.sqlite_store import LibrarySqliteStore
+
+    with tempfile.TemporaryDirectory(prefix="photocropper_repo_reset_") as td:
+        db_a = os.path.join(td, "a.db")
+        db_b = os.path.join(td, "b.db")
+        os.environ["PHOTOCROPPER_LIBRARY_DB"] = db_a
+        reset_library_repository_for_tests()
+        repo_a = get_library_repository()
+        assert repo_a.db_path == os.path.abspath(db_a)
+
+        os.environ["PHOTOCROPPER_LIBRARY_DB"] = db_b
+        reset_library_repository_for_tests()
+        repo_b = get_library_repository()
+        assert repo_b.db_path == os.path.abspath(db_b)
+        assert repo_a is not repo_b
+    os.environ.pop("PHOTOCROPPER_LIBRARY_DB", None)
+    reset_library_repository_for_tests()
+
 
 def _test_ui_batch_completion_finalizes_in_background_and_clears_manual_state() -> None:
     import time

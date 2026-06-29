@@ -4,7 +4,7 @@
 
 A Python application that automatically detects and accurately crops scanned photos or photos placed on backgrounds.
 
-> When running or building from the repository root, use paths under `;opencv/` (the actual app directory).
+> When running or building from the repository root, use paths under `opencv/` (the actual app directory).
 
 ---
 
@@ -72,7 +72,7 @@ A Python application that automatically detects and accurately crops scanned pho
 - Windows / macOS / Linux
 
 ```bash
-cd ";opencv"
+cd opencv
 pip install -r requirements.txt
 ```
 
@@ -84,17 +84,17 @@ pip install -r requirements.txt
 
 ```bash
 # From repository root
-python ".\\;opencv\\run.py"
+python ".\\opencv\\run.py"
 
 # Or from inside the app directory
-cd ";opencv"
+cd opencv
 python run.py
 ```
 
 ### CLI
 
 ```bash
-cd ";opencv"
+cd opencv
 
 # Basic usage
 python -m photo_cropper.cli --input ./scans --output ./cropped
@@ -201,7 +201,7 @@ python -m photo_cropper.cli --help
 ## Project Structure
 
 ```text
-;opencv/
+opencv/
 ├── run.py
 ├── photo_cropper.spec
 └── photo_cropper/
@@ -230,21 +230,30 @@ python -m photo_cropper.cli --help
 
 ---
 
+## Development & verification
+
+- **Unified verify (recommended)**: from repository root run `powershell -NoProfile -File scripts/verify.ps1` or `bash scripts/verify.sh`
+- **pytest unit tests**: `cd opencv && python -m pytest tests/test_path_validation.py -q`
+- **selftest filter**: `cd opencv && python -m photo_cropper.selftest cli_cancel`
+- See [CONTRIBUTING.md](CONTRIBUTING.md) for the full workflow
+
+---
+
 ## Build (PyInstaller)
 
 ```bash
 pip install pyinstaller
 
 # Stable build (recommended)
-pyinstaller ".\\;opencv\\photo_cropper.spec" --clean
+pyinstaller ".\\opencv\\photo_cropper.spec" --clean
 
 # Experimental single-file build
-pyinstaller ".\\;opencv\\photo_cropper_onefile.spec" --clean
+pyinstaller ".\\opencv\\photo_cropper_onefile.spec" --clean
 ```
 
 **Output paths**
-- Stable build: `;opencv/dist/PhotoCropper_v9/PhotoCropper_v9.exe`
-- Single-file: `;opencv/dist/PhotoCropper_v9_single.exe`
+- Stable build: `opencv/dist/PhotoCropper_v9/PhotoCropper_v9.exe`
+- Single-file: `opencv/dist/PhotoCropper_v9_single.exe`
 
 > The onedir build (`photo_cropper.spec`) is recommended for Windows environments with strict application-control policies.
 
@@ -256,4 +265,4 @@ MIT License
 
 ## Contributing
 
-Bug reports and feature suggestions are welcome — please open an Issue.
+Bug reports and feature suggestions are welcome — please open an Issue. See [CONTRIBUTING.md](CONTRIBUTING.md) for development and verification steps.

@@ -4,7 +4,7 @@
 
 스캔된 사진이나 배경 위에 놓인 사진을 자동으로 감지하여 정확하게 자르는 Python 애플리케이션입니다.
 
-> 저장소 루트에서 실행/빌드할 때는 실제 앱 디렉터리인 `;opencv/` 기준 경로를 사용하세요.
+> 저장소 루트에서 실행/빌드할 때는 실제 앱 디렉터리인 `opencv/` 기준 경로를 사용하세요.
 
 ---
 
@@ -72,7 +72,7 @@
 - Windows / macOS / Linux
 
 ```bash
-cd ";opencv"
+cd opencv
 pip install -r requirements.txt
 ```
 
@@ -84,17 +84,17 @@ pip install -r requirements.txt
 
 ```bash
 # 저장소 루트에서
-python ".\\;opencv\\run.py"
+python ".\\opencv\\run.py"
 
 # 또는 앱 폴더로 이동 후
-cd ";opencv"
+cd opencv
 python run.py
 ```
 
 ### CLI 사용법
 
 ```bash
-cd ";opencv"
+cd opencv
 
 # 기본 사용
 python -m photo_cropper.cli --input ./scans --output ./cropped
@@ -201,7 +201,7 @@ python -m photo_cropper.cli --help
 ## 프로젝트 구조
 
 ```text
-;opencv/
+opencv/
 ├── run.py
 ├── photo_cropper.spec
 └── photo_cropper/
@@ -230,21 +230,30 @@ python -m photo_cropper.cli --help
 
 ---
 
+## 개발 및 검증
+
+- **통합 검증(권장)**: 저장소 루트에서 `powershell -NoProfile -File scripts/verify.ps1` 또는 `bash scripts/verify.sh`
+- **pytest 단위 테스트**: `cd opencv && python -m pytest tests/test_path_validation.py -q`
+- **selftest 필터**: `cd opencv && python -m photo_cropper.selftest cli_cancel`
+- 상세 가이드: [CONTRIBUTING.md](CONTRIBUTING.md)
+
+---
+
 ## 빌드 (PyInstaller)
 
 ```bash
 pip install pyinstaller
 
 # 안정 빌드 (권장)
-pyinstaller ".\\;opencv\\photo_cropper.spec" --clean
+pyinstaller ".\\opencv\\photo_cropper.spec" --clean
 
 # 단일 파일 실험 빌드
-pyinstaller ".\\;opencv\\photo_cropper_onefile.spec" --clean
+pyinstaller ".\\opencv\\photo_cropper_onefile.spec" --clean
 ```
 
 **출력 경로**
-- 안정 빌드: `;opencv/dist/PhotoCropper_v9/PhotoCropper_v9.exe`
-- 단일 파일: `;opencv/dist/PhotoCropper_v9_single.exe`
+- 안정 빌드: `opencv/dist/PhotoCropper_v9/PhotoCropper_v9.exe`
+- 단일 파일: `opencv/dist/PhotoCropper_v9_single.exe`
 
 > Windows 앱 제어 정책 환경에서는 onedir 빌드(`photo_cropper.spec`)가 더 안정적입니다.
 
@@ -256,4 +265,4 @@ MIT License
 
 ## 기여
 
-버그 리포트나 기능 제안은 Issues에 등록해 주세요.
+버그 리포트나 기능 제안은 Issues에 등록해 주세요. 개발·검증 절차는 [CONTRIBUTING.md](CONTRIBUTING.md)를 참고하세요.

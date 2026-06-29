@@ -1,27 +1,30 @@
 # Build artifacts
-;opencv/build/
-;opencv/dist/
+opencv/build/
+opencv/dist/
 build/
 dist/
 
+# Legacy app directory name (renamed to opencv/ — do not recreate)
+;opencv/
+
 # Local debug / benchmark artifacts
 .codegraph/
-;opencv/_debug/
-;opencv/benchmark/images/
-;opencv/benchmark/reports/
-;opencv/benchmark/labels.json
-;opencv/benchmark/report.json
-;opencv/benchmark/report-*.json
+opencv/_debug/
+opencv/benchmark/images/
+opencv/benchmark/reports/
+opencv/benchmark/labels.json
+opencv/benchmark/report.json
+opencv/benchmark/report-*.json
 
 # Runtime output artifacts from local processing
 out/
-;opencv/out/
+opencv/out/
 **/output_cropped/
 **/_failed/
 **/backup/
 **/_debug/
 **/*_photos/
-*.photocropper
+**/.photocropper/
 
 # Local library/catalog cache artifacts
 library.db
@@ -36,12 +39,12 @@ library.db-wal
 preview_cache/
 thumbnails/
 logs/
-;opencv/library.db
-;opencv/library.db-shm
-;opencv/library.db-wal
-;opencv/preview_cache/
-;opencv/thumbnails/
-;opencv/logs/
+opencv/library.db
+opencv/library.db-shm
+opencv/library.db-wal
+opencv/preview_cache/
+opencv/thumbnails/
+opencv/logs/
 
 # PyInstaller cache
 *.spec.bak
@@ -54,22 +57,20 @@ logs/
 
 # Ruff cache
 .ruff_cache/
-;opencv/.ruff_cache/
+opencv/.ruff_cache/
 
 # Local backups / ad-hoc reports
 backups/
 pyright_report.json
 pyright_report*.json
-;opencv/pyright_report.json
-;opencv/pyright_report*.json
-;opencv/convert_icon.py
-
-# Runtime processed-index cache (skip_processed v2)
-**/.photocropper/
+opencv/pyright_report.json
+opencv/pyright_report*.json
+opencv/convert_icon.py
 
 # Test / type-check / coverage caches
 .pytest_cache/
 .pytest_tmp/
+opencv/.pytest_cache/
 .mypy_cache/
 .nox/
 .tox/
@@ -81,8 +82,10 @@ htmlcov/
 venv/
 env/
 
-# IDE / OS noise
+# IDE / OS / agent session noise
 .idea/
 .vscode/
 Thumbs.db
 .DS_Store
+terminals/
+mcps/

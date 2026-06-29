@@ -621,3 +621,8 @@ def get_smart_enhancer() -> SmartEnhancer:
     if _enhancer_instance is None:
         _enhancer_instance = SmartEnhancer()
     return _enhancer_instance
+
+
+def reset_smart_enhancer_for_tests() -> None:
+    global _enhancer_instance
+    _enhancer_instance = None

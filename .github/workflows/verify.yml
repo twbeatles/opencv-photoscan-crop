@@ -1,0 +1,41 @@
+name: verify
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  verify:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        python-version: ["3.11"]
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install dependencies
+        run: python -m pip install --upgrade pip && python -m pip install -r opencv/requirements-dev.txt
+
+      - name: Run verify (Windows)
+        if: runner.os == 'Windows'
+        run: powershell -NoProfile -File scripts/verify.ps1
+        env:
+          PHOTOCROPPER_OFFLINE: "1"
+          QT_QPA_PLATFORM: offscreen
+          PYTHONUTF8: "1"
+
+      - name: Run verify (Linux)
+        if: runner.os != 'Windows'
+        run: bash scripts/verify.sh
+        env:
+          PHOTOCROPPER_OFFLINE: "1"
+          QT_QPA_PLATFORM: offscreen
+          PYTHONUTF8: "1"

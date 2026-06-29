@@ -52,8 +52,10 @@ from .batch_cli import (
     _test_management_preflight_file_batch_guard,
     _test_profile_apply_rebuild_validation,
     _test_cli_cancel_exit_code_130,
+    _test_cli_cancel_with_failed_still_returns_130,
     _test_cli_partial_exit_code_rules,
     _test_batch_fatal_error_and_cli_exit_code,
+    _test_library_repository_singleton_reset,
     _test_ui_batch_completion_finalizes_in_background_and_clears_manual_state,
     _test_cli_recursive_output_guard,
     _test_cli_rejects_invalid_settings_segments,
@@ -186,8 +188,10 @@ TESTS = [
     _test_settings_path_validation_blocks_invalid_segments,
     _test_settings_panel_legacy_custom_alias_and_schedule_once_hint,
     _test_cli_cancel_exit_code_130,
+    _test_cli_cancel_with_failed_still_returns_130,
     _test_cli_partial_exit_code_rules,
     _test_batch_fatal_error_and_cli_exit_code,
+    _test_library_repository_singleton_reset,
     _test_ui_batch_completion_finalizes_in_background_and_clears_manual_state,
     _test_cli_recursive_output_guard,
     _test_unicode_image_io_helper_and_blank_path_guards,
@@ -235,12 +239,40 @@ TESTS = [
     _test_job_summary_metadata_warnings_and_near_summary,
 ]
 
-def main() -> int:
-    try:
-        for test in TESTS:
+def _select_tests(argv: list[str] | None = None) -> list:
+    """Filter tests by function name (substring or exact match)."""
+    import sys
+
+    args = list(argv if argv is not None else sys.argv[1:])
+    if not args:
+        return list(TESTS)
+
+    selected = []
+    for test in TESTS:
+        name = getattr(test, "__name__", "")
+        if any(token in name for token in args):
+            selected.append(test)
+    return selected or list(TESTS)
+
+
+def main(argv: list[str] | None = None) -> int:
+    import traceback
+
+    tests = _select_tests(argv)
+    failures: list[str] = []
+
+    for test in tests:
+        name = getattr(test, "__name__", repr(test))
+        print(f"RUN {name}")
+        try:
             test()
-    except Exception as e:
-        print(f"SELFTEST FAILED: {e}")
+        except Exception:
+            print(f"FAIL {name}")
+            traceback.print_exc()
+            failures.append(name)
+
+    if failures:
+        print(f"SELFTEST FAILED ({len(failures)}): {', '.join(failures)}")
         return 1
 
     print("SELFTEST OK")
@@ -248,4 +280,6 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    import sys
+
+    raise SystemExit(main(sys.argv[1:]))

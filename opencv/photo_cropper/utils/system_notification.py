@@ -16,7 +16,7 @@ import os
 import sys
 import logging
 import threading
-from typing import Optional, Callable
+from typing import Any, Callable, Optional
 from enum import Enum
 from dataclasses import dataclass
 
@@ -24,9 +24,12 @@ from ..i18n.catalog import t
 
 logger = logging.getLogger(__name__)
 
-# Try to import winotify for Windows notifications
+# Optional Windows toast notifications (importlib keeps pyright clean on Linux CI).
+_WINOTIFY_MODULE: Any = None
 try:
-    from winotify import Notification, audio
+    import importlib
+
+    _WINOTIFY_MODULE = importlib.import_module("winotify")
     WINOTIFY_AVAILABLE = True
 except ImportError:
     WINOTIFY_AVAILABLE = False
@@ -170,17 +173,20 @@ class SystemNotification:
     def _show_winotify(self, title: str, message: str,
                        notification_type: NotificationType):
         """Show notification using winotify."""
-        toast = Notification(
+        if _WINOTIFY_MODULE is None:
+            self._show_fallback(title, message, notification_type)
+            return
+
+        toast = _WINOTIFY_MODULE.Notification(
             app_id=self.APP_ID,
             title=title,
             msg=message,
             duration="short"
         )
-        
-        # Set icon if available
+
         if self.ICON_PATH:
-            toast.set_audio(audio.Default, loop=False)
-        
+            toast.set_audio(_WINOTIFY_MODULE.audio.Default, loop=False)
+
         toast.show()
     
     def _show_fallback(self, title: str, message: str,
@@ -360,6 +366,11 @@ def get_system_notification() -> SystemNotification:
     if _notification_instance is None:
         _notification_instance = SystemNotification()
     return _notification_instance
+
+
+def reset_system_notification_for_tests() -> None:
+    global _notification_instance
+    _notification_instance = None
 
 
 def notify_success(title: str, message: str):

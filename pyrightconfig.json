@@ -1,7 +1,7 @@
 {
   "include": [
-    ";opencv/photo_cropper",
-    ";opencv/run.py"
+    "opencv/photo_cropper",
+    "opencv/run.py"
   ],
   "exclude": [
     "**/__pycache__",
@@ -18,9 +18,9 @@
   "reportPrivateImportUsage": "none",
   "executionEnvironments": [
     {
-      "root": ";opencv",
+      "root": "opencv",
       "extraPaths": [
-        ";opencv"
+        "opencv"
       ]
     }
   ]

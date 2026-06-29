@@ -211,6 +211,12 @@ def get_translator() -> TranslationManager:
     return _manager
 
 
+def reset_translation_manager_for_tests() -> None:
+    global _manager
+    _manager = None
+    TranslationManager._instance = None
+
+
 def t(key: str, **kwargs) -> str:
     return get_translator().get(key, **kwargs)
 

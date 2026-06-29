@@ -1,4 +1,8 @@
-from .repository import LibraryRepository, get_library_repository
+from .repository import (
+    LibraryRepository,
+    get_library_repository,
+    reset_library_repository_for_tests,
+)
 from .ingest_service import LibraryIngestService
 from .query_service import QueryService
 from .thumbnail_service import ThumbnailService
@@ -14,6 +18,7 @@ from .providers import (
 __all__ = [
     "LibraryRepository",
     "get_library_repository",
+    "reset_library_repository_for_tests",
     "LibraryIngestService",
     "QueryService",
     "ThumbnailService",

@@ -8,6 +8,15 @@ Purpose:
 - Avoid the default user-temp extraction path that triggered Windows
   App Control blocking of Qt DLLs
 
+Build (from opencv/ app directory):
+    pyinstaller photo_cropper_onefile.spec --clean
+
+Build (from repository root):
+    pyinstaller opencv/photo_cropper_onefile.spec --clean
+
+Output:
+    opencv/dist/PhotoCropper_v9_single.exe
+
 IMPORTANT:
 - This spec still depends on runtime extraction, so it is less reliable than
   the onedir build under stricter Windows application-control environments.

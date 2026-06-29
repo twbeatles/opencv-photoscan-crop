@@ -119,3 +119,9 @@ def get_library_repository() -> LibraryRepository:
     if _repository_instance is None:
         _repository_instance = LibraryRepository()
     return _repository_instance
+
+
+def reset_library_repository_for_tests() -> None:
+    """Clear the cached repository singleton (test/agent isolation)."""
+    global _repository_instance
+    _repository_instance = None
