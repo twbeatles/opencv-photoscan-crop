@@ -18,7 +18,7 @@ from ..settings_model import (
     DebugSettings,
 )
 from ..advanced import AdvancedImageProcessor, GPUAccelerator
-from .types import CropResult, DetectionStage, PreviewProcessResult
+from .types import CropResult, DetectionStage, FailureReason, PreviewProcessResult
 
 logger = logging.getLogger(__name__)
 
@@ -45,6 +45,7 @@ class ImageDetectionPipelineMixin:
                     False,
                     message="Image is too small (min 100x100).",
                     original_size=original_size,
+                    failure_reason=FailureReason.TOO_SMALL,
                 )
 
             orig = image.copy()
@@ -67,6 +68,8 @@ class ImageDetectionPipelineMixin:
                 image_resized = self.apply_clahe(image_resized)
 
             gray = cv2.cvtColor(image_resized, cv2.COLOR_BGR2GRAY)
+            # Used by _score_quad content contrast (noise FP rejection).
+            self._score_gray_ref = gray
 
             best_quad: Optional[np.ndarray] = None
             best_score: float = 0.0
@@ -252,7 +255,27 @@ class ImageDetectionPipelineMixin:
                     )
 
             # ==========================================
-            # Stage 6: Hough Rectangle (accurate, or final fallback in balanced)
+            # Stage 6: Morphology Gradient (textured backgrounds)
+            # ==========================================
+            if (best_quad is None or accurate_full_pass) and self.algo.detection_mode in (
+                "balanced",
+                "accurate",
+            ):
+                morph_mask = self._create_morph_gradient_mask(gray)
+                quad, score, candidates = self.find_best_contour(
+                    morph_mask, image_area, score_edge_map=score_edges_reference
+                )
+                _register_stage_candidate(
+                    DetectionStage.MORPH_GRADIENT, quad, score, candidates
+                )
+                if debug_enabled and debug_run_dir and self.debug.save_detection_stages:
+                    self._save_debug_image(
+                        os.path.join(debug_run_dir, "stage_06_morph_gradient.png"),
+                        morph_mask,
+                    )
+
+            # ==========================================
+            # Stage 7: Hough Rectangle (accurate, or final fallback in balanced)
             # ==========================================
             if (best_quad is None or accurate_full_pass) and self.algo.detection_mode in ("balanced", "accurate"):
                 hquad = self._detect_rectangle_by_hough(edges)
@@ -262,6 +285,7 @@ class ImageDetectionPipelineMixin:
                         image_area,
                         edge_image=score_edges_reference,
                         image_shape=edges.shape[:2],
+                        gray_image=gray,
                     )
                     if hscore > 0:
                         _register_stage_candidate(
@@ -271,6 +295,52 @@ class ImageDetectionPipelineMixin:
                             [{"quad": hquad, "score": float(hscore)}],
                         )
 
+            # ==========================================
+            # Stage 8: LSD Rectangle (accurate only)
+            # ==========================================
+            if (best_quad is None or accurate_full_pass) and self.algo.detection_mode == "accurate":
+                lquad = self._detect_rectangle_by_lsd(gray)
+                if lquad is not None:
+                    lscore = self._score_quad(
+                        lquad,
+                        image_area,
+                        edge_image=score_edges_reference,
+                        image_shape=gray.shape[:2],
+                        gray_image=gray,
+                    )
+                    if lscore > 0:
+                        _register_stage_candidate(
+                            DetectionStage.LSD_RECT,
+                            lquad,
+                            lscore,
+                            [{"quad": lquad, "score": float(lscore)}],
+                        )
+
+            stage_score_meta: List[Dict[str, Any]] = []
+            for sc in stage_candidates or []:
+                stage_obj = sc.get("stage")
+                if isinstance(stage_obj, DetectionStage):
+                    stage_name: Optional[str] = stage_obj.value
+                elif stage_obj is None:
+                    stage_name = None
+                else:
+                    stage_name = str(stage_obj)
+                stage_score_meta.append(
+                    {
+                        "stage": stage_name,
+                        "score": float(sc.get("score", 0.0)),
+                        "stage_rank": int(sc.get("stage_rank", 9)),
+                    }
+                )
+
+            # Cross-stage NMS to drop near-duplicate quads before re-rank / early pick.
+            if stage_candidates:
+                stage_candidates = self._nms_stage_candidates(
+                    stage_candidates,
+                    gray.shape[:2],
+                    iou_threshold=0.72,
+                )
+
             if accurate_full_pass and stage_candidates:
                 selected = self._select_best_stage_candidate(stage_candidates, image_area)
                 if selected is not None:
@@ -278,6 +348,92 @@ class ImageDetectionPipelineMixin:
                     best_score = float(selected["score"])
                     best_candidates = list(selected.get("candidates", []))
                     detection_stage = selected.get("stage")
+            elif best_quad is not None and stage_candidates:
+                # Keep early-exit pick consistent with NMS survivor set.
+                still_valid = any(
+                    np.allclose(
+                        self.order_points(np.array(sc["quad"], dtype=np.float32)),
+                        self.order_points(np.array(best_quad, dtype=np.float32)),
+                        atol=2.0,
+                    )
+                    for sc in stage_candidates
+                    if sc.get("quad") is not None
+                )
+                if not still_valid:
+                    selected = self._select_best_stage_candidate(
+                        stage_candidates, image_area
+                    )
+                    if selected is not None:
+                        best_quad = np.array(selected["quad"], dtype=np.float32)
+                        best_score = float(selected["score"])
+                        best_candidates = list(selected.get("candidates", []))
+                        detection_stage = selected.get("stage")
+
+            # Global final floor: soft per-stage gates collect candidates for re-rank,
+            # but we still reject weak winners (noise textures / empty frames).
+            final_floor = {
+                "fast": 0.30,
+                "balanced": 0.48,
+                "accurate": 0.72,
+            }.get(self.algo.detection_mode, 0.48)
+            scoring_delta = {
+                "basic": -0.03,
+                "enhanced": 0.00,
+                "strict": 0.04,
+            }.get(self.algo.contour_scoring, 0.0)
+            final_floor = float(max(0.20, min(0.95, final_floor + scoring_delta)))
+            # Fallback stages need a slightly higher bar even after re-rank.
+            if detection_stage in (
+                DetectionStage.HOUGH_RECT,
+                DetectionStage.LSD_RECT,
+                DetectionStage.CORNER_HARRIS,
+            ):
+                final_floor = max(final_floor, 0.76 if accurate_full_pass else 0.55)
+
+            if best_quad is not None and float(best_score) < final_floor:
+                best_quad = None
+                best_score = 0.0
+                detection_stage = None
+
+            # Snap corners to edge evidence (helps IoU on slightly offset quads).
+            if best_quad is not None and score_edges_reference is not None:
+                snapped = self._snap_quad_to_edges(
+                    best_quad,
+                    score_edges_reference,
+                    search_radius=3 if self.algo.detection_mode == "fast" else 5,
+                )
+                snap_score = self._score_quad(
+                    snapped,
+                    image_area,
+                    edge_image=score_edges_reference,
+                    image_shape=gray.shape[:2],
+                    gray_image=gray,
+                )
+                if snap_score >= float(best_score) * 0.97:
+                    best_quad = snapped
+                    best_score = max(float(best_score), float(snap_score))
+
+            # GrabCut refine (accurate only) on detection-resolution BGR image.
+            if best_quad is not None and accurate_full_pass:
+                try:
+                    refined = self._refine_quad_with_grabcut(
+                        image_resized, best_quad, iterations=2
+                    )
+                    if refined is not None:
+                        ref_score = self._score_quad(
+                            refined,
+                            image_area,
+                            edge_image=score_edges_reference,
+                            image_shape=gray.shape[:2],
+                            gray_image=gray,
+                        )
+                        # Accept only if score does not collapse.
+                        if ref_score >= float(best_score) * 0.92:
+                            best_quad = refined
+                            best_score = max(float(best_score), float(ref_score))
+                except Exception:
+                    pass
+
             if best_quad is None:
                 return CropResult(
                     False,
@@ -285,6 +441,8 @@ class ImageDetectionPipelineMixin:
                     original_size=original_size,
                     confidence=0.0,
                     debug_dir=debug_run_dir,
+                    failure_reason=FailureReason.NO_BOUNDARY,
+                    stage_scores=stage_score_meta,
                 )
 
             # Scale quad back to original size
@@ -314,6 +472,8 @@ class ImageDetectionPipelineMixin:
                         original_size=original_size,
                         confidence=float(best_score),
                         debug_dir=debug_run_dir,
+                        failure_reason=FailureReason.INVALID_REGION,
+                        stage_scores=stage_score_meta,
                     )
 
                 if max_width < 50 or max_height < 50:
@@ -323,6 +483,8 @@ class ImageDetectionPipelineMixin:
                         original_size=original_size,
                         confidence=float(best_score),
                         debug_dir=debug_run_dir,
+                        failure_reason=FailureReason.INVALID_REGION,
+                        stage_scores=stage_score_meta,
                     )
 
                 # Perspective transform
@@ -360,6 +522,8 @@ class ImageDetectionPipelineMixin:
                         original_size=original_size,
                         confidence=float(best_score),
                         debug_dir=debug_run_dir,
+                        failure_reason=FailureReason.INVALID_REGION,
+                        stage_scores=stage_score_meta,
                     )
 
                 if max_width < 50 or max_height < 50:
@@ -369,6 +533,8 @@ class ImageDetectionPipelineMixin:
                         original_size=original_size,
                         confidence=float(best_score),
                         debug_dir=debug_run_dir,
+                        failure_reason=FailureReason.INVALID_REGION,
+                        stage_scores=stage_score_meta,
                     )
 
                 warped = orig[y_min:y_max, x_min:x_max].copy()
@@ -396,23 +562,6 @@ class ImageDetectionPipelineMixin:
                             final_overlay,
                         )
 
-                    stage_candidate_meta: List[Dict[str, Any]] = []
-                    for sc in stage_candidates or []:
-                        stage_obj = sc.get("stage")
-                        if isinstance(stage_obj, DetectionStage):
-                            stage_name: Optional[str] = stage_obj.value
-                        elif stage_obj is None:
-                            stage_name = None
-                        else:
-                            stage_name = str(stage_obj)
-                        stage_candidate_meta.append(
-                            {
-                                "stage": stage_name,
-                                "score": float(sc.get("score", 0.0)),
-                                "stage_rank": int(sc.get("stage_rank", 9)),
-                            }
-                        )
-
                     meta = {
                         "image": os.path.basename(image_path),
                         "debug_tag": debug_tag or "",
@@ -426,7 +575,7 @@ class ImageDetectionPipelineMixin:
                             {"score": float(c.get("score", 0.0))}
                             for c in (best_candidates or [])
                         ],
-                        "stage_candidates": stage_candidate_meta,
+                        "stage_candidates": stage_score_meta,
                         "algo": {
                             "canny_min": int(self.algo.canny_min),
                             "canny_max": int(self.algo.canny_max),
@@ -466,13 +615,23 @@ class ImageDetectionPipelineMixin:
                 debug_dir=debug_run_dir,
                 original_size=original_size,
                 cropped_size=cropped_size,
+                failure_reason=FailureReason.NONE,
+                stage_scores=stage_score_meta,
             )
         except MemoryError:
             # Force garbage collection on memory error
             import gc
 
             gc.collect()
-            return CropResult(False, message="Out of memory.")
+            return CropResult(
+                False,
+                message="Out of memory.",
+                failure_reason=FailureReason.OUT_OF_MEMORY,
+            )
         except Exception as e:
             logger.error(f"Image processing error: {traceback.format_exc()}")
-            return CropResult(False, message=f"Error: {str(e)}")
+            return CropResult(
+                False,
+                message=f"Error: {str(e)}",
+                failure_reason=FailureReason.ERROR,
+            )

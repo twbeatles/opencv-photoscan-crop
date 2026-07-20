@@ -44,6 +44,7 @@ TEXT_BINDINGS = {
     "테마:": "settings.theme",
     "설정 변경 시 자동 미리보기": "settings.auto_preview",
     "검출 영역 오버레이 표시": "settings.contour_overlay",
+    "간단 모드 (고급 탭 숨기기)": "settings.simple_mode",
     "최소 임계값:": "settings.canny_min",
     "최대 임계값:": "settings.canny_max",
     "다중 스케일 엣지 검출": "settings.multi_scale",
@@ -97,6 +98,12 @@ TEXT_BINDINGS = {
     "멀티포토 감지 사용": "settings.multi_photo_enable",
     "중복 병합 거리(px):": "settings.multi_photo_merge_distance",
     "파일별 하위폴더(<원본파일명>_photos)로 저장": "settings.multi_photo_separate",
+    "각 사진 ROI를 단일 탐지로 재정제 (권장)": "settings.multi_photo_refine",
+    "장면:": "settings.scene_preset",
+    (
+        "프리셋을 고르면 Canny·CLAHE·면적 비율 등이 자동 조정됩니다. "
+        "세부 값은 아래에서 다시 수정할 수 있습니다."
+    ): "settings.scene_preset.hint",
     "하위 폴더 포함 (재귀 처리)": "settings.recursive",
     "파일명 규칙 사용:": "settings.naming_rules",
     "접두사:": "settings.naming_prefix",
@@ -133,6 +140,7 @@ TEXT_BINDINGS = {
 }
 
 TITLE_BINDINGS = {
+    "장면 프리셋 (빠른 설정)": "settings.scene_preset.group",
     "🔍 Canny 엣지 검출": "settings.canny",
     "🎛️ CLAHE 대비 향상": "settings.clahe",
     "➰ 윤곽선 처리": "settings.contour",
@@ -155,6 +163,10 @@ PLACEHOLDER_BINDINGS = {
 }
 
 TOOLTIP_BINDINGS = {
+    (
+        "켜면 알고리즘/처리/관리/AI 탭을 숨기고 기본 작업에 집중합니다. "
+        "장면 프리셋은 워크벤치 상단에서 사용할 수 있습니다."
+    ): "settings.simple_mode.tooltip",
     "CLAHE 알고리즘으로 이미지 대비를 자동 향상합니다": "settings.auto_contrast.tooltip",
     "이미지 노이즈를 줄입니다 (처리 시간 증가)": "settings.denoise.tooltip",
     (
@@ -186,6 +198,7 @@ TOOLTIP_BINDINGS = {
     ): "settings.schedule_time.tooltip",
     "한 장의 스캔 이미지에서 여러 사진을 분리 저장합니다.": "settings.multi_photo_enable.tooltip",
     "값이 클수록 가까운 검출 결과를 같은 사진으로 병합합니다.": "settings.multi_photo_merge_distance.tooltip",
+    "멀티포토로 찾은 영역마다 단일 사진 탐지를 한 번 더 돌려 경계를 다듬습니다.": "settings.multi_photo_refine.tooltip",
     "선택한 폴더와 모든 하위 폴더의 이미지를 처리": "settings.recursive.tooltip",
     "동시에 처리할 이미지 수 (CPU 코어 수 권장)": "settings.max_threads.tooltip",
     "처리 속도가 느려질 수 있지만 메모리 사용량을 줄입니다.": "settings.low_mem.tooltip",

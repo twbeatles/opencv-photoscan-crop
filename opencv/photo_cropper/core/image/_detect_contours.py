@@ -133,6 +133,7 @@ class ImageContourSelectionMixin:
                     image_area,
                     edge_image=score_map,
                     image_shape=edge_image.shape[:2],
+                    gray_image=getattr(self, "_score_gray_ref", None),
                 )
                 if score <= 0:
                     continue
@@ -184,15 +185,25 @@ class ImageContourSelectionMixin:
                 DetectionStage.HOUGH_RECT: 0.82,
             },
             "accurate": {
-                DetectionStage.CANNY: 0.72,
-                DetectionStage.MULTI_SCALE_CANNY: 0.72,
-                DetectionStage.BACKGROUND_MASK: 0.80,
-                DetectionStage.ADAPTIVE_THRESHOLD: 0.97,
-                DetectionStage.GRADIENT_SOBEL: 0.94,
-                DetectionStage.CORNER_HARRIS: 0.92,
-                DetectionStage.HOUGH_RECT: 0.98,
+                # Soft floors: accurate relies on full-pass global re-rank, so
+                # hard gates only filter obvious junk (0.97+ previously caused misses).
+                DetectionStage.CANNY: 0.55,
+                DetectionStage.MULTI_SCALE_CANNY: 0.55,
+                DetectionStage.BACKGROUND_MASK: 0.60,
+                DetectionStage.ADAPTIVE_THRESHOLD: 0.62,
+                DetectionStage.GRADIENT_SOBEL: 0.62,
+                DetectionStage.CORNER_HARRIS: 0.65,
+                DetectionStage.HOUGH_RECT: 0.68,
+                DetectionStage.MORPH_GRADIENT: 0.60,
+                DetectionStage.LSD_RECT: 0.66,
             },
         }
+        for mode_key in ("fast", "balanced"):
+            stage_thresholds[mode_key].setdefault(DetectionStage.MORPH_GRADIENT, 0.50)
+            stage_thresholds[mode_key].setdefault(DetectionStage.LSD_RECT, 0.58)
+        stage_thresholds["fast"][DetectionStage.MORPH_GRADIENT] = 0.40
+        stage_thresholds["fast"][DetectionStage.LSD_RECT] = 0.50
+
         threshold = stage_thresholds.get(mode, stage_thresholds["balanced"]).get(
             stage, 0.60
         )
@@ -246,12 +257,168 @@ class ImageContourSelectionMixin:
             DetectionStage.CANNY: 0,
             DetectionStage.MULTI_SCALE_CANNY: 0,
             DetectionStage.BACKGROUND_MASK: 1,
+            DetectionStage.MORPH_GRADIENT: 1,
             DetectionStage.ADAPTIVE_THRESHOLD: 2,
             DetectionStage.GRADIENT_SOBEL: 3,
             DetectionStage.CORNER_HARRIS: 4,
             DetectionStage.HOUGH_RECT: 5,
+            DetectionStage.LSD_RECT: 5,
         }
         return int(rank_map.get(stage, 9))
+    def _quad_iou(self: Any, a: np.ndarray, b: np.ndarray, shape: Tuple[int, int]) -> float:
+        """Mask IoU between two quads on a discrete canvas."""
+        h, w = int(shape[0]), int(shape[1])
+        if h <= 0 or w <= 0:
+            return 0.0
+        ma = np.zeros((h, w), dtype=np.uint8)
+        mb = np.zeros((h, w), dtype=np.uint8)
+        cv2.fillPoly(ma, [np.asarray(a, dtype=np.int32).reshape((-1, 1, 2))], 255)
+        cv2.fillPoly(mb, [np.asarray(b, dtype=np.int32).reshape((-1, 1, 2))], 255)
+        inter = int(np.logical_and(ma > 0, mb > 0).sum())
+        union = int(np.logical_or(ma > 0, mb > 0).sum())
+        if union <= 0:
+            return 0.0
+        return float(inter) / float(union)
+
+    def _nms_stage_candidates(
+        self: Any,
+        stage_candidates: List[Dict[str, Any]],
+        image_shape: Tuple[int, int],
+        *,
+        iou_threshold: float = 0.72,
+    ) -> List[Dict[str, Any]]:
+        """Suppress near-duplicate quads across stages, keeping higher scores."""
+        if len(stage_candidates) <= 1:
+            return list(stage_candidates)
+
+        ordered = sorted(
+            stage_candidates,
+            key=lambda c: (
+                -float(c.get("score", 0.0)),
+                int(c.get("stage_rank", 9)),
+            ),
+        )
+        kept: List[Dict[str, Any]] = []
+        for cand in ordered:
+            quad = cand.get("quad")
+            if quad is None:
+                continue
+            q = np.asarray(quad, dtype=np.float32).reshape((4, 2))
+            drop = False
+            for existing in kept:
+                eq = np.asarray(existing.get("quad"), dtype=np.float32).reshape((4, 2))
+                if self._quad_iou(q, eq, image_shape) >= iou_threshold:
+                    drop = True
+                    break
+            if not drop:
+                kept.append(cand)
+        return kept
+
+    def _refine_quad_with_grabcut(
+        self: Any,
+        bgr_image: np.ndarray,
+        quad: np.ndarray,
+        *,
+        iterations: int = 2,
+    ) -> Optional[np.ndarray]:
+        """
+        Refine a quad using GrabCut on a ROI (accurate mode, cost-guarded).
+
+        Returns refined ordered quad in the same coordinate space, or None.
+        """
+        if bgr_image is None or bgr_image.size == 0 or bgr_image.ndim != 3:
+            return None
+        q = self.order_points(np.asarray(quad, dtype=np.float32).reshape((4, 2)))
+        h, w = bgr_image.shape[:2]
+        # Skip GrabCut on very large canvases (CPU).
+        if h * w > 4_000_000:
+            return None
+
+        xs = q[:, 0]
+        ys = q[:, 1]
+        x1 = max(0, int(np.floor(float(np.min(xs)))) - 8)
+        y1 = max(0, int(np.floor(float(np.min(ys)))) - 8)
+        x2 = min(w, int(np.ceil(float(np.max(xs)))) + 8)
+        y2 = min(h, int(np.ceil(float(np.max(ys)))) + 8)
+        if x2 - x1 < 40 or y2 - y1 < 40:
+            return None
+
+        roi = bgr_image[y1:y2, x1:x2].copy()
+        rh, rw = roi.shape[:2]
+        mask = np.full((rh, rw), cv2.GC_PR_BGD, dtype=np.uint8)
+        local = q.copy()
+        local[:, 0] -= float(x1)
+        local[:, 1] -= float(y1)
+        cv2.fillPoly(mask, [local.astype(np.int32)], int(cv2.GC_PR_FGD))
+        # Seed a shrunken interior as definite foreground.
+        try:
+            center = local.mean(axis=0)
+            shrink = center + (local - center) * 0.72
+            cv2.fillPoly(mask, [shrink.astype(np.int32)], int(cv2.GC_FGD))
+        except Exception:
+            pass
+
+        bgd = np.zeros((1, 65), np.float64)
+        fgd = np.zeros((1, 65), np.float64)
+        try:
+            cv2.grabCut(
+                roi,
+                mask,
+                None,
+                bgd,
+                fgd,
+                max(1, int(iterations)),
+                cv2.GC_INIT_WITH_MASK,
+            )
+        except Exception:
+            return None
+
+        fg = np.where(
+            (mask == cv2.GC_FGD) | (mask == cv2.GC_PR_FGD), 255, 0
+        ).astype(np.uint8)
+        fg = cv2.morphologyEx(fg, cv2.MORPH_CLOSE, self._kernel_5x5, iterations=1)
+        contours, _ = cv2.findContours(fg, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        if not contours:
+            return None
+        best = max(contours, key=cv2.contourArea)
+        if cv2.contourArea(best) < 100:
+            return None
+        quads = self._contour_to_quad_candidates(best)
+        if not quads:
+            return None
+        refined = self.order_points(np.asarray(quads[0], dtype=np.float32).reshape((4, 2)))
+        refined[:, 0] += float(x1)
+        refined[:, 1] += float(y1)
+        return refined
+
+    def _snap_quad_to_edges(
+        self: Any,
+        quad: np.ndarray,
+        edge_image: Optional[np.ndarray],
+        *,
+        search_radius: int = 4,
+    ) -> np.ndarray:
+        """Nudge each corner toward the strongest nearby edge pixel."""
+        q = np.asarray(quad, dtype=np.float32).reshape((4, 2)).copy()
+        if edge_image is None or edge_image.ndim != 2:
+            return q
+        h, w = edge_image.shape[:2]
+        r = max(1, int(search_radius))
+        for i in range(4):
+            cx, cy = int(round(float(q[i, 0]))), int(round(float(q[i, 1])))
+            x1, x2 = max(0, cx - r), min(w - 1, cx + r)
+            y1, y2 = max(0, cy - r), min(h - 1, cy + r)
+            patch = edge_image[y1 : y2 + 1, x1 : x2 + 1]
+            if patch.size == 0:
+                continue
+            # Prefer non-zero edge; if all zero keep original.
+            if int(patch.max()) <= 0:
+                continue
+            yy, xx = np.unravel_index(int(np.argmax(patch)), patch.shape)
+            q[i, 0] = float(x1 + xx)
+            q[i, 1] = float(y1 + yy)
+        return self.order_points(q)
+
     def _select_best_stage_candidate(
         self: Any, stage_candidates: List[Dict[str, Any]], image_area: int
     ) -> Optional[Dict[str, Any]]:

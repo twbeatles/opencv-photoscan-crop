@@ -9,10 +9,11 @@
 ## 주요 기능
 
 ### 자동 사진 감지 & 크롭
-- **6단계 지능형 감지 알고리즘**: 다양한 배경/조명 조건에서 높은 검출 성공률
-- **다중 사진 자동 감지**: 한 스캔에서 여러 사진을 동시에 분리 추출
+- **8단계 지능형 감지 알고리즘**: Canny~LSD + NMS/GrabCut 정제로 높은 검출 성공률
+- **장면 프리셋 / 간단 모드**: 스캐너·책상·앨범 등 원클릭 튜닝, 고급 탭 숨김
+- **다중 사진 자동 감지**: 한 스캔에서 여러 사진 분리 + ROI 단일 탐지 재정제(기본 ON)
 - **원근 보정**: 비틀린 사진을 자동으로 정렬 (기본값 ON)
-- **수동 경계 편집**: 자동 감지 실패 시 외곽선 점 드래그 또는 4점 직접 지정
+- **수동 경계 편집**: 자동 감지 실패·저신뢰 시 외곽선 점 드래그 또는 4점 직접 지정
 
 ### 배치 처리
 - **폴더 단위 일괄 처리**: 대량 이미지를 한 번에 처리 (예상 남은 시간 표시)
@@ -56,10 +57,15 @@
 | 3단계 | Adaptive Threshold | 적응형 이진화 |
 | 4단계 | Gradient Analysis (Sobel) | 그래디언트 분석 |
 | 5단계 | Harris Corner Detection | 코너 검출 (선택적) |
-| 6단계 | Hough Rectangle Fallback | 직선 클러스터 기반 사각형 추정 |
+| 6단계 | Morphology Gradient | 형태학 경계 + Otsu (텍스처 배경) |
+| 7단계 | Hough Rectangle Fallback | 직선 클러스터 기반 사각형 추정 |
+| 8단계 | LSD Rectangle | Line Segment Detector 기반 사각형 (accurate) |
 
 - **fast / balanced**: 조기 종료로 처리 속도 우선
-- **accurate**: 1~6단계 후보를 모두 수집한 뒤 점수 기반 전역 재랭킹으로 최선 선택
+- **accurate**: 전 단계 후보 수집 → NMS → 전역 재랭킹 → 콘텐츠 대비 → GrabCut 정제
+- **장면 프리셋**: 워크벤치·알고리즘 탭·CLI `--scene-preset`
+- **멀티포토 ROI 재정제**: 각 사진에 단일 탐지 재실행 (기본 ON)
+- 상세 파이프라인: [`docs/detection-pipeline.md`](docs/detection-pipeline.md)
 
 ---
 
@@ -102,6 +108,12 @@ python -m photo_cropper.cli -i ./scans -o ./cropped --resize instagram_square
 
 # 한 스캔에서 여러 사진 분리
 python -m photo_cropper.cli -i ./scans -o ./cropped --multi-photo
+
+# 장면 프리셋 (스캐너/책상/앨범 등 자동 튜닝)
+python -m photo_cropper.cli -i ./scans -o ./cropped --scene-preset scanner_white
+
+# 앨범 페이지 다중 사진 + ROI 재정제
+python -m photo_cropper.cli -i ./scans -o ./cropped --scene-preset album_multi --multi-photo-refine
 
 # 여러 사진 분리 + 각각 하위 폴더에 저장
 python -m photo_cropper.cli -i ./scans -o ./cropped --multi-photo --multi-photo-separate-folders

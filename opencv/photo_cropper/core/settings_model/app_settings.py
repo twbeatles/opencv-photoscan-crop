@@ -196,6 +196,8 @@ class UISettings:
     auto_preview: bool = True
     confirm_before_process: bool = True
     open_output_on_complete: bool = False  # Auto-open output folder after batch
+    # Simple mode: hide advanced settings tabs; workbench presets stay visible.
+    simple_mode: bool = True
 
 
 @dataclass
@@ -351,6 +353,9 @@ class MultiPhotoSettings:
     max_area_ratio: float = 0.8
     merge_distance: int = 50
     separate_output_folders: bool = False
+    # Re-run single-photo detector on each ROI for tighter boundaries.
+    refine_with_single: bool = True
+    refine_padding_ratio: float = 0.08
 
     def __post_init__(self):
         """Validate and clamp multi-photo settings."""
@@ -359,6 +364,7 @@ class MultiPhotoSettings:
         self.min_area_ratio = max(0.001, min(0.95, float(self.min_area_ratio)))
         self.max_area_ratio = max(self.min_area_ratio, min(1.0, float(self.max_area_ratio)))
         self.merge_distance = max(0, min(1000, int(self.merge_distance)))
+        self.refine_padding_ratio = max(0.0, min(0.35, float(self.refine_padding_ratio)))
 
 
 # v9.0 Settings

@@ -130,6 +130,16 @@ def create_management_tab(self):
     )
     mp_layout.addWidget(self.multi_photo_separate_folders_check)
 
+    self.multi_photo_refine_check = QCheckBox(
+        "각 사진 ROI를 단일 탐지로 재정제 (권장)"
+    )
+    self.multi_photo_refine_check.setToolTip(
+        "멀티포토로 찾은 영역마다 단일 사진 탐지를 한 번 더 돌려 경계를 다듬습니다."
+    )
+    self.multi_photo_refine_check.setChecked(True)
+    self.multi_photo_refine_check.stateChanged.connect(self._on_setting_changed)
+    mp_layout.addWidget(self.multi_photo_refine_check)
+
     mp_section.add_widget(mp_group)
     layout.addWidget(mp_section)
 

@@ -121,6 +121,12 @@ class BatchProcessorMultiPhotoMixin:
         cropped_photos = detector.crop_photos(
             image, detection_result.photos, padding=10
         )
+        refine_enabled = bool(
+            getattr(self.settings.multi_photo, "refine_with_single", True)
+        )
+        refine_pad_ratio = float(
+            getattr(self.settings.multi_photo, "refine_padding_ratio", 0.08)
+        )
 
         saved_count = 0
         failed_count = 0
@@ -132,11 +138,34 @@ class BatchProcessorMultiPhotoMixin:
         )
         target_total = max(int(detection_result.total_found or 0), len(cropped_photos))
         cancelled_midway = False
+        img_h, img_w = image.shape[:2]
 
         for idx, (cropped_img, photo_info) in enumerate(cropped_photos, 1):
             if self._is_stop_requested():
                 cancelled_midway = True
                 break
+
+            # Optional ROI refine with the single-photo pipeline for tighter crops.
+            if refine_enabled and photo_info is not None:
+                try:
+                    x, y, bw, bh = photo_info.bounding_box
+                    pad = max(12, int(max(bw, bh) * refine_pad_ratio))
+                    x1 = max(0, x - pad)
+                    y1 = max(0, y - pad)
+                    x2 = min(img_w, x + bw + pad)
+                    y2 = min(img_h, y + bh + pad)
+                    roi = image[y1:y2, x1:x2]
+                    if roi is not None and min(roi.shape[:2]) >= 80:
+                        refined = processor._process_loaded_image(
+                            roi,
+                            f"{input_path}#photo{idx:02d}",
+                            debug_dir=None,
+                            debug_tag=f"multi_refine_{idx:02d}",
+                        )
+                        if refined.success and refined.image is not None:
+                            cropped_img = refined.image
+                except Exception as refine_err:
+                    logger.debug("Multi-photo refine skipped: %s", refine_err)
 
             processed_img, resolved_output_dir = self._run_post_pipeline(
                 cropped_img,

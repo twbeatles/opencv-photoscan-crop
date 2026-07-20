@@ -49,25 +49,45 @@ class ImageGeometryMixin:
         """
         Order four points in consistent order: TL, TR, BR, BL.
 
-        Args:
-            pts: Array of 4 points
-
-        Returns:
-            Ordered points array
+        Uses centroid polar sorting (stable for rotated/skewed quads) with a
+        classic sum/diff fallback when the result is degenerate.
         """
-        rect = np.zeros((4, 2), dtype="float32")
+        pts_arr = np.asarray(pts, dtype=np.float32).reshape(4, 2)
 
-        # Sum: smallest = TL, largest = BR
-        s = pts.sum(axis=1)
-        rect[0] = pts[np.argmin(s)]  # Top-left
-        rect[2] = pts[np.argmax(s)]  # Bottom-right
+        def _classic_order(p: np.ndarray) -> np.ndarray:
+            rect = np.zeros((4, 2), dtype=np.float32)
+            s = p.sum(axis=1)
+            rect[0] = p[np.argmin(s)]
+            rect[2] = p[np.argmax(s)]
+            diff = np.diff(p, axis=1)
+            rect[1] = p[np.argmin(diff)]
+            rect[3] = p[np.argmax(diff)]
+            return rect
 
-        # Diff: smallest = TR, largest = BL
-        diff = np.diff(pts, axis=1)
-        rect[1] = pts[np.argmin(diff)]  # Top-right
-        rect[3] = pts[np.argmax(diff)]  # Bottom-left
-
-        return rect
+        try:
+            center = pts_arr.mean(axis=0)
+            angles = np.arctan2(pts_arr[:, 1] - center[1], pts_arr[:, 0] - center[0])
+            ordered = pts_arr[np.argsort(angles)]
+            # Rotate so the top-left (min x+y) is first.
+            start = int(np.argmin(ordered.sum(axis=1)))
+            ordered = np.roll(ordered, -start, axis=0)
+            # Enforce TL→TR→BR→BL winding (positive cross in image coords).
+            v1 = ordered[1] - ordered[0]
+            v2 = ordered[2] - ordered[1]
+            cross = float(v1[0] * v2[1] - v1[1] * v2[0])
+            if cross < 0:
+                ordered = np.array(
+                    [ordered[0], ordered[3], ordered[2], ordered[1]],
+                    dtype=np.float32,
+                )
+            area = float(cv2.contourArea(ordered.reshape((-1, 1, 2))))
+            if area < 1.0 or not bool(
+                cv2.isContourConvex(ordered.reshape((-1, 1, 2)).astype(np.int32))
+            ):
+                return _classic_order(pts_arr)
+            return ordered.astype(np.float32)
+        except Exception:
+            return _classic_order(pts_arr)
     def _quad_is_convex(self: Any, quad: np.ndarray) -> bool:
         try:
             cnt = quad.reshape((-1, 1, 2)).astype(np.int32)
@@ -172,8 +192,16 @@ class ImageGeometryMixin:
         q = self.order_points(quad.reshape((4, 2)).astype(np.float32))
 
         # Total samples are kept small for performance; accurate mode increases count.
-        samples_per_edge = 12 if self.algo.detection_mode == "fast" else (18 if self.algo.detection_mode == "balanced" else 28)
-        radius = 1 if self.algo.detection_mode != "accurate" else 2
+        samples_per_edge = (
+            16
+            if self.algo.detection_mode == "fast"
+            else (24 if self.algo.detection_mode == "balanced" else 40)
+        )
+        radius = (
+            1
+            if self.algo.detection_mode == "fast"
+            else (2 if self.algo.detection_mode == "balanced" else 3)
+        )
 
         hits = 0
         total = 0
@@ -213,12 +241,51 @@ class ImageGeometryMixin:
         if min_dist >= margin:
             return 0.0
         return float(min(1.0, (margin - min_dist) / margin))
+    def _content_contrast_score(
+        self: Any,
+        gray: Optional[np.ndarray],
+        quad: np.ndarray,
+    ) -> float:
+        """
+        Measure how different the interior of the quad is from a thin border ring.
+        Real photos usually differ from the surrounding bed; pure noise often does not.
+        Returns 0..1.
+        """
+        if gray is None or gray.ndim != 2:
+            return 0.5  # neutral when unavailable
+        h, w = gray.shape[:2]
+        if h < 8 or w < 8:
+            return 0.0
+        q = self.order_points(quad.reshape((4, 2)).astype(np.float32))
+        mask = np.zeros((h, w), dtype=np.uint8)
+        cv2.fillPoly(mask, [q.astype(np.int32)], 255)
+        area = int(cv2.countNonZero(mask))
+        if area < 100:
+            return 0.0
+        # Erode to get a strict interior; dilate ring for exterior shell.
+        k = max(3, int(min(h, w) * 0.02) | 1)
+        kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (k, k))
+        interior = cv2.erode(mask, kernel, iterations=1)
+        shell = cv2.subtract(cv2.dilate(mask, kernel, iterations=2), interior)
+        if int(cv2.countNonZero(interior)) < 50 or int(cv2.countNonZero(shell)) < 50:
+            return 0.35
+        mean_in = float(cv2.mean(gray, mask=interior)[0])
+        mean_out = float(cv2.mean(gray, mask=shell)[0])
+        # Also compare stddev (photos usually have more structure inside).
+        _, std_in = cv2.meanStdDev(gray, mask=interior)
+        _, std_out = cv2.meanStdDev(gray, mask=shell)
+        mean_delta = abs(mean_in - mean_out) / 255.0
+        std_delta = abs(float(std_in[0][0]) - float(std_out[0][0])) / 128.0
+        score = float(min(1.0, mean_delta * 2.5 + std_delta * 0.8))
+        return score
+
     def _score_quad(
         self: Any,
         quad: np.ndarray,
         image_area: int,
         edge_image: Optional[np.ndarray] = None,
         image_shape: Optional[Tuple[int, int]] = None,
+        gray_image: Optional[np.ndarray] = None,
     ) -> float:
         """
         Score a quad (4 points) based on geometry + edge support.
@@ -273,14 +340,36 @@ class ImageGeometryMixin:
 
         # Weights depend on detection mode & scoring strictness.
         mode = self.algo.detection_mode
+        content = (
+            self._content_contrast_score(gray_image, quad)
+            if gray_image is not None
+            else 0.55
+        )
         if mode == "fast":
-            weights = {"area": 0.40, "aspect": 0.35, "angle": 0.15, "edge": 0.10}
+            weights = {
+                "area": 0.38,
+                "aspect": 0.32,
+                "angle": 0.14,
+                "edge": 0.10,
+                "content": 0.06,
+            }
         elif mode == "accurate":
-            weights = {"area": 0.25, "aspect": 0.15, "angle": 0.30, "edge": 0.30}
+            weights = {
+                "area": 0.20,
+                "aspect": 0.12,
+                "angle": 0.22,
+                "edge": 0.26,
+                "content": 0.20,
+            }
         else:  # balanced
-            weights = {"area": 0.30, "aspect": 0.20, "angle": 0.25, "edge": 0.25}
+            weights = {
+                "area": 0.26,
+                "aspect": 0.16,
+                "angle": 0.22,
+                "edge": 0.22,
+                "content": 0.14,
+            }
 
-        # Existing contour_scoring knob still matters; strict penalizes angle/edge failures harder.
         if self.algo.contour_scoring == "strict":
             border_weight = 0.20
         elif self.algo.contour_scoring == "enhanced":
@@ -293,11 +382,15 @@ class ImageGeometryMixin:
             + aspect_score * weights["aspect"]
             + angle_score * weights["angle"]
             + edge_support * weights["edge"]
+            + content * weights["content"]
         )
 
-        base *= (0.70 + 0.30 * min_side_score)
-        base *= (1.0 - border_weight * border_penalty)
-        base *= (0.85 + 0.15 * min_side_score if mode != "fast" else 1.0)
+        base *= 0.70 + 0.30 * min_side_score
+        base *= 1.0 - border_weight * border_penalty
+        base *= 0.85 + 0.15 * min_side_score if mode != "fast" else 1.0
+        # Hard-reject nearly empty content contrast in non-fast modes (noise fields).
+        if mode != "fast" and gray_image is not None and content < 0.12:
+            base *= 0.35
 
         return float(max(0.0, min(1.0, base)))
     @staticmethod

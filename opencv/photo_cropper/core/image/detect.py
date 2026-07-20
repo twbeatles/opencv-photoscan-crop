@@ -35,4 +35,6 @@ class ImageDetectionMixin(
     ImageDetectionStageMixin,
     ImageDetectionPipelineMixin,
 ):
+    """Legacy combined mixin (prefer ``DetectionPipeline`` composition)."""
+
     pass

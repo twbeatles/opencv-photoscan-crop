@@ -185,6 +185,46 @@ def _build_workbench_page(
     refs.buttons["central.batch_save"] = refs.batch_save_edits_btn
     refs.labels["central.drag_hint"] = hint_text
 
+    # Quick scene controls (simple-mode path without opening algorithm tab).
+    quick_row = QHBoxLayout()
+    quick_row.setContentsMargins(0, 4, 0, 0)
+    quick_label = QLabel("장면 프리셋:")
+    quick_label.setStyleSheet("font-weight: bold;")
+    quick_row.addWidget(quick_label)
+    refs.labels["central.scene_preset_label"] = quick_label
+
+    from ...widgets.settings.controls import NoScrollComboBox
+    from ...widgets.toggle_switch import ModernToggleSwitch
+    from ....core.scene_presets import SCENE_PRESET_META, apply_scene_preset
+
+    refs.scene_preset_combo = NoScrollComboBox()
+    for sid, (label, _desc) in SCENE_PRESET_META.items():
+        refs.scene_preset_combo.addItem(label, sid)
+
+    def _on_workbench_scene_preset(_index: int = 0) -> None:
+        sid = refs.scene_preset_combo.currentData()
+        if not sid or sid == "custom":
+            return
+        apply_scene_preset(state.settings, str(sid))
+        settings_actions.sync_current_settings(sync_panel=True)
+        preview_actions.request_preview()
+
+    refs.scene_preset_combo.currentIndexChanged.connect(_on_workbench_scene_preset)
+    quick_row.addWidget(refs.scene_preset_combo, 1)
+
+    refs.multi_photo_quick_toggle = ModernToggleSwitch("멀티포토")
+    refs.multi_photo_quick_toggle.setChecked(
+        bool(getattr(state.settings.multi_photo, "enabled", False))
+    )
+
+    def _on_workbench_multi_toggle(checked: bool) -> None:
+        state.settings.multi_photo.enabled = bool(checked)
+        settings_actions.sync_current_settings(sync_panel=True)
+
+    refs.multi_photo_quick_toggle.toggled.connect(_on_workbench_multi_toggle)
+    quick_row.addWidget(refs.multi_photo_quick_toggle)
+    folder_card_layout.addLayout(quick_row)
+
     outer_splitter.addWidget(folder_card)
 
     main_splitter = QSplitter(Qt.Orientation.Horizontal)

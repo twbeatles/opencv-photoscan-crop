@@ -68,6 +68,7 @@ class WindowState:
     batch_contours_norm: dict[str, Any] = field(default_factory=dict)
     batch_contours_edited: set[str] = field(default_factory=set)
     failed_boundary_files: list[str] = field(default_factory=list)
+    low_confidence_files: list[str] = field(default_factory=list)
     manual_extract_thread: Optional[threading.Thread] = None
     manual_extract_stop_event: threading.Event = field(
         default_factory=threading.Event

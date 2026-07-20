@@ -12,6 +12,34 @@ def create_algorithm_tab(self):
         layout = QVBoxLayout(content)
         layout.setSpacing(20)
 
+        # Scene presets (simple mode entry point)
+        preset_group = QGroupBox("장면 프리셋 (빠른 설정)")
+        preset_layout = QFormLayout(preset_group)
+        self.scene_preset_combo = NoScrollComboBox()
+        from ....core.scene_presets import SCENE_PRESET_META
+
+        self._scene_preset_ids = list(SCENE_PRESET_META.keys())
+        for sid in self._scene_preset_ids:
+            label, desc = SCENE_PRESET_META[sid]
+            self.scene_preset_combo.addItem(label, sid)
+            # Keep description accessible via tooltip on the combo.
+        self.scene_preset_combo.setToolTip(
+            "\n".join(
+                f"• {SCENE_PRESET_META[sid][0]}: {SCENE_PRESET_META[sid][1]}"
+                for sid in self._scene_preset_ids
+            )
+        )
+        self.scene_preset_combo.currentIndexChanged.connect(self._on_scene_preset_changed)
+        preset_layout.addRow("장면:", self.scene_preset_combo)
+        preset_hint = QLabel(
+            "프리셋을 고르면 Canny·CLAHE·면적 비율 등이 자동 조정됩니다. "
+            "세부 값은 아래에서 다시 수정할 수 있습니다."
+        )
+        preset_hint.setObjectName("subtitleLabel")
+        preset_hint.setWordWrap(True)
+        preset_layout.addRow(preset_hint)
+        layout.addWidget(preset_group)
+
         # Canny edge detection
         canny_group = QGroupBox("🔍 Canny 엣지 검출")
         canny_layout = QVBoxLayout(canny_group)

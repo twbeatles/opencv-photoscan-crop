@@ -35,12 +35,14 @@
 ┌───────────────────────────────────────────┐
 │              core/ (처리 엔진)              │
 │  ┌───────────────────────────────────────┐│
-│  │ ImageProcessor    - 크롭 알고리즘     ││
-│  │ BatchProcessor    - 배치 처리        ││
-│  │ SettingsManager   - 설정 관리        ││
-│  │ WatermarkProcessor - 워터마크        ││
-│  │ ResizeProcessor   - 리사이즈         ││
-│  │ FolderWatcher     - 폴더 감시        ││
+│  │ ImageProcessor     - 파사드/후처리    ││
+│  │ DetectionPipeline  - 8단계 경계 탐지  ││
+│  │ BatchProcessor     - 배치 처리        ││
+│  │ Scene presets      - 장면 튜닝        ││
+│  │ SettingsManager    - 설정 관리        ││
+│  │ WatermarkProcessor - 워터마크         ││
+│  │ ResizeProcessor    - 리사이즈         ││
+│  │ FolderWatcher      - 폴더 감시        ││
 │  └───────────────────────────────────────┘│
 └───────────────────────────────────────────┘
 ```
@@ -52,8 +54,10 @@
 | 파일 | 역할 |
 |------|------|
 | `cli_support/runtime.py` | CLI parser/settings merge/validation/execution runtime |
-| `image/processor.py` | 핵심 크롭 알고리즘 (Canny, CLAHE, Sobel) |
-| `image/types.py` | 크롭/미리보기 결과 타입 |
+| `image/processor.py` | 이미지 처리 파사드 (후처리·저장·탐지 위임) |
+| `image/detection_pipeline.py` | 8단계 경계 탐지 엔진 (NMS/GrabCut 포함) |
+| `image/types.py` | 크롭/미리보기 결과 타입 (`FailureReason`, `stage_scores`) |
+| `scene_presets.py` | scanner/desk/album/document 장면 프리셋 |
 | `batch/processor.py` | 다중 이미지 배치 처리 |
 | `batch/types.py` | 배치 진행/결과 타입 |
 | `file_watch/` | `FolderWatcher`, `AutoProcessor`, watch result 타입 실제 구현 |

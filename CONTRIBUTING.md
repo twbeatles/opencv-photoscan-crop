@@ -12,6 +12,16 @@ bash scripts/verify.sh
 
 Runs: `compileall` → `photo_cropper.selftest` → `pyright`.
 
+Optional detection benchmark (skips if private labels/images are absent):
+
+```bash
+pwsh -File scripts/run_benchmark_if_present.ps1
+# or
+bash scripts/run_benchmark_if_present.sh
+```
+
+Detection pipeline notes: `opencv/docs/detection-pipeline.md`
+
 ## App directory
 
 The application lives in `opencv/` (formerly `;opencv/`).

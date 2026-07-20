@@ -15,7 +15,8 @@
 | pytest + `tests/` | **완료** (단위 + selftest registry) |
 | `CONTRIBUTING.md` | **완료** |
 | 문서 동기화 (README/GEMINI/CLAUDE/spec) | **완료** |
-| 벤치마크 synthetic CI 게이트 | **미구현** (데이터셋 미포함) |
+| 벤치마크 synthetic CI 게이트 | **부분 완료** (`scripts/run_benchmark_if_present.*` + workflow; 실데이터 없으면 skip) |
+| DetectionPipeline / 장면 프리셋 / 간단 모드 | **완료** (2026-07 accuracy/UX refactor) |
 | `getsize` 실패 시 silent pass 보강 | **미구현** (추정 항목) |
 
 검증: `powershell -NoProfile -File scripts/verify.ps1` → **VERIFY OK**

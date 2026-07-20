@@ -105,7 +105,26 @@ class SettingsPanel(QWidget):
         self.destroyed.connect(self._remove_language_listener)
 
     def _setup_ui(self):
-        return setup_ui(self)
+        setup_ui(self)
+        # Apply simple-mode visibility after all tabs exist.
+        simple = bool(getattr(getattr(self._settings, "ui", None), "simple_mode", True))
+        self.apply_simple_mode(simple)
+
+    def apply_simple_mode(self, enabled: bool) -> None:
+        """Hide advanced tabs when simple mode is on (keep Basic tab)."""
+        if not hasattr(self, "tab_widget") or self.tab_widget is None:
+            return
+        # Tab order: 0=basic, 1=algorithm, 2=processing, 3=management, 4=ai
+        for index in range(1, self.tab_widget.count()):
+            self.tab_widget.setTabVisible(index, not bool(enabled))
+        if enabled and self.tab_widget.count() > 0:
+            self.tab_widget.setCurrentIndex(0)
+
+    def _on_simple_mode_toggled(self, checked: bool = False) -> None:
+        if self._block_signals:
+            return
+        self.apply_simple_mode(bool(checked))
+        self._on_setting_changed()
 
     def _make_scrollable_tab(self, content_widget: QWidget) -> QWidget:
         return make_scrollable_tab(self, content_widget)
@@ -179,6 +198,37 @@ class SettingsPanel(QWidget):
         self.canny_min_label.setText(str(self.canny_min_slider.value()))
         self.canny_max_label.setText(str(self.canny_max_slider.value()))
         self._emit_settings()
+
+    def _on_scene_preset_changed(self, index: int = 0):
+        """Apply a scene preset to algorithm (and multi-photo) settings."""
+        if self._block_signals:
+            return
+        if not hasattr(self, "scene_preset_combo"):
+            return
+        from ....core.scene_presets import apply_scene_preset
+
+        scene_id = self.scene_preset_combo.currentData()
+        if not scene_id or scene_id == "custom":
+            self._emit_settings()
+            return
+
+        current = self._build_settings() if self._is_form_valid else self._settings
+        updated = apply_scene_preset(current, str(scene_id))
+        # Reload UI controls from updated settings (keeps other tabs intact).
+        self._block_signals = True
+        try:
+            self._load_settings(updated)
+            # Restore selected preset after load (load may not know about it).
+            for i in range(self.scene_preset_combo.count()):
+                if self.scene_preset_combo.itemData(i) == scene_id:
+                    self.scene_preset_combo.setCurrentIndex(i)
+                    break
+        finally:
+            self._block_signals = False
+        self._settings = updated
+        self.settings_changed.emit(updated)
+        if hasattr(self, "auto_preview_check") and self.auto_preview_check.isChecked():
+            self.preview_requested.emit()
 
     def _on_format_changed(self, format_name: str):
         """Handle output format change."""

@@ -201,27 +201,27 @@ class BatchProcessorContextMixin:
             context["smart_enhancer"] = enhancer
         return enhancer
     def _get_multi_photo_detector(self) -> MultiPhotoDetector:
+        algo = self.settings.algorithm
+        kwargs = dict(
+            min_area_ratio=self.settings.multi_photo.min_area_ratio,
+            max_area_ratio=self.settings.multi_photo.max_area_ratio,
+            min_photos=self.settings.multi_photo.min_photos,
+            max_photos=self.settings.multi_photo.max_photos,
+            merge_distance=self.settings.multi_photo.merge_distance,
+            canny_min=int(getattr(algo, "canny_min", 50)),
+            canny_max=int(getattr(algo, "canny_max", 150)),
+            adaptive_block_size=int(getattr(algo, "adaptive_block_size", 11)),
+            adaptive_c=float(getattr(algo, "adaptive_c", 2.0)),
+        )
         if not self._use_thread_local_context():
             if self._multi_photo_detector is None:
-                self._multi_photo_detector = MultiPhotoDetector(
-                    min_area_ratio=self.settings.multi_photo.min_area_ratio,
-                    max_area_ratio=self.settings.multi_photo.max_area_ratio,
-                    min_photos=self.settings.multi_photo.min_photos,
-                    max_photos=self.settings.multi_photo.max_photos,
-                    merge_distance=self.settings.multi_photo.merge_distance,
-                )
+                self._multi_photo_detector = MultiPhotoDetector(**kwargs)
             return self._multi_photo_detector
 
         context = self._get_worker_context()
         detector = context.get("multi_photo_detector")
         if detector is None:
-            detector = MultiPhotoDetector(
-                min_area_ratio=self.settings.multi_photo.min_area_ratio,
-                max_area_ratio=self.settings.multi_photo.max_area_ratio,
-                min_photos=self.settings.multi_photo.min_photos,
-                max_photos=self.settings.multi_photo.max_photos,
-                merge_distance=self.settings.multi_photo.merge_distance,
-            )
+            detector = MultiPhotoDetector(**kwargs)
             context["multi_photo_detector"] = detector
         return detector
     def _log(self: Any, message: str, level: str = "info"):

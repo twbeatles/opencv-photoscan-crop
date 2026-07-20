@@ -26,19 +26,33 @@ logger = logging.getLogger(__name__)
 class ImageDetectionStageMixin:
     def _create_background_mask(self: Any, gray: np.ndarray) -> np.ndarray:
         """
-        Create a foreground mask based on corner background estimation.
+        Create a foreground mask based on corner/edge background estimation.
         Returns a binary image (uint8 0/255) where foreground is 255.
         """
         h, w = gray.shape[:2]
         patch = max(10, min(20, min(h, w) // 20))
 
-        corners = [
+        # Sample corners + mid-edge strips for more robust background estimate.
+        samples = [
             gray[0:patch, 0:patch],
             gray[0:patch, w - patch : w],
             gray[h - patch : h, 0:patch],
             gray[h - patch : h, w - patch : w],
+            gray[0:patch, w // 2 - patch : w // 2 + patch],
+            gray[h - patch : h, w // 2 - patch : w // 2 + patch],
+            gray[h // 2 - patch : h // 2 + patch, 0:patch],
+            gray[h // 2 - patch : h // 2 + patch, w - patch : w],
         ]
-        corner_mean = float(np.mean([np.mean(c) for c in corners]))
+        means = [float(np.mean(c)) for c in samples if c.size > 0]
+        if not means:
+            return np.zeros_like(gray)
+        corner_mean = float(np.mean(means))
+        corner_std = float(np.std(means))
+        # High border variance → unreliable solid background; return empty mask
+        # so later stages (morph gradient / adaptive) take over.
+        if corner_std > 35.0:
+            return np.zeros_like(gray)
+
         is_bright_bg = corner_mean >= 127.0
 
         k = max(0.0, float(getattr(self.algo, "bg_mask_delta", 30.0)))
@@ -52,6 +66,64 @@ class ImageDetectionStageMixin:
         mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, self._kernel_5x5, iterations=2)
         mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, self._kernel_5x5, iterations=1)
         return mask
+
+    def _create_morph_gradient_mask(self: Any, gray: np.ndarray) -> np.ndarray:
+        """Boundary-focused binary mask via morphological gradient + Otsu."""
+        blurred = cv2.GaussianBlur(gray, (5, 5), 0)
+        kernel = self._kernel_5x5
+        gradient = cv2.morphologyEx(blurred, cv2.MORPH_GRADIENT, kernel)
+        _, mask = cv2.threshold(gradient, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+        mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel, iterations=2)
+        mask = cv2.dilate(mask, self._kernel_3x3, iterations=1)
+        return mask
+
+    def _detect_rectangle_by_lsd(self: Any, gray: np.ndarray) -> Optional[np.ndarray]:
+        """
+        Detect a rectangle from Line Segment Detector segments.
+        Falls back to None if LSD is unavailable or insufficient lines exist.
+        """
+        if gray is None or gray.size == 0:
+            return None
+        if not hasattr(cv2, "createLineSegmentDetector"):
+            return None
+
+        h, w = gray.shape[:2]
+        try:
+            lsd = cv2.createLineSegmentDetector(cv2.LSD_REFINE_STD)
+            lines, _widths, _prec, _nfa = lsd.detect(gray)
+        except Exception:
+            try:
+                lsd = cv2.createLineSegmentDetector()
+                detected = lsd.detect(gray)
+                lines = detected[0] if isinstance(detected, tuple) else detected
+            except Exception:
+                return None
+
+        if lines is None or len(lines) == 0:
+            return None
+
+        # Draw segments to a binary edge map and reuse Hough-style grouping.
+        # OpenCV 4: (N,1,4); OpenCV 5 may return (N,4) or similar.
+        edge_map = np.zeros((h, w), dtype=np.uint8)
+        min_len = max(20.0, min(h, w) * 0.08)
+        try:
+            flat = np.asarray(lines, dtype=np.float32).reshape(-1, 4)
+        except Exception:
+            return None
+        for seg in flat[:800]:
+            x1, y1, x2, y2 = [float(v) for v in seg[:4]]
+            if math.hypot(x2 - x1, y2 - y1) < min_len:
+                continue
+            cv2.line(
+                edge_map,
+                (int(round(x1)), int(round(y1))),
+                (int(round(x2)), int(round(y2))),
+                255,
+                1,
+                cv2.LINE_AA,
+            )
+        edge_map = cv2.dilate(edge_map, self._kernel_3x3, iterations=1)
+        return self._detect_rectangle_by_hough(edge_map)
     def _build_hough_quad_from_groups(
         self: Any,
         group_a: List[Dict[str, Any]],
@@ -126,8 +198,10 @@ class ImageDetectionStageMixin:
             return None
 
         parsed: List[Dict[str, Any]] = []
-        for l in lines[:500]:
-            x1, y1, x2, y2 = l[0]
+        # OpenCV 4 returns (N,1,4); OpenCV 5 may return (N,4).
+        flat_lines = np.asarray(lines).reshape(-1, 4)
+        for l in flat_lines[:500]:
+            x1, y1, x2, y2 = [float(v) for v in l[:4]]
             dx = x2 - x1
             dy = y2 - y1
             length = math.hypot(dx, dy)

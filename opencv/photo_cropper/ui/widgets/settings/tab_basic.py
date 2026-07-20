@@ -130,10 +130,19 @@ def create_basic_tab(self):
     layout.addWidget(self.filter_section)
 
     # === UI section ===
-    self.ui_section = CollapsibleSection("🎨 인터페이스", initially_expanded=False)
+    self.ui_section = CollapsibleSection("🎨 인터페이스", initially_expanded=True)
     ui_group = QWidget()
     self.ui_form = QFormLayout(ui_group)
     self.ui_form.setContentsMargins(0, 0, 0, 0)
+
+    self.simple_mode_check = ModernToggleSwitch("간단 모드 (고급 탭 숨기기)")
+    self.simple_mode_check.setToolTip(
+        "켜면 알고리즘/처리/관리/AI 탭을 숨기고 기본 작업에 집중합니다. "
+        "장면 프리셋은 워크벤치 상단에서 사용할 수 있습니다."
+    )
+    self.simple_mode_check.setChecked(True)
+    self.simple_mode_check.toggled.connect(self._on_simple_mode_toggled)
+    self.ui_form.addRow(self.simple_mode_check)
 
     self.theme_combo = NoScrollComboBox()
     self.theme_combo.addItems(["dark", "light"])

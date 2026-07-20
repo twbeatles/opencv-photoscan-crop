@@ -30,13 +30,18 @@ photo_cropper/
 ├── core/
 │   ├── advanced/
 │   ├── app_paths.py
-│   ├── image/
+│   ├── image/              # ImageProcessor facade + DetectionPipeline
+│   │   ├── processor.py
+│   │   ├── detection_pipeline.py
+│   │   ├── _detect_*.py
+│   │   └── geometry.py
 │   ├── batch/
 │   ├── file_watch/
 │   ├── jobs/
 │   ├── library/
 │   ├── recipes/
 │   ├── settings_model/
+│   ├── scene_presets.py    # scanner/desk/album/document presets
 │   ├── multi_photo_detector.py
 │   ├── watermark_processor.py
 │   ├── resize_processor.py
@@ -60,13 +65,17 @@ photo_cropper/
 
 ## 핵심 클래스/역할
 
-### 1) ImageProcessor (`core/image/processor.py`)
+### 1) ImageProcessor + DetectionPipeline (`core/image/`)
 
 사진 경계 감지와 크롭을 담당합니다.
 
-- `process_image(image_path) -> CropResult`
+- `ImageProcessor` (`processor.py`): 파사드 — 후처리/저장/설정, `self.detection` 위임
+- `DetectionPipeline` (`detection_pipeline.py`): 8단계 탐지 엔진 (Canny~LSD, NMS, GrabCut)
+- `process_image(image_path) -> CropResult` (+ `failure_reason`, `stage_scores`)
 - `process_preview(image_path, ...)`
 - `load_image`, `rotate_image`, `detect_edges_multiscale`, `find_best_contour`
+- 장면 프리셋: `core/scene_presets.py` / CLI `--scene-preset` / UI 간단 모드
+- 상세: `docs/detection-pipeline.md`
 
 ### 2) BatchProcessor (`core/batch/processor.py`)
 
@@ -258,11 +267,23 @@ pyinstaller photo_cropper.spec --clean
 - CLI 취소 종료코드 표준화: cancel `130`, failed `1`, success `0`
 - 프로파일 적용 경로를 `to_dict + deep-merge + AppSettings.from_dict`로 일원화
 
+## 2026-07 Detection Accuracy / UX Refactor
+
+- `DetectionPipeline` composition: `ImageProcessor` facade + composed detection engine
+- Stages expanded: Morphology Gradient, LSD Rectangle; cross-stage NMS; edge corner snap
+- Scoring: denser edge support + interior/shell **content contrast** for FP rejection
+- GrabCut ROI refine in `accurate` (accepted only if score does not collapse)
+- Multi-photo: shares Canny/Adaptive settings; `refine_with_single` ROI re-detect (default ON)
+- Scene presets (`scene_presets.py`) + UI simple mode (hide advanced tabs)
+- CLI: `--scene-preset`, `--multi-photo-refine` / `--no-multi-photo-refine`
+- Benchmark: `failure_reason` / `stage_scores`, `--baseline`, optional CI via `scripts/run_benchmark_if_present.*`
+- Docs: `docs/detection-pipeline.md`
+
 ## 2026-03-08 Precision Update Notes
 
 - Implemented all 10 precision recommendations from the 2026-03-08 review plan.
 - Detection core:
-  - `accurate` mode now aggregates Stage 1~6 candidates and globally re-ranks.
+  - `accurate` mode now aggregates multi-stage candidates and globally re-ranks.
   - `fast`/`balanced` retain early-exit behavior.
   - Edge-support scoring now uses a dedicated reference edge map.
   - Area/aspect/Hough scoring logic was upgraded for rotated/skewed cases.

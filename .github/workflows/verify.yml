@@ -56,3 +56,17 @@ jobs:
           PHOTOCROPPER_OFFLINE: "1"
           QT_QPA_PLATFORM: offscreen
           PYTHONUTF8: "1"
+
+      - name: Optional detection benchmark (skip if no private labels)
+        if: runner.os == 'Windows'
+        run: powershell -NoProfile -File scripts/run_benchmark_if_present.ps1
+        env:
+          PHOTOCROPPER_OFFLINE: "1"
+          PYTHONUTF8: "1"
+
+      - name: Optional detection benchmark (Linux, skip if no private labels)
+        if: runner.os != 'Windows'
+        run: bash scripts/run_benchmark_if_present.sh
+        env:
+          PHOTOCROPPER_OFFLINE: "1"
+          PYTHONUTF8: "1"

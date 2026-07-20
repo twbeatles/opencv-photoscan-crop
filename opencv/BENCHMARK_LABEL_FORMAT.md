@@ -35,7 +35,18 @@ python -m photo_cropper.benchmark \
   --labels ./benchmark/labels.json \
   --report ./benchmark/report.json \
   --detect-mode accurate
+
+# Optional scene preset + baseline delta
+python -m photo_cropper.benchmark \
+  --images ./benchmark/images \
+  --labels ./benchmark/labels.json \
+  --report ./benchmark/report.json \
+  --scene-preset scanner_white \
+  --baseline ./benchmark/baseline.json
 ```
+
+Private images/labels are gitignored. CI runs `scripts/run_benchmark_if_present.*`
+and skips cleanly when those files are absent.
 
 ## Report metrics
 - `success_rate`
@@ -44,3 +55,4 @@ python -m photo_cropper.benchmark \
 - `p90_iou`
 - `false_positive_rate`
 - `stage_distribution`
+- per-item: `failure_reason`, `stage_scores`, `confidence`

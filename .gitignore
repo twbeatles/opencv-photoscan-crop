@@ -3,11 +3,14 @@ opencv/build/
 opencv/dist/
 build/
 dist/
+**/PhotoCropper_v9*/
+**/*.exe
+!opencv/upx.exe
 
 # Legacy app directory name (renamed to opencv/ — do not recreate)
 ;opencv/
 
-# Local debug / benchmark artifacts
+# Local debug / benchmark artifacts (private datasets stay out of git)
 .codegraph/
 opencv/_debug/
 opencv/benchmark/images/
@@ -15,6 +18,7 @@ opencv/benchmark/reports/
 opencv/benchmark/labels.json
 opencv/benchmark/report.json
 opencv/benchmark/report-*.json
+opencv/benchmark/baseline.json
 
 # Runtime output artifacts from local processing
 out/
@@ -48,6 +52,8 @@ opencv/logs/
 
 # PyInstaller cache
 *.spec.bak
+warn-*.txt
+xref-*.html
 
 # Python caches
 **/__pycache__/
@@ -59,13 +65,19 @@ opencv/logs/
 .ruff_cache/
 opencv/.ruff_cache/
 
-# Local backups / ad-hoc reports
+# Local backups / ad-hoc reports / agent plan extracts
 backups/
+.pyright_report.json
 pyright_report.json
 pyright_report*.json
 opencv/pyright_report.json
 opencv/pyright_report*.json
 opencv/convert_icon.py
+.plan_extract/
+.plan_src/
+*.localbak
+WORKSPACE_RECOVERY.txt
+WORKSPACE_RECOVERY.txt.*
 
 # Test / type-check / coverage caches
 .pytest_cache/

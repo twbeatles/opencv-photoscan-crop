@@ -289,6 +289,20 @@ def _apply_cli_overrides(settings_data: Dict[str, Any], args: argparse.Namespace
         _set_nested(settings_data, "watermark.enabled", True)
         _set_nested(settings_data, "watermark.image_path", args.watermark_image)
 
+    scene_preset = getattr(args, "scene_preset", None)
+    if scene_preset:
+        try:
+            from ..core.scene_presets import apply_scene_preset
+            from ..core.settings_model import AppSettings as _AS
+
+            # Apply scene preset on current merged dict via AppSettings round-trip.
+            tmp = _AS.from_dict(settings_data)
+            apply_scene_preset(tmp, str(scene_preset))
+            settings_data.clear()
+            settings_data.update(tmp.to_dict())
+        except Exception as exc:
+            logger.warning("Failed to apply scene preset '%s': %s", scene_preset, exc)
+
     if args.multi_photo:
         _set_nested(settings_data, "multi_photo.enabled", True)
 
@@ -303,6 +317,10 @@ def _apply_cli_overrides(settings_data: Dict[str, Any], args: argparse.Namespace
     if args.multi_photo_separate_folders:
         _set_nested(settings_data, "multi_photo.enabled", True)
         _set_nested(settings_data, "multi_photo.separate_output_folders", True)
+
+    refine_flag = getattr(args, "multi_photo_refine", None)
+    if refine_flag is not None:
+        _set_nested(settings_data, "multi_photo.refine_with_single", bool(refine_flag))
 
     if args.max_size is not None:
         _set_nested(settings_data, "resize.enabled", True)
@@ -650,6 +668,17 @@ def create_parser() -> argparse.ArgumentParser:
     parser.add_argument("--watermark-image", help="Image watermark path")
     parser.add_argument("--resize", help="Resize spec (50%%, 1200x900, 1920, instagram_square)")
     parser.add_argument("--max-size", type=_int_in_range(1, 20000), help="Resize max dimension")
+    parser.add_argument(
+        "--scene-preset",
+        choices=[
+            "scanner_white",
+            "desk_photo",
+            "dark_background",
+            "album_multi",
+            "document",
+        ],
+        help="Apply scene-tuned algorithm defaults (before other CLI overrides)",
+    )
     parser.add_argument("--multi-photo", action="store_true", help="Enable multi-photo split mode")
     parser.add_argument(
         "--multi-photo-merge-distance",
@@ -660,6 +689,20 @@ def create_parser() -> argparse.ArgumentParser:
         "--multi-photo-separate-folders",
         action="store_true",
         help="Store multi-photo outputs in <input>_photos subfolder",
+    )
+    refine_group = parser.add_mutually_exclusive_group()
+    refine_group.add_argument(
+        "--multi-photo-refine",
+        dest="multi_photo_refine",
+        action="store_true",
+        default=None,
+        help="Refine each multi-photo ROI with single-photo detection",
+    )
+    refine_group.add_argument(
+        "--no-multi-photo-refine",
+        dest="multi_photo_refine",
+        action="store_false",
+        help="Disable multi-photo ROI refine",
     )
     parser.add_argument("--backup", action="store_true", help="Create backups")
 

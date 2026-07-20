@@ -44,7 +44,13 @@ class ImagePostprocessMixin:
         """
         image = self.load_image(image_path)
         if image is None:
-            return CropResult(False, message="Failed to load image.")
+            from .types import FailureReason
+
+            return CropResult(
+                False,
+                message="Failed to load image.",
+                failure_reason=FailureReason.LOAD_FAILED,
+            )
         return self._process_loaded_image(
             image,
             image_path,

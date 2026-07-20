@@ -83,6 +83,9 @@ def build_settings(panel):
         language=language,
         auto_preview=self.auto_preview_check.isChecked(),
         show_contour_overlay=self.contour_overlay_check.isChecked(),
+        simple_mode=self.simple_mode_check.isChecked()
+        if hasattr(self, "simple_mode_check")
+        else True,
     )
 
     debug = DebugSettings(
@@ -169,6 +172,12 @@ def build_settings(panel):
         separate_output_folders=self.multi_photo_separate_folders_check.isChecked()
         if hasattr(self, "multi_photo_separate_folders_check")
         else bool(getattr(prev_multi_photo, "separate_output_folders", False)),
+        refine_with_single=self.multi_photo_refine_check.isChecked()
+        if hasattr(self, "multi_photo_refine_check")
+        else bool(getattr(prev_multi_photo, "refine_with_single", True)),
+        refine_padding_ratio=float(
+            getattr(prev_multi_photo, "refine_padding_ratio", 0.08)
+        ),
     )
 
     # v8.0 Advanced settings - safely build if widgets exist
@@ -391,6 +400,12 @@ def load_settings(panel, settings: AppSettings):
         self.theme_combo.setCurrentIndex(index)
     self.auto_preview_check.setChecked(settings.ui.auto_preview)
     self.contour_overlay_check.setChecked(settings.ui.show_contour_overlay)
+    if hasattr(self, "simple_mode_check"):
+        self.simple_mode_check.setChecked(
+            bool(getattr(settings.ui, "simple_mode", True))
+        )
+        if hasattr(self, "apply_simple_mode"):
+            self.apply_simple_mode(bool(getattr(settings.ui, "simple_mode", True)))
 
     # Language
     if hasattr(settings.ui, "language"):
@@ -479,6 +494,10 @@ def load_settings(panel, settings: AppSettings):
         if hasattr(self, "multi_photo_separate_folders_check"):
             self.multi_photo_separate_folders_check.setChecked(
                 bool(getattr(mp, "separate_output_folders", False))
+            )
+        if hasattr(self, "multi_photo_refine_check"):
+            self.multi_photo_refine_check.setChecked(
+                bool(getattr(mp, "refine_with_single", True))
             )
 
     # v9.0 AI settings

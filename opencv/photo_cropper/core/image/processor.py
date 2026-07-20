@@ -3,61 +3,50 @@
 """
 Enhanced Image Processor for Photo Cropper v9.0.
 
-Provides advanced CV algorithms for automatic photo detection and cropping:
-- Multi-scale Canny edge detection
-- CLAHE contrast enhancement
-- Adaptive threshold for textured backgrounds
-- Gradient analysis (Sobel)
-- Enhanced contour scoring
-- v8.0: Advanced processing (deskew, color correct, perspective, etc.)
+Detection is delegated to ``DetectionPipeline`` (composition). Geometry,
+debug I/O, post-process, and save mixins remain on the processor facade.
 """
 
-import os
+from __future__ import annotations
+
+from typing import Any, Optional
+
 import cv2
 import numpy as np
-import logging
-import traceback
-import json
-import time
-import math
-from typing import Optional, Tuple, List, Dict, Any
 
+from ..advanced import AdvancedImageProcessor
 from ..settings_model import (
-    AlgorithmSettings,
-    ProcessingSettings,
     AdvancedProcessingSettings,
-    PerformanceSettings,
+    AlgorithmSettings,
     DebugSettings,
+    PerformanceSettings,
+    ProcessingSettings,
 )
-from ..advanced import AdvancedImageProcessor, GPUAccelerator
-from .types import CropResult, DetectionStage, PreviewProcessResult
 from .debug_io import ImageDebugMixin
-from .detect import ImageDetectionMixin
+from .detection_pipeline import DetectionPipeline
 from .geometry import ImageGeometryMixin
 from .postprocess import ImagePostprocessMixin
 from .save_io import ImageSaveMixin
+from .types import CropResult, PreviewProcessResult
+
+import logging
 
 logger = logging.getLogger(__name__)
+
 
 class ImageProcessor(
     ImageGeometryMixin,
     ImageDebugMixin,
-    ImageDetectionMixin,
     ImagePostprocessMixin,
     ImageSaveMixin,
 ):
     """
     Advanced image processor for automatic photo detection and cropping.
 
-    Features:
-        - 3+ stage intelligent photo detection
-        - CLAHE for improved contrast handling
-        - Multi-scale edge detection
-        - Enhanced contour scoring algorithm
-        - Perspective transform for skewed photos
+    Detection algorithms live in ``self.detection`` (``DetectionPipeline``).
+    Public APIs remain stable for GUI/CLI/batch callers.
     """
 
-    # Constants
     SUPPORTED_FORMATS = (
         ".png",
         ".jpg",
@@ -85,34 +74,26 @@ class ImageProcessor(
         performance_settings: Optional[PerformanceSettings] = None,
         debug_settings: Optional[DebugSettings] = None,
     ):
-        """
-        Initialize image processor.
-
-        Args:
-            algorithm_settings: Algorithm configuration
-            processing_settings: Post-processing configuration
-            advanced_settings: v8.0 Advanced processing settings
-        """
         self.algo = algorithm_settings or AlgorithmSettings()
         self.proc = processing_settings or ProcessingSettings()
         self.advanced = advanced_settings or AdvancedProcessingSettings()
         self.performance = performance_settings or PerformanceSettings()
         self.debug = debug_settings or DebugSettings()
 
-        # v8.0: Advanced processor
         self._advanced_processor = AdvancedImageProcessor(
             use_gpu=self.performance.use_gpu
         )
 
-        # Performance: Cached CLAHE objects
         self._clahe_default = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
-        self._clahe_custom = None  # Lazy initialized with custom settings
-        self._clahe_settings_cache = (None, None)  # (clip_limit, grid_size)
+        self._clahe_custom = None
+        self._clahe_settings_cache = (None, None)
 
-        # Performance: Cached kernels
         self._kernel_3x3 = np.ones((3, 3), np.uint8)
         self._kernel_5x5 = cv2.getStructuringElement(cv2.MORPH_RECT, (5, 5))
         self._kernel_morph_21x21 = cv2.getStructuringElement(cv2.MORPH_RECT, (21, 21))
+
+        # Composed detection engine (shares settings/kernels via host lookup).
+        self.detection = DetectionPipeline(self)
 
     def update_settings(
         self: Any,
@@ -139,45 +120,36 @@ class ImageProcessor(
         if debug_settings:
             self.debug = debug_settings
 
+    # --- Detection facade (stable public / internal API) ---
+
+    @staticmethod
+    def load_image(image_path: str) -> Optional[np.ndarray]:
+        # Keep static API used by CLI/selftests: ImageProcessor.load_image(path)
+        return DetectionPipeline.load_image(image_path)  # type: ignore[misc]
+
+    def apply_clahe(self, image: np.ndarray) -> np.ndarray:
+        return self.detection.apply_clahe(image)
+
+    def detect_edges_multiscale(self, gray: np.ndarray) -> np.ndarray:
+        return self.detection.detect_edges_multiscale(gray)
+
+    def find_best_contour(self, *args: Any, **kwargs: Any):
+        return self.detection.find_best_contour(*args, **kwargs)
+
+    def _process_loaded_image(self, *args: Any, **kwargs: Any) -> CropResult:
+        return self.detection._process_loaded_image(*args, **kwargs)
+
+    def _nms_stage_candidates(self, *args: Any, **kwargs: Any):
+        return self.detection._nms_stage_candidates(*args, **kwargs)
+
+    def _snap_quad_to_edges(self, *args: Any, **kwargs: Any):
+        return self.detection._snap_quad_to_edges(*args, **kwargs)
+
+    def _quad_iou(self, *args: Any, **kwargs: Any) -> float:
+        return self.detection._quad_iou(*args, **kwargs)
+
+    def _refine_quad_with_grabcut(self, *args: Any, **kwargs: Any):
+        return self.detection._refine_quad_with_grabcut(*args, **kwargs)
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+__all__ = ["ImageProcessor", "CropResult", "PreviewProcessResult"]

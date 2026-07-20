@@ -679,7 +679,13 @@ class BatchActions:
             )
             return
 
-        if not self.state.failed_boundary_files:
+        # Review queue = boundary failures + low-confidence previews (if any).
+        review_paths: list[str] = list(self.state.failed_boundary_files or [])
+        for path in getattr(self.state, "low_confidence_files", None) or []:
+            if path and path not in review_paths:
+                review_paths.append(path)
+
+        if not review_paths:
             QMessageBox.information(
                 self.services.host_window,
                 self.messages.info_title,
@@ -687,9 +693,10 @@ class BatchActions:
             )
             return
 
-        files = [path for path in self.state.failed_boundary_files if os.path.exists(path)]
+        files = [path for path in review_paths if os.path.exists(path)]
         if not files:
             self.state.failed_boundary_files = []
+            self.state.low_confidence_files = []
             QMessageBox.information(
                 self.services.host_window,
                 self.messages.info_title,

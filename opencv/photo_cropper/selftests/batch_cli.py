@@ -509,6 +509,14 @@ def _test_cli_new_crop_options() -> None:
     settings_on = cli_mod.build_settings_from_args(args_on)
     assert settings_on.advanced.perspective_correct is True
 
+    args_scene = parser.parse_args(
+        ["--scene-preset", "album_multi", "--no-multi-photo-refine"]
+    )
+    settings_scene = cli_mod.build_settings_from_args(args_scene)
+    assert settings_scene.multi_photo.enabled is True
+    assert settings_scene.multi_photo.refine_with_single is False
+    assert settings_scene.algorithm.detection_mode == "accurate"
+
 def _test_processed_index_roundtrip_and_source_change() -> None:
     import os
     import tempfile

@@ -9,10 +9,11 @@ A Python application that automatically detects and accurately crops scanned pho
 ## Features
 
 ### Auto Photo Detection & Cropping
-- **6-stage intelligent detection algorithm**: High detection success rate across varied backgrounds and lighting
-- **Multi-photo detection**: Automatically separates multiple photos from a single scan
+- **8-stage intelligent detection**: Canny through LSD, plus NMS / GrabCut refine
+- **Scene presets / simple mode**: One-click scanner/desk/album tuning; hide advanced tabs
+- **Multi-photo detection**: Split multiple photos per scan + ROI single-detect refine (default ON)
 - **Perspective correction**: Straightens skewed photos automatically (enabled by default)
-- **Manual boundary editing**: Drag contour points or click 4 corners when auto-detection fails
+- **Manual boundary editing**: Drag contour points or click 4 corners when auto-detection fails or confidence is low
 
 ### Batch Processing
 - **Folder-level batch processing**: Process large sets of images at once (with ETA display)
@@ -56,10 +57,15 @@ A Python application that automatically detects and accurately crops scanned pho
 | Stage 3 | Adaptive Threshold | Adaptive binarization |
 | Stage 4 | Gradient Analysis (Sobel) | Gradient-based candidate generation |
 | Stage 5 | Harris Corner Detection | Corner detection (optional) |
-| Stage 6 | Hough Rectangle Fallback | Line-cluster based rectangle inference |
+| Stage 6 | Morphology Gradient | Morphology gradient + Otsu (textured beds) |
+| Stage 7 | Hough Rectangle Fallback | Line-cluster based rectangle inference |
+| Stage 8 | LSD Rectangle | Line Segment Detector rectangles (`accurate`) |
 
 - **fast / balanced**: Early-exit for speed
-- **accurate**: Collects all stage candidates, then selects the best via global score re-ranking
+- **accurate**: Full-pass candidates + NMS + re-rank + content contrast + GrabCut refine
+- **Scene presets**: Workbench / algorithm tab / CLI `--scene-preset`
+- **Multi-photo ROI refine**: Re-run single detection per photo (default ON)
+- Pipeline details: [`docs/detection-pipeline.md`](docs/detection-pipeline.md)
 
 ---
 
@@ -102,6 +108,12 @@ python -m photo_cropper.cli -i ./scans -o ./cropped --resize instagram_square
 
 # Separate multiple photos from one scan
 python -m photo_cropper.cli -i ./scans -o ./cropped --multi-photo
+
+# Scene preset (scanner / desk / album, etc.)
+python -m photo_cropper.cli -i ./scans -o ./cropped --scene-preset scanner_white
+
+# Album multi-photo + ROI refine
+python -m photo_cropper.cli -i ./scans -o ./cropped --scene-preset album_multi --multi-photo-refine
 
 # Separate multiple photos into individual subfolders
 python -m photo_cropper.cli -i ./scans -o ./cropped --multi-photo --multi-photo-separate-folders

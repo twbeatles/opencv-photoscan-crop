@@ -153,12 +153,22 @@ def run_benchmark(
         )
         stage_distribution[stage_name] = stage_distribution.get(stage_name, 0) + 1
 
+        failure_reason = getattr(result, "failure_reason", None)
+        failure_value = (
+            failure_reason.value
+            if failure_reason is not None and hasattr(failure_reason, "value")
+            else None
+        )
+        stage_scores = list(getattr(result, "stage_scores", None) or [])
+
         record: Dict[str, Any] = {
             "file": file_name,
             "has_photo": bool(item["has_photo"]),
             "predicted_has_photo": predicted_has_photo,
             "detection_stage": stage_name,
             "confidence": float(result.confidence or 0.0),
+            "failure_reason": failure_value,
+            "stage_scores": stage_scores,
         }
 
         if item["has_photo"]:
@@ -217,16 +227,57 @@ def run_benchmark(
     return report
 
 
+def _compare_baseline(report: Dict[str, Any], baseline_path: str) -> Dict[str, Any]:
+    """Return metric deltas vs a previous report JSON."""
+    with open(baseline_path, "r", encoding="utf-8") as f:
+        baseline = json.load(f)
+    base_metrics = baseline.get("metrics") or {}
+    cur_metrics = report.get("metrics") or {}
+    keys = (
+        "success_rate",
+        "mean_iou",
+        "median_iou",
+        "p90_iou",
+        "false_positive_rate",
+    )
+    delta: Dict[str, Any] = {}
+    for key in keys:
+        cur = float(cur_metrics.get(key, 0.0) or 0.0)
+        base = float(base_metrics.get(key, 0.0) or 0.0)
+        delta[key] = {
+            "current": cur,
+            "baseline": base,
+            "delta": cur - base,
+        }
+    return delta
+
+
 def create_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="PhotoCropper benchmark harness")
     parser.add_argument("--images", required=True, help="Directory with benchmark images")
     parser.add_argument("--labels", required=True, help="Labels JSON path")
     parser.add_argument("--report", required=False, help="Output report JSON path")
     parser.add_argument(
+        "--baseline",
+        required=False,
+        help="Previous report JSON for metric delta comparison",
+    )
+    parser.add_argument(
         "--detect-mode",
         choices=["fast", "balanced", "accurate"],
         default="accurate",
         help="Detection mode for benchmark runs",
+    )
+    parser.add_argument(
+        "--scene-preset",
+        choices=[
+            "scanner_white",
+            "desk_photo",
+            "dark_background",
+            "album_multi",
+            "document",
+        ],
+        help="Optional scene preset applied before detect-mode",
     )
     return parser
 
@@ -236,6 +287,10 @@ def main(argv: Optional[List[str]] = None) -> int:
     args = parser.parse_args(argv)
 
     settings = AppSettings()
+    if args.scene_preset:
+        from .core.scene_presets import apply_scene_preset
+
+        apply_scene_preset(settings, args.scene_preset)
     settings.algorithm.detection_mode = args.detect_mode
 
     report = run_benchmark(
@@ -253,6 +308,21 @@ def main(argv: Optional[List[str]] = None) -> int:
         f"p90_iou={metrics['p90_iou']:.4f}, "
         f"false_positive_rate={metrics['false_positive_rate']:.4f}"
     )
+    if args.baseline:
+        try:
+            delta = _compare_baseline(report, args.baseline)
+            report["baseline_delta"] = delta
+            print("Baseline delta:")
+            for key, info in delta.items():
+                print(
+                    f"  {key}: {info['current']:.4f} "
+                    f"(baseline {info['baseline']:.4f}, Δ {info['delta']:+.4f})"
+                )
+            if args.report:
+                with open(args.report, "w", encoding="utf-8") as f:
+                    json.dump(report, f, indent=2, ensure_ascii=False)
+        except Exception as exc:
+            print(f"Baseline compare failed: {exc}")
     if args.report:
         print(f"Report written: {args.report}")
     return 0

@@ -249,18 +249,62 @@ class PreviewActions:
                 if crop_result.detection_stage
                 else "Unknown"
             )
+            conf = float(getattr(crop_result, "confidence", 0.0) or 0.0)
             if self.refs.status_label is not None:
+                low_conf_hint = ""
+                if conf < 0.55:
+                    low_conf_hint = " · 신뢰도 낮음(수동 확인 권장)"
+                try:
+                    base = t("preview.success", stage=stage)
+                except Exception:
+                    base = f"미리보기 성공 ({stage})"
                 self.refs.status_label.setText(
-                    t("preview.success", stage=stage)
+                    f"{base} · conf={conf:.2f}{low_conf_hint}"
                 )
         else:
             if self.refs.preview_widget is not None:
                 self.refs.preview_widget.set_processed_image(None)
             self.state.last_processed = None
             if self.refs.status_label is not None:
-                self.refs.status_label.setText(
-                    t("preview.failed.message", message=crop_result.message)
+                reason = getattr(crop_result, "failure_reason", None)
+                reason_txt = (
+                    f" [{reason.value}]"
+                    if reason is not None and getattr(reason, "value", None)
+                    else ""
                 )
+                self.refs.status_label.setText(
+                    t(
+                        "preview.failed.message",
+                        message=(
+                            f"{crop_result.message}{reason_txt} · "
+                            "미리보기에서 4점을 지정하거나 「실패 파일 로드」로 수동 보정"
+                        ),
+                    )
+                )
+            try:
+                from ...widgets.toast_notification import ToastManager
+
+                ToastManager.warning(
+                    "경계 감지 실패 — 미리보기에서 점을 지정하거나 "
+                    "정밀 모드/장면 프리셋 후 다시 미리보기 하세요."
+                )
+            except Exception:
+                pass
+
+        # Track low-confidence successes for batch review convenience.
+        try:
+            conf = float(getattr(crop_result, "confidence", 0.0) or 0.0)
+            path = preview_path or self.state.current_image_path
+            if (
+                crop_result.success
+                and path
+                and conf < 0.55
+            ):
+                low = getattr(self.state, "low_confidence_files", None)
+                if isinstance(low, list) and path not in low:
+                    low.append(path)
+        except Exception:
+            pass
 
         self.state.applied_preview_request_id = request_id
         if self._update_batch_edit_controls is not None:

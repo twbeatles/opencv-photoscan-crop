@@ -52,7 +52,11 @@ class MultiPhotoDetector:
         max_photos: int = 20,
         merge_distance: int = 50,
         min_aspect_ratio: float = 0.2,
-        max_aspect_ratio: float = 5.0
+        max_aspect_ratio: float = 5.0,
+        canny_min: int = 50,
+        canny_max: int = 150,
+        adaptive_block_size: int = 11,
+        adaptive_c: float = 2.0,
     ):
         """
         Initialize detector.
@@ -65,6 +69,8 @@ class MultiPhotoDetector:
             merge_distance: Distance threshold for merging nearby contours
             min_aspect_ratio: Minimum width/height ratio
             max_aspect_ratio: Maximum width/height ratio
+            canny_min/canny_max: Shared with AlgorithmSettings when provided
+            adaptive_block_size/adaptive_c: Adaptive threshold params
         """
         self.min_area_ratio = min_area_ratio
         self.max_area_ratio = max_area_ratio
@@ -73,18 +79,17 @@ class MultiPhotoDetector:
         self.merge_distance = merge_distance
         self.min_aspect_ratio = min_aspect_ratio
         self.max_aspect_ratio = max_aspect_ratio
+        self.canny_min = int(canny_min)
+        self.canny_max = int(canny_max)
+        self.adaptive_block_size = int(adaptive_block_size)
+        self.adaptive_c = float(adaptive_c)
 
     @staticmethod
     def _order_points(pts: np.ndarray) -> np.ndarray:
-        """Order points as TL, TR, BR, BL."""
-        rect = np.zeros((4, 2), dtype=np.float32)
-        s = pts.sum(axis=1)
-        rect[0] = pts[np.argmin(s)]
-        rect[2] = pts[np.argmax(s)]
-        diff = np.diff(pts, axis=1)
-        rect[1] = pts[np.argmin(diff)]
-        rect[3] = pts[np.argmax(diff)]
-        return rect
+        """Order points as TL, TR, BR, BL (shared robust geometry)."""
+        from .image.geometry import ImageGeometryMixin
+
+        return ImageGeometryMixin.order_points(pts)
 
     def _quad_from_contour(self, contour: np.ndarray) -> Optional[np.ndarray]:
         """Convert contour into a best-effort quad candidate."""
@@ -262,11 +267,21 @@ class MultiPhotoDetector:
         # Apply Gaussian blur
         blurred = cv2.GaussianBlur(gray, (5, 5), 0)
         
+        block = int(self.adaptive_block_size)
+        if block < 3:
+            block = 3
+        if block % 2 == 0:
+            block += 1
+        max_block = max(3, min(blurred.shape[:2]) - 1)
+        if max_block % 2 == 0:
+            max_block -= 1
+        block = min(block, max_block)
+
         # Adaptive threshold
         thresh = cv2.adaptiveThreshold(
             blurred, 255,
             cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
-            cv2.THRESH_BINARY_INV, 11, 2
+            cv2.THRESH_BINARY_INV, block, float(self.adaptive_c)
         )
         
         # Morphological operations
@@ -284,11 +299,13 @@ class MultiPhotoDetector:
         """Detect contours using Canny edge detection."""
         blurred = cv2.GaussianBlur(gray, (5, 5), 0)
         
-        # Multi-scale Canny
+        # Multi-scale Canny (thresholds shared with AlgorithmSettings when set)
+        base_low = max(1, int(self.canny_min))
+        base_high = max(base_low + 1, int(self.canny_max))
         edges_list = []
         for scale in [0.5, 1.0, 1.5]:
-            low = int(50 * scale)
-            high = int(150 * scale)
+            low = max(1, int(base_low * scale))
+            high = max(low + 1, int(base_high * scale))
             edges = cv2.Canny(blurred, low, high)
             edges_list.append(edges)
         
