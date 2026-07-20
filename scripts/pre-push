@@ -1,0 +1,22 @@
+#!/usr/bin/env bash
+# Git pre-push hook: block push if local verify fails (same path as CI).
+set -euo pipefail
+
+REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || true)"
+if [[ -z "$REPO_ROOT" ]]; then
+  echo "pre-push: not inside a git repository" >&2
+  exit 1
+fi
+
+cd "$REPO_ROOT"
+
+if command -v pwsh >/dev/null 2>&1; then
+  echo "==> pre-push: running scripts/verify.ps1"
+  pwsh -NoProfile -File scripts/verify.ps1
+elif command -v bash >/dev/null 2>&1 && [[ -f scripts/verify.sh ]]; then
+  echo "==> pre-push: running scripts/verify.sh"
+  bash scripts/verify.sh
+else
+  echo "pre-push: neither pwsh nor bash+verify.sh available" >&2
+  exit 1
+fi

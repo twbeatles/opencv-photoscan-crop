@@ -360,11 +360,13 @@ class ImageContourSelectionMixin:
 
         bgd = np.zeros((1, 65), np.float64)
         fgd = np.zeros((1, 65), np.float64)
+        # GC_INIT_WITH_MASK ignores rect at runtime; stubs still require a Rect.
+        dummy_rect = (0, 0, max(1, rw), max(1, rh))
         try:
             cv2.grabCut(
                 roi,
                 mask,
-                None,
+                dummy_rect,
                 bgd,
                 fgd,
                 max(1, int(iterations)),

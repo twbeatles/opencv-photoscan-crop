@@ -1,6 +1,10 @@
 # Contributing / Agent Automation Guide
 
-## Quick verify
+## Pre-push gate (required)
+
+**Do not push until local verify is green.** GitHub Actions runs the same
+`scripts/verify.*` path on Ubuntu + Windows; pyright failures there fail the
+whole `verify` workflow.
 
 From repository root:
 
@@ -10,7 +14,22 @@ pwsh -File scripts/verify.ps1
 bash scripts/verify.sh
 ```
 
-Runs: `compileall` → `photo_cropper.selftest` → `pyright`.
+Runs: `compileall` → `photo_cropper.selftest` → `pytest` (unit) → `pyright`.
+
+Optional fast type-only check (same config CI uses):
+
+```bash
+pyright --project pyrightconfig.json
+```
+
+Install a local git pre-push hook once (optional but recommended):
+
+```bash
+# Windows (PowerShell)
+pwsh -File scripts/install-hooks.ps1
+# POSIX
+bash scripts/install-hooks.sh
+```
 
 Optional detection benchmark (skips if private labels/images are absent):
 
@@ -21,6 +40,14 @@ bash scripts/run_benchmark_if_present.sh
 ```
 
 Detection pipeline notes: `opencv/docs/detection-pipeline.md`
+
+### Common CI failure patterns
+
+| Symptom | Likely cause | Fix |
+|---------|--------------|-----|
+| `Argument of type "float" cannot be assigned to parameter ... of type "int"` | Building kwargs via mixed `dict(...)` then `**kwargs` | Pass explicit typed kwargs (or `int()`/`float()` casts) to constructors |
+| `No overloads for "grabCut"` / `None` not assignable to `Rect` | OpenCV stubs require a rect even for `GC_INIT_WITH_MASK` | Pass a dummy `(x, y, w, h)` rect |
+| `Code is too complex to analyze` | Large monolithic functions | Split into helpers (stages / finalize / crop) |
 
 ## App directory
 
