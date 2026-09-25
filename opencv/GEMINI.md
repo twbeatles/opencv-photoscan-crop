@@ -53,7 +53,7 @@
 
 | 파일 | 역할 |
 |------|------|
-| `cli_support/runtime.py` | CLI parser/settings merge/validation/execution runtime |
+| `cli_support/runtime.py` | CLI compat facade (impl: `arg_types`/`settings_sources`/`settings_builder`/`parser`/`batch_runner`) |
 | `image/processor.py` | 이미지 처리 파사드 (후처리·저장·탐지 위임) |
 | `image/detection_pipeline.py` | 8단계 경계 탐지 엔진 (NMS/GrabCut 포함) |
 | `image/types.py` | 크롭/미리보기 결과 타입 (`FailureReason`, `stage_scores`) |
@@ -72,6 +72,10 @@
 | `processed_index.py` | `skip_processed` 로컬 처리 이력 인덱스 |
 | `utils/image_io.py` | 유니코드 경로 안전 이미지 로딩 헬퍼 |
 | `utils/path_validation.py` | 안전한 경로/파일명 segment validator |
+| `utils/file_helpers.py` | file-helper compat facade (impl: `paths`/`scanning`/`hashing`/`file_ops`) |
+| `core/face/` | face orchestrator + `types`/`model_store`/`detect_haar`/`detect_dnn`/`geometry`/`factory` |
+| `core/recipes/` | `manager.py` + `record`/`defaults`/`snapshot`/`migration` |
+| `core/jobs/` | `orchestrator.py` + `finalization`/`ai_metadata`/`maintenance` mixins |
 
 ### Stability-Critical Flow
 
@@ -117,7 +121,9 @@
 | `main/translation.py` | 메인 윈도우 런타임 번역 갱신 |
 | `widgets/settings/` | 설정 패널 facade + 탭/검증/i18n helper 구현 |
 | `widgets/management/` | Library/Review/Duplicates/Jobs/Collections/Recipes/Settings 페이지와 library helper |
-| `preview_widget.py` | 이미지 미리보기 위젯 |
+| `preview_widget.py` | image preview widget (compat facade; impl `preview_conversions`/`zoomable_view`/`preview_panel`) |
+| `crop_editor_widget.py` | crop editor widget (compat facade; impl `crop_editor_modes`/`crop_editor_conversions`/`crop_editor_view`/`crop_editor_panel`/`rotation_widget`) |
+| `compare_widget.py` | before/after widget (compat facade; impl `compare_conversions`/`compare_modes`/`compare_views`/`compare_panel`) |
 | `toast_notification.py` | 토스트 알림 시스템 |
 
 ## 2026-04-19 Refactor Status
@@ -160,6 +166,18 @@
 - Batch UI completion finalizes tracked jobs in a background thread and reports completion/failure through `management_task_finished`; manual-extract state is released only from the UI completion path.
 - Scheduler `once` skips that do not reach `STARTED` do not recalculate `next_run`, so they retry on the next scheduler tick.
 - `.codegraph/` is a local CodeGraph MCP index artifact and is intentionally ignored.
+
+## 2026-09-26 SOLID Code-Splitting Status
+
+- 700-1400 line modules split by responsibility; existing import paths kept as compat facades:
+  - `utils/file_helpers.py` -> `paths`/`scanning`/`hashing`/`file_ops`
+  - `cli_support/runtime.py` -> `arg_types`/`settings_sources`/`settings_builder`/`parser`/`batch_runner`
+  - `core/face/detector.py` -> `types`/`model_store`/`detect_haar`/`detect_dnn`/`geometry` + `factory` singleton (old circular shims resolved)
+  - `core/recipes/manager.py` -> `record`/`defaults`/`snapshot`/`migration`
+  - `core/jobs/orchestrator.py` -> `finalization`/`ai_metadata`/`maintenance` mixins
+  - `ui/widgets/{crop_editor,preview,compare}_widget.py` -> view/panel/mode modules
+  - `selftests/{batch_cli,image_processing,watch_mode}.py` -> domain test modules (`runner.py` order unchanged)
+- Gate: `scripts/verify.ps1` (compileall + selftest + pytest + pyright) stays green
 
 ## Detection Algorithm Pipeline
 

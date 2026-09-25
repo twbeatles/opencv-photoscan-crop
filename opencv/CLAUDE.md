@@ -24,9 +24,9 @@ winotify>=1.1.0  # Windows 알림(선택)
 photo_cropper/
 ├── main.py
 ├── cli.py
-├── cli_support/
+├── cli_support/            # runtime.py facade + arg_types/settings_sources/settings_builder/parser/batch_runner
 ├── selftest.py
-├── selftests/
+├── selftests/              # runner.py + domain test modules (facades: batch_cli/image_processing/watch_mode)
 ├── core/
 │   ├── advanced/
 │   ├── app_paths.py
@@ -37,10 +37,11 @@ photo_cropper/
 │   │   └── geometry.py
 │   ├── batch/
 │   ├── file_watch/
-│   ├── jobs/
+│   ├── jobs/               # orchestrator.py + finalization/ai_metadata/maintenance mixins
 │   ├── library/
-│   ├── recipes/
+│   ├── recipes/            # manager.py + record/defaults/snapshot/migration
 │   ├── settings_model/
+│   ├── face/               # detector.py orchestrator + types/model_store/detect_haar/detect_dnn/geometry/factory
 │   ├── scene_presets.py    # scanner/desk/album/document presets
 │   ├── multi_photo_detector.py
 │   ├── watermark_processor.py
@@ -61,6 +62,7 @@ photo_cropper/
 └── utils/
     ├── image_io.py
     └── path_validation.py
+    └── file_helpers.py   # compat facade -- impl: paths/scanning/hashing/file_ops
 ```
 
 ## 핵심 클래스/역할

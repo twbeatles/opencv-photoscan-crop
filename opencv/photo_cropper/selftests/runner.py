@@ -15,7 +15,7 @@ from .imports import (
     _test_image_save_io_module_smoke,
     _test_watch_mode_coordinator_import_smoke,
 )
-from .watch_mode import (
+from .watch_coordinator import (
     _test_watch_mode_coordinator_invalid_input,
     _test_watch_mode_coordinator_recursive_output_guard,
     _test_watch_mode_processing_disables_failed_file_move,
@@ -25,32 +25,42 @@ from .watch_mode import (
     _test_watch_max_wait_roundtrip,
     _test_watch_callback_runs_on_background_worker,
     _test_watch_readiness_is_owned_by_auto_processor,
+    _test_folder_watcher_recursive_excluded_roots,
+)
+from .watch_guards_scheduler import (
     _test_watch_actions_block_while_batch_or_manual_running,
     _test_batch_actions_block_when_watch_running,
     _test_scheduler_once_preserves_task_until_started,
     _test_scheduler_once_skip_keeps_next_run_due,
     _test_scheduled_batch_uses_task_paths,
-    _test_folder_watcher_recursive_excluded_roots,
 )
-from .batch_cli import (
+from .batch_session import (
     _test_batch_session_service_smoke,
     _test_batch_session_service_reentry_guard,
+    _test_batch_thread_local_reuse,
+    _test_batch_post_pipeline_order,
+    _test_output_reservation_is_thread_safe,
+    _test_processing_logger_partial_summary,
+)
+from .batch_failed_files import (
     _test_boundary_failed_file_collection_helper,
     _test_boundary_failed_file_collection_prefers_relative_paths,
     _test_recursive_scan_excludes_internal_generated_dirs,
     _test_classify_failed_files_preserves_relative_dirs,
     _test_classify_failed_files_rejects_invalid_failed_folder,
-    _test_cli_settings_merge_priority,
-    _test_batch_thread_local_reuse,
-    _test_batch_post_pipeline_order,
+    _test_retry_failed_files_normalizes_empty_output_path,
     _test_skip_processed_with_classification_subfolder,
+)
+from .cli_settings import (
+    _test_cli_settings_merge_priority,
     _test_cli_new_crop_options,
     _test_processed_index_roundtrip_and_source_change,
     _test_processed_index_backward_compat_and_partial_status,
-    _test_retry_failed_files_normalizes_empty_output_path,
-    _test_batch_actions_recursive_output_guard,
-    _test_management_preflight_file_batch_guard,
     _test_profile_apply_rebuild_validation,
+    _test_cli_rejects_invalid_settings_segments,
+    _test_processed_signature_includes_routing_and_backup,
+)
+from .cli_execution import (
     _test_cli_cancel_exit_code_130,
     _test_cli_cancel_with_failed_still_returns_130,
     _test_cli_partial_exit_code_rules,
@@ -58,10 +68,8 @@ from .batch_cli import (
     _test_library_repository_singleton_reset,
     _test_ui_batch_completion_finalizes_in_background_and_clears_manual_state,
     _test_cli_recursive_output_guard,
-    _test_cli_rejects_invalid_settings_segments,
-    _test_processed_signature_includes_routing_and_backup,
-    _test_output_reservation_is_thread_safe,
-    _test_processing_logger_partial_summary,
+    _test_batch_actions_recursive_output_guard,
+    _test_management_preflight_file_batch_guard,
 )
 from .settings_ui import (
     _test_classification_settings_custom_alias_normalizes_to_advanced,
@@ -76,33 +84,39 @@ from .settings_ui import (
     _test_settings_panel_ai_roundtrip,
     _test_settings_panel_algorithm_tuning_roundtrip,
 )
-from .image_processing import (
+from .extract_contour import (
     _test_manual_extract_session_runner_empty,
     _test_contour_utils_roundtrip,
-    _test_preview_widget_contour_redraw_variants,
     _test_manual_preview_shared_crop_mode,
+    _test_find_best_contour_uses_score_edge_map,
+    _test_accurate_mode_global_rerank_prefers_best_stage,
+)
+from .detect_accuracy import (
+    _test_crop_accuracy_synthetic,
+    _test_order_points_rotated_quad_stable,
+    _test_scene_preset_album_enables_multi,
+    _test_crop_accuracy_hard_scenarios,
+    _test_detection_pipeline_composition,
+    _test_nms_and_snap_helpers,
+    _test_no_photo_false_positive_regression,
+)
+from .io_enhance import (
     _test_unicode_text_watermark,
-    _test_preview_single_pass,
+    _test_grayscale_image_watermark_regression,
     _test_perspective_toggle_warp_vs_axis_crop,
     _test_save_image_fallback_and_metadata_best_effort,
     _test_resize_fill_no_upscale_boundary,
     _test_recursive_output_paths_preserve_relative_dirs,
     _test_unicode_image_io_helper_and_blank_path_guards,
     _test_history_record_applied_and_merge,
-    _test_crop_accuracy_synthetic,
-    _test_order_points_rotated_quad_stable,
-    _test_scene_preset_album_enables_multi,
-    _test_crop_accuracy_hard_scenarios,
-    _test_nms_and_snap_helpers,
-    _test_detection_pipeline_composition,
-    _test_no_photo_false_positive_regression,
-    _test_grayscale_image_watermark_regression,
+    _test_exif_orientation_normalization,
     _test_max_image_size_limit_applied,
+)
+from .preview_face_bench import (
+    _test_preview_widget_contour_redraw_variants,
+    _test_preview_single_pass,
     _test_face_dnn_fallback_when_download_fails,
     _test_face_rotation_uses_primary_face,
-    _test_find_best_contour_uses_score_edge_map,
-    _test_accurate_mode_global_rerank_prefers_best_stage,
-    _test_exif_orientation_normalization,
     _test_benchmark_harness_report_contract,
 )
 from .multi_photo import (
