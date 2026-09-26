@@ -11,3 +11,7 @@ PyQt6>=6.5.0
 
 # v9.0: Windows notifications (optional)
 winotify>=1.1.0; platform_system == "Windows"
+
+# Fluent UI (desktop, ktrain-style)
+PyQt6-Fluent-Widgets>=1.6
+darkdetect>=0.8

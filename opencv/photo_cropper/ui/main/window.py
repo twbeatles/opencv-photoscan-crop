@@ -46,7 +46,7 @@ class MainWindow(ManagementRuntimeMixin, TranslationRuntimeMixin, QMainWindow):
     """Thin composition root for the Photo Cropper desktop UI."""
 
     VERSION = "9.0"
-    TITLE = f"📸 사진 자동 자르기 v{VERSION}"
+    TITLE = f"사진 자동 자르기 v{VERSION}"
     preview_process_requested = pyqtSignal(int, str, int, object)
     batch_progress_received = pyqtSignal(object)
     batch_log_received = pyqtSignal(str, str)
@@ -176,18 +176,34 @@ class MainWindow(ManagementRuntimeMixin, TranslationRuntimeMixin, QMainWindow):
         return self.services.batch_session.processor
 
     def _setup_window(self) -> None:
+        from ..design_tokens import (
+            MIN_WINDOW_HEIGHT,
+            MIN_WINDOW_WIDTH,
+            preferred_window_size,
+        )
+
         self.setWindowTitle(t("app.title", version=self.VERSION))
-        self.setMinimumSize(1200, 800)
-        self.resize(1400, 900)
-
         screen_obj = QApplication.primaryScreen()
+        available = None
         if screen_obj is not None:
-            screen = screen_obj.geometry()
-            self.move(
-                (screen.width() - self.width()) // 2,
-                (screen.height() - self.height()) // 2,
+            available = screen_obj.availableGeometry()
+        if available is not None:
+            width, height = preferred_window_size(
+                available.width(), available.height()
             )
-
+        else:
+            width, height = preferred_window_size(
+                MIN_WINDOW_WIDTH, MIN_WINDOW_HEIGHT
+            )
+        self.resize(width, height)
+        self.setMinimumSize(
+            min(MIN_WINDOW_WIDTH, width), min(MIN_WINDOW_HEIGHT, height)
+        )
+        if available is not None:
+            self.move(
+                available.x() + (available.width() - self.width()) // 2,
+                available.y() + (available.height() - self.height()) // 2,
+            )
     def dragEnterEvent(self, a0: Optional[QDragEnterEvent]) -> None:
         self.input_actions.drag_enter_event(a0)
 

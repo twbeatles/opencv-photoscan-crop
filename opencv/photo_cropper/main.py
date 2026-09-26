@@ -6,10 +6,11 @@ Photo Cropper - Main Application Entry Point
 Launches the PyQt6 photo auto-cropping application.
 """
 
-import sys
 import logging
-from PyQt6.QtWidgets import QApplication
+import sys
+
 from PyQt6.QtCore import Qt
+from PyQt6.QtWidgets import QApplication
 
 try:
     from .ui.main import MainWindow
@@ -46,12 +47,14 @@ def main():
     app.setApplicationName("Photo Cropper")
     app.setApplicationVersion("9.0")
     app.setOrganizationName("PhotoCropper")
-    
     # Set default font for Korean text
     from PyQt6.QtGui import QFont
+
+    from .ui.theme_fluent import setup_app_theme as _setup_fluent_theme
     font = QFont("Segoe UI", 10)
     font.setFamilies(["Segoe UI", "Malgun Gothic", "Apple SD Gothic Neo"])
     app.setFont(font)
+    _setup_fluent_theme(app)
     
     # Create and show main window
     window = MainWindow()

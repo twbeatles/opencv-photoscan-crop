@@ -94,7 +94,7 @@ def build_menu(
         return
     refs.menus["view"] = view_menu
     refs.theme_actions = {}
-    for theme_name in get_available_themes():
+    for theme_name in ("auto", *get_available_themes()):
         action = QAction(t("menu.view.theme", theme=theme_name.title()), window)
         action.setCheckable(True)
         action.triggered.connect(

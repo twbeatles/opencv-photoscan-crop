@@ -12,6 +12,7 @@ from PyQt6.QtWidgets import (
     QLabel,
     QLineEdit,
     QListWidget,
+    QListWidgetItem,
     QPushButton,
     QSplitter,
     QStackedWidget,
@@ -20,6 +21,19 @@ from PyQt6.QtWidgets import (
 )
 
 from ....i18n.catalog import t
+from ...design_tokens import (
+    CONTROL_GAP,
+    CONTROL_HEIGHT_MD,
+    CONTROL_HEIGHT_SM,
+    NAV_LIST_QSS,
+    NAV_RAIL_WIDTH,
+    PAGE_MARGIN,
+    SETTINGS_PANEL_MAX_WIDTH,
+    SPACE_SM,
+    SPACE_XS,
+    SPLITTER_HANDLE_QSS,
+)
+from ...fluent import nav_icon
 from ...widgets.histogram_widget import HistogramWidget
 from ...widgets.management_pages import (
     CollectionsPage,
@@ -49,36 +63,21 @@ def _build_workbench_page(
 ) -> QWidget:
     page = QWidget()
     main_layout = QVBoxLayout(page)
-    main_layout.setContentsMargins(8, 8, 8, 8)
+    main_layout.setContentsMargins(PAGE_MARGIN, PAGE_MARGIN, PAGE_MARGIN, PAGE_MARGIN)
     main_layout.setSpacing(0)
 
     outer_splitter = QSplitter(Qt.Orientation.Vertical)
     outer_splitter.setHandleWidth(6)
-    outer_splitter.setStyleSheet(
-        """
-        QSplitter::handle:vertical {
-            background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
-                stop:0 transparent, stop:0.4 rgba(88, 166, 255, 0.5),
-                stop:0.6 rgba(88, 166, 255, 0.5), stop:1 transparent);
-            height: 6px;
-            margin: 2px 0;
-        }
-        QSplitter::handle:vertical:hover {
-            background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
-                stop:0 transparent, stop:0.3 rgba(88, 166, 255, 0.8),
-                stop:0.7 rgba(88, 166, 255, 0.8), stop:1 transparent);
-        }
-    """
-    )
+    outer_splitter.setStyleSheet(SPLITTER_HANDLE_QSS)
 
     folder_card = QFrame()
     folder_card.setObjectName("statsFrame")
     folder_card_layout = QVBoxLayout(folder_card)
-    folder_card_layout.setContentsMargins(10, 8, 10, 8)
-    folder_card_layout.setSpacing(6)
+    folder_card_layout.setContentsMargins(SPACE_SM, SPACE_XS, SPACE_SM, SPACE_XS)
+    folder_card_layout.setSpacing(CONTROL_GAP)
 
     path_grid = QGridLayout()
-    path_grid.setSpacing(6)
+    path_grid.setSpacing(CONTROL_GAP)
     path_grid.setContentsMargins(0, 0, 0, 0)
     path_grid.setColumnStretch(1, 1)
 
@@ -89,14 +88,14 @@ def _build_workbench_page(
 
     refs.input_path_edit = QLineEdit()
     refs.input_path_edit.setPlaceholderText(t("central.input_placeholder"))
-    refs.input_path_edit.setMinimumHeight(32)
+    refs.input_path_edit.setMinimumHeight(CONTROL_HEIGHT_MD)
     refs.input_path_edit.setTextMargins(8, 0, 8, 0)
     refs.input_path_edit.textChanged.connect(input_actions.on_input_path_changed)
     path_grid.addWidget(refs.input_path_edit, 0, 1)
 
     input_browse_btn = QPushButton(t("central.browse"))
     input_browse_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-    input_browse_btn.setMinimumHeight(32)
+    input_browse_btn.setMinimumHeight(CONTROL_HEIGHT_MD)
     input_browse_btn.clicked.connect(input_actions.select_input_folder)
     path_grid.addWidget(input_browse_btn, 0, 2)
     refs.buttons["central.input_browse"] = input_browse_btn
@@ -108,21 +107,21 @@ def _build_workbench_page(
 
     refs.output_path_edit = QLineEdit()
     refs.output_path_edit.setPlaceholderText(t("central.output_placeholder"))
-    refs.output_path_edit.setMinimumHeight(32)
+    refs.output_path_edit.setMinimumHeight(CONTROL_HEIGHT_MD)
     refs.output_path_edit.setTextMargins(8, 0, 8, 0)
     refs.output_path_edit.textChanged.connect(input_actions.on_output_path_changed)
     path_grid.addWidget(refs.output_path_edit, 1, 1)
 
     output_browse_btn = QPushButton(t("central.change"))
     output_browse_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-    output_browse_btn.setMinimumHeight(32)
+    output_browse_btn.setMinimumHeight(CONTROL_HEIGHT_MD)
     output_browse_btn.clicked.connect(input_actions.select_output_folder)
     path_grid.addWidget(output_browse_btn, 1, 2)
     refs.buttons["central.output_browse"] = output_browse_btn
 
     output_open_btn = QPushButton(t("central.open_output_folder"))
     output_open_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-    output_open_btn.setMinimumHeight(32)
+    output_open_btn.setMinimumHeight(CONTROL_HEIGHT_MD)
     output_open_btn.clicked.connect(input_actions.open_output_folder)
     path_grid.addWidget(output_open_btn, 1, 3)
     refs.buttons["central.output_open"] = output_open_btn
@@ -130,7 +129,7 @@ def _build_workbench_page(
 
     hint_layout = QHBoxLayout()
     hint_layout.setContentsMargins(0, 0, 0, 0)
-    hint_icon = QLabel("?뮕")
+    hint_icon = QLabel()
     hint_text = QLabel(t("central.drag_hint"))
     hint_text.setObjectName("subtitleLabel")
     hint_layout.addWidget(hint_icon)
@@ -143,31 +142,31 @@ def _build_workbench_page(
 
     refs.batch_load_btn = QPushButton(t("central.load_batch"))
     refs.batch_load_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-    refs.batch_load_btn.setMinimumHeight(30)
+    refs.batch_load_btn.setMinimumHeight(CONTROL_HEIGHT_SM)
     refs.batch_load_btn.clicked.connect(batch_actions.load_batch_images_for_edit)
     edit_nav_layout.addWidget(refs.batch_load_btn)
 
     refs.batch_failed_btn = QPushButton(t("central.load_failed"))
     refs.batch_failed_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-    refs.batch_failed_btn.setMinimumHeight(30)
+    refs.batch_failed_btn.setMinimumHeight(CONTROL_HEIGHT_SM)
     refs.batch_failed_btn.clicked.connect(batch_actions.load_failed_boundary_images_for_edit)
     edit_nav_layout.addWidget(refs.batch_failed_btn)
 
     refs.batch_prev_btn = QPushButton(t("central.prev"))
     refs.batch_prev_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-    refs.batch_prev_btn.setMinimumHeight(30)
+    refs.batch_prev_btn.setMinimumHeight(CONTROL_HEIGHT_SM)
     refs.batch_prev_btn.clicked.connect(navigation_actions.navigate_prev)
     edit_nav_layout.addWidget(refs.batch_prev_btn)
 
     refs.batch_next_btn = QPushButton(t("central.next"))
     refs.batch_next_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-    refs.batch_next_btn.setMinimumHeight(30)
+    refs.batch_next_btn.setMinimumHeight(CONTROL_HEIGHT_SM)
     refs.batch_next_btn.clicked.connect(navigation_actions.navigate_next)
     edit_nav_layout.addWidget(refs.batch_next_btn)
 
     refs.batch_save_edits_btn = QPushButton(t("central.save_edits"))
     refs.batch_save_edits_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-    refs.batch_save_edits_btn.setMinimumHeight(30)
+    refs.batch_save_edits_btn.setMinimumHeight(CONTROL_HEIGHT_SM)
     refs.batch_save_edits_btn.clicked.connect(batch_actions.save_batch_edited_crops)
     edit_nav_layout.addWidget(refs.batch_save_edits_btn)
 
@@ -193,9 +192,9 @@ def _build_workbench_page(
     quick_row.addWidget(quick_label)
     refs.labels["central.scene_preset_label"] = quick_label
 
+    from ....core.scene_presets import SCENE_PRESET_META, apply_scene_preset
     from ...widgets.settings.controls import NoScrollComboBox
     from ...widgets.toggle_switch import ModernToggleSwitch
-    from ....core.scene_presets import SCENE_PRESET_META, apply_scene_preset
 
     refs.scene_preset_combo = NoScrollComboBox()
     for sid, (label, _desc) in SCENE_PRESET_META.items():
@@ -229,26 +228,11 @@ def _build_workbench_page(
 
     main_splitter = QSplitter(Qt.Orientation.Horizontal)
     main_splitter.setHandleWidth(6)
-    main_splitter.setStyleSheet(
-        """
-        QSplitter::handle:horizontal {
-            background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
-                stop:0 transparent, stop:0.4 rgba(88, 166, 255, 0.5),
-                stop:0.6 rgba(88, 166, 255, 0.5), stop:1 transparent);
-            width: 6px;
-            margin: 0 2px;
-        }
-        QSplitter::handle:horizontal:hover {
-            background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
-                stop:0 transparent, stop:0.3 rgba(88, 166, 255, 0.8),
-                stop:0.7 rgba(88, 166, 255, 0.8), stop:1 transparent);
-        }
-    """
-    )
+    main_splitter.setStyleSheet(SPLITTER_HANDLE_QSS)
 
     left_splitter = QSplitter(Qt.Orientation.Vertical)
     left_splitter.setHandleWidth(6)
-    left_splitter.setStyleSheet(outer_splitter.styleSheet())
+    left_splitter.setStyleSheet(SPLITTER_HANDLE_QSS)
 
     refs.preview_widget = ImagePreviewWidget()
     refs.preview_widget.contour_edited.connect(preview_actions.on_preview_contour_edited)
@@ -264,7 +248,7 @@ def _build_workbench_page(
     refs.settings_panel = SettingsPanel(state.settings)
     refs.settings_panel.settings_changed.connect(settings_actions.on_settings_changed)
     refs.settings_panel.preview_requested.connect(preview_actions.request_preview)
-    refs.settings_panel.setMaximumWidth(400)
+    refs.settings_panel.setMaximumWidth(SETTINGS_PANEL_MAX_WIDTH)
     main_splitter.addWidget(refs.settings_panel)
     main_splitter.setSizes([850, 320])
     outer_splitter.addWidget(main_splitter)
@@ -302,27 +286,9 @@ def build_central_widget(
     shell_layout.setSpacing(0)
 
     refs.shell_nav = QListWidget()
-    refs.shell_nav.setFixedWidth(180)
+    refs.shell_nav.setFixedWidth(NAV_RAIL_WIDTH)
     refs.shell_nav.setSpacing(4)
-    refs.shell_nav.setStyleSheet(
-        """
-        QListWidget {
-            border: none;
-            border-right: 1px solid rgba(128, 128, 128, 0.25);
-            padding: 10px 8px;
-        }
-        QListWidget::item {
-            padding: 10px 12px;
-            border-radius: 8px;
-            margin: 2px 0;
-        }
-        QListWidget::item:selected {
-            background: rgba(88, 166, 255, 0.18);
-            color: #58a6ff;
-            font-weight: bold;
-        }
-        """
-    )
+    refs.shell_nav.setStyleSheet(NAV_LIST_QSS)
     shell_layout.addWidget(refs.shell_nav)
 
     refs.shell_stack = QStackedWidget()
@@ -417,7 +383,11 @@ def build_central_widget(
 
     refs.management_pages.clear()
     for page_key, page in pages:
-        refs.shell_nav.addItem(management_page_label(page_key))
+        item = QListWidgetItem(management_page_label(page_key))
+        icon = nav_icon(page_key)
+        if icon is not None:
+            item.setIcon(icon)
+        refs.shell_nav.addItem(item)
         refs.shell_stack.addWidget(page)
         refs.management_pages[page_key] = page
 

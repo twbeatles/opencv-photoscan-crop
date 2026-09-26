@@ -10,6 +10,8 @@ from PyQt6.QtWidgets import QWidget, QLabel, QHBoxLayout, QGraphicsOpacityEffect
 from PyQt6.QtCore import Qt, QTimer, QPropertyAnimation, QEasingCurve, QPoint, pyqtSignal
 from PyQt6.QtGui import QFont
 
+from ..fluent import notify as _fluent_notify
+
 
 class ToastNotification(QWidget):
     """
@@ -232,6 +234,14 @@ class ToastManager:
             duration: Auto-dismiss duration in ms
         """
         if cls._parent is None:
+            return
+        # _fluent_notify never raises: False means "use the legacy toast".
+        if _fluent_notify(
+            toast_type,
+            str(message),
+            parent=cls._parent,
+            duration=int(duration or 3000),
+        ):
             return
         
         # Hide current toast if showing

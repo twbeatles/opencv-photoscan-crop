@@ -11,6 +11,7 @@ from PyQt6.QtGui import QCloseEvent
 from PyQt6.QtWidgets import QMessageBox
 
 from ....i18n.catalog import t
+from ...fluent import confirm_qt
 from ..models import WindowRefs, WindowServices, WindowState
 from ..preview_worker import PreviewWorker
 
@@ -71,14 +72,14 @@ class LifecycleActions:
         manual_running = bool(self.state.manual_extract_running)
 
         if batch_running or manual_running:
-            reply = QMessageBox.question(
+            reply = confirm_qt(
                 self.services.host_window,
                 t("lifecycle.close.title"),
                 t("lifecycle.close.body"),
                 QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
                 QMessageBox.StandardButton.No,
             )
-            if reply == QMessageBox.StandardButton.No:
+            if not reply:
                 event.ignore()
                 return
 

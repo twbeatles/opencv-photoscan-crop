@@ -25,6 +25,7 @@ from ....utils.file_helpers import (
     open_file_explorer,
     validate_directory,
 )
+from ...fluent import confirm_qt
 from ...widgets.progress_dialog import ProgressDialog
 from ...widgets.toast_notification import ToastManager
 from ..models import WindowRefs, WindowServices, WindowSignals, WindowState
@@ -546,14 +547,14 @@ class BatchActions:
         self.state.failed_boundary_files = self.collect_boundary_failed_files(results)
         if self.state.failed_boundary_files and not progress.is_cancelled:
             failed_count = len(self.state.failed_boundary_files)
-            reply = QMessageBox.question(
+            reply = confirm_qt(
                 self.services.host_window,
                 t("batch.failed_boundary.title"),
                 t("batch.failed_boundary.body", count=failed_count),
                 QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
                 QMessageBox.StandardButton.Yes,
             )
-            if reply == QMessageBox.StandardButton.Yes:
+            if reply:
                 self.load_failed_boundary_images_for_edit()
 
         if self.state.settings.notification.enabled and not progress.is_cancelled:
@@ -614,13 +615,13 @@ class BatchActions:
             )
             return
 
-        reply = QMessageBox.question(
+        reply = confirm_qt(
             self.services.host_window,
             t("batch.retry.title"),
             t("batch.retry.body", count=len(failed)),
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
         )
-        if reply != QMessageBox.StandardButton.Yes:
+        if not reply:
             return
 
         paths = self._resolve_batch_io_paths()
@@ -767,7 +768,7 @@ class BatchActions:
         edited_count = sum(
             1 for path in self.state.image_list if path in self.state.batch_contours_edited
         )
-        reply = QMessageBox.question(
+        reply = confirm_qt(
             self.services.host_window,
             t("batch.manual_extract.title"),
             t(
@@ -778,7 +779,7 @@ class BatchActions:
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
             QMessageBox.StandardButton.Yes,
         )
-        if reply != QMessageBox.StandardButton.Yes:
+        if not reply:
             return
 
         contours_snapshot = {}

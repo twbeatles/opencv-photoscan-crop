@@ -12,7 +12,9 @@ from PyQt6.QtWidgets import QMessageBox
 from ....core.history_manager import CallableCommand, CommandType
 from ....core.settings_model import AppSettings
 from ....i18n.catalog import t
-from ...styles.themes import get_theme
+from ...fluent import confirm_qt
+from ...styles.themes import get_theme  # legacy QSS fallback
+from ...theme_fluent import FLUENT_AVAILABLE, apply_fluent_theme, normalize_theme_name
 from ..models import WindowRefs, WindowServices, WindowState
 
 
@@ -39,7 +41,14 @@ class SettingsActions:
         self.state.preview_settings_snapshot = self.state.settings.to_dict()
 
     def set_theme(self, theme_name: str) -> None:
-        self.services.host_window.setStyleSheet(get_theme(theme_name))
+        normalized = normalize_theme_name(theme_name)
+        if FLUENT_AVAILABLE:
+            # qfluentwidgets owns rendering; drop the legacy window QSS.
+            apply_fluent_theme(normalized)
+            self.services.host_window.setStyleSheet("")
+        else:
+            self.services.host_window.setStyleSheet(get_theme(normalized))
+        theme_name = normalized
         for name, action in self.refs.theme_actions.items():
             action.setChecked(name == theme_name)
         if self.state.settings.ui.theme != theme_name:
@@ -150,13 +159,13 @@ class SettingsActions:
             )
 
     def reset_settings(self) -> None:
-        reply = QMessageBox.question(
+        reply = confirm_qt(
             self.services.host_window,
             t("menu.edit.reset_settings"),
             t("menu.edit.reset_settings"),
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
         )
-        if reply == QMessageBox.StandardButton.Yes:
+        if reply:
             default_settings = self.services.settings_manager.get_default()
             if self.refs.settings_panel is not None:
                 self.refs.settings_panel.settings = default_settings

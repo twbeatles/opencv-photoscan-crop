@@ -6,10 +6,11 @@ from __future__ import annotations
 
 from PyQt6.QtCore import Qt, QSize
 from PyQt6.QtGui import QAction
-from PyQt6.QtWidgets import QLabel, QPushButton, QSizePolicy, QToolBar, QWidget
+from PyQt6.QtWidgets import QLabel, QSizePolicy, QToolBar, QWidget
 
 from ....i18n.catalog import t
 from ...widgets.preset_manager import PresetComboBox
+from ...fluent import new_primary_button
 from ..models import WindowRefs
 
 
@@ -60,7 +61,7 @@ def build_toolbar(
     toolbar.addWidget(spacer)
 
     preset_label = QLabel(t("toolbar.preset"))
-    preset_label.setStyleSheet("color: #8b949e; margin-right: 8px; font-weight: bold;")
+    preset_label.setStyleSheet("font-weight: bold;")
     toolbar.addWidget(preset_label)
     refs.labels["toolbar.preset"] = preset_label
 
@@ -70,8 +71,7 @@ def build_toolbar(
     toolbar.addWidget(refs.preset_combo)
     toolbar.addSeparator()
 
-    refs.process_btn = QPushButton(t("toolbar.start"))
-    refs.process_btn.setObjectName("primaryButton")
+    refs.process_btn = new_primary_button(t("toolbar.start"))
     refs.process_btn.setCursor(Qt.CursorShape.PointingHandCursor)
     refs.process_btn.setToolTip(t("toolbar.start.tooltip"))
     refs.process_btn.clicked.connect(batch_actions.start_processing)
