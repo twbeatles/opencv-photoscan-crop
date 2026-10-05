@@ -79,7 +79,7 @@ def build_settings(panel):
         )
 
     ui = UISettings(
-        theme=self.theme_combo.currentText(),
+        theme=str(self.theme_combo.currentData() or "auto"),
         language=language,
         auto_preview=self.auto_preview_check.isChecked(),
         show_contour_overlay=self.contour_overlay_check.isChecked(),
@@ -395,7 +395,7 @@ def load_settings(panel, settings: AppSettings):
     self.skip_processed_check.setChecked(settings.filter.skip_processed)
 
     # UI
-    index = self.theme_combo.findText(settings.ui.theme)
+    index = self.theme_combo.findData(str(settings.ui.theme or "auto").lower())
     if index >= 0:
         self.theme_combo.setCurrentIndex(index)
     self.auto_preview_check.setChecked(settings.ui.auto_preview)

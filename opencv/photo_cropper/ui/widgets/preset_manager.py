@@ -212,26 +212,30 @@ class PresetComboBox(QComboBox):
         self.currentTextChanged.connect(self._on_changed)
 
     def _refresh(self) -> None:
+        # Index 0 is the "nothing selected" placeholder, never a preset.
+        was_blocked = self.blockSignals(True)
         self.clear()
-        self.addItem(f"-- {t('toolbar.preset')} --")
+        self.addItem(t("toolbar.preset.placeholder"))
         self.addItems(self._manager.list_presets())
+        self.blockSignals(was_blocked)
 
     def _on_changed(self, text: str) -> None:
-        if text and not text.startswith("--"):
+        if text and self.currentIndex() > 0:
             self.preset_selected.emit(text)
 
     def apply_to_settings(self, settings: AppSettings) -> bool:
         text = self.currentText()
-        if text and not text.startswith("--"):
+        if text and self.currentIndex() > 0:
             return self._manager.apply_preset(text, settings)
         return False
 
     def retranslate_ui(self) -> None:
-        current_text = self.currentText()
+        selected = self.currentText() if self.currentIndex() > 0 else ""
         self._refresh()
-        index = self.findText(current_text)
-        if index >= 0:
-            self.setCurrentIndex(index)
+        index = self.findText(selected) if selected else 0
+        was_blocked = self.blockSignals(True)
+        self.setCurrentIndex(max(index, 0))
+        self.blockSignals(was_blocked)
 
 
 _preset_manager: Optional[PresetManager] = None

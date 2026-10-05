@@ -10,9 +10,10 @@ from PyQt6.QtCore import QSettings, QTimer
 from PyQt6.QtWidgets import QMessageBox
 
 from ....core.history_manager import CallableCommand, CommandType
+from ....core.scene_presets import apply_scene_preset
 from ....core.settings_model import AppSettings
 from ....i18n.catalog import t
-from ...fluent import confirm_qt
+from ...fluent import confirm_qt, nav_icon
 from ...styles.themes import get_theme  # legacy QSS fallback
 from ...theme_fluent import FLUENT_AVAILABLE, apply_fluent_theme, normalize_theme_name
 from ..models import WindowRefs, WindowServices, WindowState
@@ -31,10 +32,17 @@ class SettingsActions:
         self.refs = refs
         self.services = services
         self._reconfigure_scheduler: Optional[Callable[[], None]] = None
+        self._request_preview: Optional[Callable[[], None]] = None
         self._applying_history = False
 
-    def bind(self, *, reconfigure_scheduler: Callable[[], None]) -> None:
+    def bind(
+        self,
+        *,
+        reconfigure_scheduler: Callable[[], None],
+        request_preview: Optional[Callable[[], None]] = None,
+    ) -> None:
         self._reconfigure_scheduler = reconfigure_scheduler
+        self._request_preview = request_preview
 
     def bump_preview_settings_snapshot(self) -> None:
         self.state.preview_settings_revision += 1
@@ -49,19 +57,81 @@ class SettingsActions:
         else:
             self.services.host_window.setStyleSheet(get_theme(normalized))
         theme_name = normalized
+        self._refresh_nav_icons()
         for name, action in self.refs.theme_actions.items():
             action.setChecked(name == theme_name)
         if self.state.settings.ui.theme != theme_name:
             self.state.settings.ui.theme = theme_name
 
+    def _refresh_nav_icons(self) -> None:
+        """Give the nav rail fresh icons so they repaint for the new theme."""
+        nav = getattr(self.refs, "shell_nav", None)
+        if nav is None:
+            return
+        for index, page_key in enumerate(getattr(self.refs, "management_pages", {})):
+            item = nav.item(index)
+            icon = nav_icon(page_key)
+            if item is not None and icon is not None:
+                item.setIcon(icon)
+
+    def choose_theme(self, theme_name: str) -> None:
+        """Theme picked by the user (menu): apply, mirror in the panel, save."""
+        self.set_theme(theme_name)
+        if self.refs.settings_panel is not None:
+            self.refs.settings_panel.settings = self.state.settings
+        self.schedule_auto_save()
+
     def get_current_theme(self) -> str:
         for name, action in self.refs.theme_actions.items():
             if action.isChecked():
                 return name
-        return "dark"
+        return "auto"
 
     def toggle_theme(self) -> None:
         self.set_theme("light" if self.get_current_theme() == "dark" else "dark")
+
+    def sync_workbench_controls(self) -> None:
+        """Mirror settings that also have a quick control on the workbench."""
+        toggle = getattr(self.refs, "multi_photo_quick_toggle", None)
+        if toggle is not None:
+            enabled = bool(self.state.settings.multi_photo.enabled)
+            if toggle.isChecked() != enabled:
+                was_blocked = toggle.blockSignals(True)
+                toggle.setChecked(enabled)
+                toggle.blockSignals(was_blocked)
+        preview = getattr(self.refs, "preview_widget", None)
+        if preview is not None:
+            show = bool(self.state.settings.ui.show_contour_overlay)
+            if preview.show_contour != show:
+                preview.show_contour = show
+
+    def _apply_quick_change(self, mutate: Callable[[AppSettings], None]) -> None:
+        """Apply a workbench quick-control change like a settings-panel edit."""
+        updated = AppSettings.from_dict(self.state.settings.to_dict())
+        mutate(updated)
+        self.on_settings_changed(updated)
+        if self.refs.settings_panel is not None:
+            self.refs.settings_panel.settings = self.state.settings
+        if self._request_preview is not None and self.state.settings.ui.auto_preview:
+            self._request_preview()
+
+    def apply_scene_preset(self, scene_id: str) -> None:
+        if not scene_id or scene_id == "custom":
+            return
+
+        def mutate(settings: AppSettings) -> None:
+            apply_scene_preset(settings, scene_id)
+
+        self._apply_quick_change(mutate)
+
+    def set_multi_photo_enabled(self, enabled: bool) -> None:
+        if bool(self.state.settings.multi_photo.enabled) == bool(enabled):
+            return
+
+        def mutate(settings: AppSettings) -> None:
+            settings.multi_photo.enabled = bool(enabled)
+
+        self._apply_quick_change(mutate)
 
     def sync_current_settings(
         self,
@@ -87,6 +157,7 @@ class SettingsActions:
 
         if sync_panel and self.refs.settings_panel is not None:
             self.refs.settings_panel.settings = self.state.settings
+        self.sync_workbench_controls()
 
         if reconfigure_scheduler and self._reconfigure_scheduler is not None:
             self._reconfigure_scheduler()
@@ -153,16 +224,15 @@ class SettingsActions:
 
     def do_auto_save(self) -> None:
         saved = self.persist_paths()
-        if self.refs.status_label is not None:
-            self.refs.status_label.setText(
-                "✓ " + t("dialog.save") if saved else "⚠ " + t("dialog.warning")
-            )
+        if not saved and self.refs.statusbar is not None:
+            # Saving is silent when it works; only a failure needs attention.
+            self.refs.statusbar.showMessage(t("settings.autosave.failed"), 5000)
 
     def reset_settings(self) -> None:
         reply = confirm_qt(
             self.services.host_window,
             t("menu.edit.reset_settings"),
-            t("menu.edit.reset_settings"),
+            t("settings.reset.confirm"),
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
         )
         if reply:
@@ -171,12 +241,15 @@ class SettingsActions:
                 self.refs.settings_panel.settings = default_settings
             self.apply_loaded_settings(default_settings)
             if self.refs.statusbar is not None:
-                self.refs.statusbar.showMessage(t("menu.edit.reset_settings"), 3000)
+                self.refs.statusbar.showMessage(t("settings.reset.done"), 3000)
 
     def save_window_state(self) -> None:
         settings = QSettings("PhotoCropper", "MainWindow")
         settings.setValue("geometry", self.services.host_window.saveGeometry())
         settings.setValue("windowState", self.services.host_window.saveState())
+        histogram_action = self.refs.actions.get("view.histogram")
+        if histogram_action is not None:
+            settings.setValue("showHistogram", histogram_action.isChecked())
 
     def restore_window_state(self) -> None:
         settings = QSettings("PhotoCropper", "MainWindow")
@@ -186,3 +259,8 @@ class SettingsActions:
             self.services.host_window.restoreGeometry(geometry)
         if state:
             self.services.host_window.restoreState(state)
+        histogram_action = self.refs.actions.get("view.histogram")
+        if histogram_action is not None:
+            histogram_action.setChecked(
+                str(settings.value("showHistogram", "false")).lower() == "true"
+            )

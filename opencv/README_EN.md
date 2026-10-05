@@ -63,7 +63,7 @@ A Python application that automatically detects and accurately crops scanned pho
 
 - **fast / balanced**: Early-exit for speed
 - **accurate**: Full-pass candidates + NMS + re-rank + content contrast + GrabCut refine
-- **Scene presets**: Workbench / algorithm tab / CLI `--scene-preset`
+- **Scene presets**: `Scan type` on the Crop Photos page / CLI `--scene-preset`
 - **Multi-photo ROI refine**: Re-run single detection per photo (default ON)
 - Pipeline details: [`docs/detection-pipeline.md`](docs/detection-pipeline.md)
 

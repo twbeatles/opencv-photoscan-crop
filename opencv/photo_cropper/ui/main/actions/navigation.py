@@ -60,8 +60,16 @@ class NavigationActions:
                 badge.setText(t("status.file_count", count=len(self.state.image_list)))
 
             if self.state.image_list:
-                self.state.current_image_index = 0
-                self.state.current_image_path = self.state.image_list[0]
+                # Keep the scan the user is looking at when it is still listed
+                # (e.g. a single image opened from this folder).
+                current = self.state.current_image_path
+                index = (
+                    self.state.image_list.index(current)
+                    if current in self.state.image_list
+                    else 0
+                )
+                self.state.current_image_index = index
+                self.state.current_image_path = self.state.image_list[index]
             else:
                 self.state.current_image_index = -1
                 self.state.current_image_path = None
@@ -69,6 +77,7 @@ class NavigationActions:
             self.state.image_list = []
             self.state.current_image_index = -1
             self.state.current_image_path = None
+        self.state.review_list_active = False
 
         if self._update_batch_edit_controls is not None:
             self._update_batch_edit_controls()

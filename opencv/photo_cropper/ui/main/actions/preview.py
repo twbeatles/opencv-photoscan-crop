@@ -21,6 +21,10 @@ from ....utils.file_helpers import get_image_files
 from ..models import WindowRefs, WindowServices, WindowSignals, WindowState
 
 
+# Below this detection confidence the scan is queued for a manual check.
+LOW_CONFIDENCE_THRESHOLD = 0.55
+
+
 class PreviewActions:
     """Encapsulate preview request/apply flow."""
 
@@ -72,7 +76,7 @@ class PreviewActions:
                     if file_size_kb >= 1024
                     else f"{file_size_kb:.0f} KB"
                 )
-                self.refs.image_info_badge.setText(f"📷 {width}×{height}px | {size_str}")
+                self.refs.image_info_badge.setText(f" {width}×{height}px · {size_str} ")
                 return
         except Exception:
             pass
@@ -230,8 +234,9 @@ class PreviewActions:
                     preview_result.overlay_preview,
                     preview_contour,
                 )
-            if self.refs.histogram_widget is not None:
-                self.refs.histogram_widget.set_image(preview_result.original_preview)
+            histogram = self.refs.histogram_widget
+            if histogram is not None and histogram.isVisible():
+                histogram.set_image(preview_result.original_preview)
             self.state.last_original = preview_result.original_preview
             if preview_path:
                 self.state.current_image_path = preview_path
@@ -251,43 +256,25 @@ class PreviewActions:
             )
             conf = float(getattr(crop_result, "confidence", 0.0) or 0.0)
             if self.refs.status_label is not None:
-                low_conf_hint = ""
-                if conf < 0.55:
-                    low_conf_hint = " · 신뢰도 낮음(수동 확인 권장)"
-                try:
-                    base = t("preview.success", stage=stage)
-                except Exception:
-                    base = f"미리보기 성공 ({stage})"
                 self.refs.status_label.setText(
-                    f"{base} · conf={conf:.2f}{low_conf_hint}"
+                    t(
+                        "preview.success.low_confidence"
+                        if conf < LOW_CONFIDENCE_THRESHOLD
+                        else "preview.success",
+                        stage=stage,
+                        percent=int(round(conf * 100)),
+                    )
                 )
         else:
             if self.refs.preview_widget is not None:
                 self.refs.preview_widget.set_processed_image(None)
             self.state.last_processed = None
             if self.refs.status_label is not None:
-                reason = getattr(crop_result, "failure_reason", None)
-                reason_txt = (
-                    f" [{reason.value}]"
-                    if reason is not None and getattr(reason, "value", None)
-                    else ""
-                )
-                self.refs.status_label.setText(
-                    t(
-                        "preview.failed.message",
-                        message=(
-                            f"{crop_result.message}{reason_txt} · "
-                            "미리보기에서 4점을 지정하거나 「실패 파일 로드」로 수동 보정"
-                        ),
-                    )
-                )
+                self.refs.status_label.setText(t("preview.not_found.status"))
             try:
                 from ...widgets.toast_notification import ToastManager
 
-                ToastManager.warning(
-                    "경계 감지 실패 — 미리보기에서 점을 지정하거나 "
-                    "정밀 모드/장면 프리셋 후 다시 미리보기 하세요."
-                )
+                ToastManager.warning(t("preview.not_found.toast"))
             except Exception:
                 pass
 
@@ -295,11 +282,7 @@ class PreviewActions:
         try:
             conf = float(getattr(crop_result, "confidence", 0.0) or 0.0)
             path = preview_path or self.state.current_image_path
-            if (
-                crop_result.success
-                and path
-                and conf < 0.55
-            ):
+            if crop_result.success and path and conf < LOW_CONFIDENCE_THRESHOLD:
                 low = getattr(self.state, "low_confidence_files", None)
                 if isinstance(low, list) and path not in low:
                     low.append(path)

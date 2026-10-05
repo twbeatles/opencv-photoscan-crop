@@ -4,37 +4,18 @@
 
 from __future__ import annotations
 
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import QSize
 from PyQt6.QtWidgets import (
-    QFrame,
-    QGridLayout,
     QHBoxLayout,
-    QLabel,
-    QLineEdit,
     QListWidget,
     QListWidgetItem,
-    QPushButton,
-    QSplitter,
     QStackedWidget,
-    QVBoxLayout,
     QWidget,
 )
 
 from ....i18n.catalog import t
-from ...design_tokens import (
-    CONTROL_GAP,
-    CONTROL_HEIGHT_MD,
-    CONTROL_HEIGHT_SM,
-    NAV_LIST_QSS,
-    NAV_RAIL_WIDTH,
-    PAGE_MARGIN,
-    SETTINGS_PANEL_MAX_WIDTH,
-    SPACE_SM,
-    SPACE_XS,
-    SPLITTER_HANDLE_QSS,
-)
+from ...design_tokens import NAV_LIST_QSS, NAV_RAIL_WIDTH
 from ...fluent import nav_icon
-from ...widgets.histogram_widget import HistogramWidget
 from ...widgets.management_pages import (
     CollectionsPage,
     DuplicatesPage,
@@ -46,218 +27,20 @@ from ...widgets.management_pages import (
     UnavailablePage,
     management_page_label,
 )
-from ...widgets.preview_widget import ImagePreviewWidget
-from ...widgets.settings import SettingsPanel
 from ..models import WindowRefs, WindowServices, WindowState
+from .workbench import build_workbench_page
 
-
-def _build_workbench_page(
-    refs: WindowRefs,
-    state: WindowState,
-    *,
-    input_actions,
-    preview_actions,
-    batch_actions,
-    navigation_actions,
-    settings_actions,
-) -> QWidget:
-    page = QWidget()
-    main_layout = QVBoxLayout(page)
-    main_layout.setContentsMargins(PAGE_MARGIN, PAGE_MARGIN, PAGE_MARGIN, PAGE_MARGIN)
-    main_layout.setSpacing(0)
-
-    outer_splitter = QSplitter(Qt.Orientation.Vertical)
-    outer_splitter.setHandleWidth(6)
-    outer_splitter.setStyleSheet(SPLITTER_HANDLE_QSS)
-
-    folder_card = QFrame()
-    folder_card.setObjectName("statsFrame")
-    folder_card_layout = QVBoxLayout(folder_card)
-    folder_card_layout.setContentsMargins(SPACE_SM, SPACE_XS, SPACE_SM, SPACE_XS)
-    folder_card_layout.setSpacing(CONTROL_GAP)
-
-    path_grid = QGridLayout()
-    path_grid.setSpacing(CONTROL_GAP)
-    path_grid.setContentsMargins(0, 0, 0, 0)
-    path_grid.setColumnStretch(1, 1)
-
-    input_label = QLabel(t("central.input_folder"))
-    input_label.setStyleSheet("font-weight: bold;")
-    path_grid.addWidget(input_label, 0, 0)
-    refs.labels["central.input_label"] = input_label
-
-    refs.input_path_edit = QLineEdit()
-    refs.input_path_edit.setPlaceholderText(t("central.input_placeholder"))
-    refs.input_path_edit.setMinimumHeight(CONTROL_HEIGHT_MD)
-    refs.input_path_edit.setTextMargins(8, 0, 8, 0)
-    refs.input_path_edit.textChanged.connect(input_actions.on_input_path_changed)
-    path_grid.addWidget(refs.input_path_edit, 0, 1)
-
-    input_browse_btn = QPushButton(t("central.browse"))
-    input_browse_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-    input_browse_btn.setMinimumHeight(CONTROL_HEIGHT_MD)
-    input_browse_btn.clicked.connect(input_actions.select_input_folder)
-    path_grid.addWidget(input_browse_btn, 0, 2)
-    refs.buttons["central.input_browse"] = input_browse_btn
-
-    output_label = QLabel(t("central.output_folder"))
-    output_label.setStyleSheet("font-weight: bold;")
-    path_grid.addWidget(output_label, 1, 0)
-    refs.labels["central.output_label"] = output_label
-
-    refs.output_path_edit = QLineEdit()
-    refs.output_path_edit.setPlaceholderText(t("central.output_placeholder"))
-    refs.output_path_edit.setMinimumHeight(CONTROL_HEIGHT_MD)
-    refs.output_path_edit.setTextMargins(8, 0, 8, 0)
-    refs.output_path_edit.textChanged.connect(input_actions.on_output_path_changed)
-    path_grid.addWidget(refs.output_path_edit, 1, 1)
-
-    output_browse_btn = QPushButton(t("central.change"))
-    output_browse_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-    output_browse_btn.setMinimumHeight(CONTROL_HEIGHT_MD)
-    output_browse_btn.clicked.connect(input_actions.select_output_folder)
-    path_grid.addWidget(output_browse_btn, 1, 2)
-    refs.buttons["central.output_browse"] = output_browse_btn
-
-    output_open_btn = QPushButton(t("central.open_output_folder"))
-    output_open_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-    output_open_btn.setMinimumHeight(CONTROL_HEIGHT_MD)
-    output_open_btn.clicked.connect(input_actions.open_output_folder)
-    path_grid.addWidget(output_open_btn, 1, 3)
-    refs.buttons["central.output_open"] = output_open_btn
-    folder_card_layout.addLayout(path_grid)
-
-    hint_layout = QHBoxLayout()
-    hint_layout.setContentsMargins(0, 0, 0, 0)
-    hint_icon = QLabel()
-    hint_text = QLabel(t("central.drag_hint"))
-    hint_text.setObjectName("subtitleLabel")
-    hint_layout.addWidget(hint_icon)
-    hint_layout.addWidget(hint_text)
-    hint_layout.addStretch()
-    folder_card_layout.addLayout(hint_layout)
-
-    edit_nav_layout = QHBoxLayout()
-    edit_nav_layout.setContentsMargins(0, 2, 0, 0)
-
-    refs.batch_load_btn = QPushButton(t("central.load_batch"))
-    refs.batch_load_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-    refs.batch_load_btn.setMinimumHeight(CONTROL_HEIGHT_SM)
-    refs.batch_load_btn.clicked.connect(batch_actions.load_batch_images_for_edit)
-    edit_nav_layout.addWidget(refs.batch_load_btn)
-
-    refs.batch_failed_btn = QPushButton(t("central.load_failed"))
-    refs.batch_failed_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-    refs.batch_failed_btn.setMinimumHeight(CONTROL_HEIGHT_SM)
-    refs.batch_failed_btn.clicked.connect(batch_actions.load_failed_boundary_images_for_edit)
-    edit_nav_layout.addWidget(refs.batch_failed_btn)
-
-    refs.batch_prev_btn = QPushButton(t("central.prev"))
-    refs.batch_prev_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-    refs.batch_prev_btn.setMinimumHeight(CONTROL_HEIGHT_SM)
-    refs.batch_prev_btn.clicked.connect(navigation_actions.navigate_prev)
-    edit_nav_layout.addWidget(refs.batch_prev_btn)
-
-    refs.batch_next_btn = QPushButton(t("central.next"))
-    refs.batch_next_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-    refs.batch_next_btn.setMinimumHeight(CONTROL_HEIGHT_SM)
-    refs.batch_next_btn.clicked.connect(navigation_actions.navigate_next)
-    edit_nav_layout.addWidget(refs.batch_next_btn)
-
-    refs.batch_save_edits_btn = QPushButton(t("central.save_edits"))
-    refs.batch_save_edits_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-    refs.batch_save_edits_btn.setMinimumHeight(CONTROL_HEIGHT_SM)
-    refs.batch_save_edits_btn.clicked.connect(batch_actions.save_batch_edited_crops)
-    edit_nav_layout.addWidget(refs.batch_save_edits_btn)
-
-    refs.batch_edit_status_label = QLabel(
-        t("central.batch_status", current=0, total=0, edited=0, failed=0)
-    )
-    refs.batch_edit_status_label.setObjectName("subtitleLabel")
-    edit_nav_layout.addWidget(refs.batch_edit_status_label)
-    edit_nav_layout.addStretch()
-    folder_card_layout.addLayout(edit_nav_layout)
-    refs.buttons["central.batch_load"] = refs.batch_load_btn
-    refs.buttons["central.batch_failed"] = refs.batch_failed_btn
-    refs.buttons["central.batch_prev"] = refs.batch_prev_btn
-    refs.buttons["central.batch_next"] = refs.batch_next_btn
-    refs.buttons["central.batch_save"] = refs.batch_save_edits_btn
-    refs.labels["central.drag_hint"] = hint_text
-
-    # Quick scene controls (simple-mode path without opening algorithm tab).
-    quick_row = QHBoxLayout()
-    quick_row.setContentsMargins(0, 4, 0, 0)
-    quick_label = QLabel("장면 프리셋:")
-    quick_label.setStyleSheet("font-weight: bold;")
-    quick_row.addWidget(quick_label)
-    refs.labels["central.scene_preset_label"] = quick_label
-
-    from ....core.scene_presets import SCENE_PRESET_META, apply_scene_preset
-    from ...widgets.settings.controls import NoScrollComboBox
-    from ...widgets.toggle_switch import ModernToggleSwitch
-
-    refs.scene_preset_combo = NoScrollComboBox()
-    for sid, (label, _desc) in SCENE_PRESET_META.items():
-        refs.scene_preset_combo.addItem(label, sid)
-
-    def _on_workbench_scene_preset(_index: int = 0) -> None:
-        sid = refs.scene_preset_combo.currentData()
-        if not sid or sid == "custom":
-            return
-        apply_scene_preset(state.settings, str(sid))
-        settings_actions.sync_current_settings(sync_panel=True)
-        preview_actions.request_preview()
-
-    refs.scene_preset_combo.currentIndexChanged.connect(_on_workbench_scene_preset)
-    quick_row.addWidget(refs.scene_preset_combo, 1)
-
-    refs.multi_photo_quick_toggle = ModernToggleSwitch("멀티포토")
-    refs.multi_photo_quick_toggle.setChecked(
-        bool(getattr(state.settings.multi_photo, "enabled", False))
-    )
-
-    def _on_workbench_multi_toggle(checked: bool) -> None:
-        state.settings.multi_photo.enabled = bool(checked)
-        settings_actions.sync_current_settings(sync_panel=True)
-
-    refs.multi_photo_quick_toggle.toggled.connect(_on_workbench_multi_toggle)
-    quick_row.addWidget(refs.multi_photo_quick_toggle)
-    folder_card_layout.addLayout(quick_row)
-
-    outer_splitter.addWidget(folder_card)
-
-    main_splitter = QSplitter(Qt.Orientation.Horizontal)
-    main_splitter.setHandleWidth(6)
-    main_splitter.setStyleSheet(SPLITTER_HANDLE_QSS)
-
-    left_splitter = QSplitter(Qt.Orientation.Vertical)
-    left_splitter.setHandleWidth(6)
-    left_splitter.setStyleSheet(SPLITTER_HANDLE_QSS)
-
-    refs.preview_widget = ImagePreviewWidget()
-    refs.preview_widget.contour_edited.connect(preview_actions.on_preview_contour_edited)
-    left_splitter.addWidget(refs.preview_widget)
-
-    refs.histogram_widget = HistogramWidget()
-    left_splitter.addWidget(refs.histogram_widget)
-    left_splitter.setStretchFactor(0, 5)
-    left_splitter.setStretchFactor(1, 1)
-    left_splitter.setSizes([500, 100])
-    main_splitter.addWidget(left_splitter)
-
-    refs.settings_panel = SettingsPanel(state.settings)
-    refs.settings_panel.settings_changed.connect(settings_actions.on_settings_changed)
-    refs.settings_panel.preview_requested.connect(preview_actions.request_preview)
-    refs.settings_panel.setMaximumWidth(SETTINGS_PANEL_MAX_WIDTH)
-    main_splitter.addWidget(refs.settings_panel)
-    main_splitter.setSizes([850, 320])
-    outer_splitter.addWidget(main_splitter)
-
-    outer_splitter.setStretchFactor(0, 0)
-    outer_splitter.setStretchFactor(1, 1)
-    outer_splitter.setSizes([110, 700])
-    main_layout.addWidget(outer_splitter)
-    return page
+# Shell page order: the crop workbench is the app's main job, so it leads.
+PAGE_ORDER = (
+    "workbench",
+    "library",
+    "review",
+    "duplicates",
+    "jobs",
+    "collections",
+    "recipes",
+    "settings",
+)
 
 
 def _connect_open_signal(page: QWidget, window) -> None:
@@ -277,6 +60,7 @@ def build_central_widget(
     batch_actions,
     navigation_actions,
     settings_actions,
+    tool_actions,
 ) -> None:
     central = QWidget()
     window.setCentralWidget(central)
@@ -287,14 +71,14 @@ def build_central_widget(
 
     refs.shell_nav = QListWidget()
     refs.shell_nav.setFixedWidth(NAV_RAIL_WIDTH)
-    refs.shell_nav.setSpacing(4)
+    refs.shell_nav.setIconSize(QSize(16, 16))
     refs.shell_nav.setStyleSheet(NAV_LIST_QSS)
     shell_layout.addWidget(refs.shell_nav)
 
     refs.shell_stack = QStackedWidget()
     shell_layout.addWidget(refs.shell_stack, 1)
 
-    workbench_page = _build_workbench_page(
+    workbench_page = build_workbench_page(
         refs,
         state,
         input_actions=input_actions,
@@ -302,6 +86,7 @@ def build_central_widget(
         batch_actions=batch_actions,
         navigation_actions=navigation_actions,
         settings_actions=settings_actions,
+        tool_actions=tool_actions,
     )
 
     if (
@@ -350,9 +135,7 @@ def build_central_widget(
         )
         jobs_page.open_review_requested.connect(window.show_review_page_for_job)
         settings_page.maintenance_requested.connect(window.run_maintenance_job)
-        settings_page.workbench_requested.connect(
-            lambda: refs.shell_nav.setCurrentRow(1) if refs.shell_nav is not None else None
-        )
+        settings_page.workbench_requested.connect(lambda: window.show_page("workbench"))
     else:
         unavailable_title = t("management.unavailable.library_title")
         unavailable_body = t("management.unavailable.library_body")
@@ -370,19 +153,20 @@ def build_central_widget(
             t("management.unavailable.settings_body"),
         )
 
-    pages = [
-        ("library", library_page),
-        ("workbench", workbench_page),
-        ("review", review_page),
-        ("duplicates", duplicates_page),
-        ("jobs", jobs_page),
-        ("collections", collections_page),
-        ("recipes", recipes_page),
-        ("settings", settings_page),
-    ]
+    pages = {
+        "workbench": workbench_page,
+        "library": library_page,
+        "review": review_page,
+        "duplicates": duplicates_page,
+        "jobs": jobs_page,
+        "collections": collections_page,
+        "recipes": recipes_page,
+        "settings": settings_page,
+    }
 
     refs.management_pages.clear()
-    for page_key, page in pages:
+    for page_key in PAGE_ORDER:
+        page = pages[page_key]
         item = QListWidgetItem(management_page_label(page_key))
         icon = nav_icon(page_key)
         if icon is not None:
@@ -392,4 +176,4 @@ def build_central_widget(
         refs.management_pages[page_key] = page
 
     refs.shell_nav.currentRowChanged.connect(refs.shell_stack.setCurrentIndex)
-    refs.shell_nav.setCurrentRow(1)
+    refs.shell_nav.setCurrentRow(PAGE_ORDER.index("workbench"))

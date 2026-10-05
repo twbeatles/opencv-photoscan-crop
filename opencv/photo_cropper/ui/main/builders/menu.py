@@ -7,7 +7,7 @@ from __future__ import annotations
 from PyQt6.QtGui import QAction, QKeySequence
 
 from ....i18n.catalog import t
-from ...styles.themes import get_available_themes
+from ...theme_fluent import AVAILABLE_THEMES
 from ..models import WindowRefs
 
 
@@ -94,19 +94,37 @@ def build_menu(
         return
     refs.menus["view"] = view_menu
     refs.theme_actions = {}
-    for theme_name in ("auto", *get_available_themes()):
-        action = QAction(t("menu.view.theme", theme=theme_name.title()), window)
+    for theme_name in AVAILABLE_THEMES:
+        action = QAction(t(f"menu.view.theme.{theme_name}"), window)
         action.setCheckable(True)
         action.triggered.connect(
-            lambda _checked=False, theme=theme_name: settings_actions.set_theme(theme)
+            lambda _checked=False, theme=theme_name: settings_actions.choose_theme(theme)
         )
         view_menu.addAction(action)
         refs.theme_actions[theme_name] = action
+    view_menu.addSeparator()
+
+    fullscreen_action = QAction(t("menu.view.fullscreen"), window)
+    fullscreen_action.setShortcut(QKeySequence("F11"))
+    fullscreen_action.triggered.connect(feature_actions.show_fullscreen)
+    view_menu.addAction(fullscreen_action)
+    refs.actions["view.fullscreen"] = fullscreen_action
+
+    histogram_action = QAction(t("menu.view.histogram"), window)
+    histogram_action.setCheckable(True)
+    histogram_action.toggled.connect(feature_actions.set_histogram_visible)
+    view_menu.addAction(histogram_action)
+    refs.actions["view.histogram"] = histogram_action
 
     tools_menu = menubar.addMenu(t("menu.tools"))
     if tools_menu is None:
         return
     refs.menus["tools"] = tools_menu
+
+    start_action = QAction(t("menu.tools.start"), window)
+    start_action.triggered.connect(batch_actions.start_from_ui)
+    tools_menu.addAction(start_action)
+    refs.actions["tools.start"] = start_action
 
     preview_action = QAction(t("menu.tools.preview"), window)
     preview_action.setShortcut(QKeySequence("Ctrl+P"))

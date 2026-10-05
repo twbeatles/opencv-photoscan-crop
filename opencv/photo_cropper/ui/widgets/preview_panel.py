@@ -3,8 +3,8 @@
 from typing import Any, Dict, List, Optional
 
 import numpy as np
-from PyQt6.QtCore import QObject, QPointF, Qt, QEvent, pyqtSignal
-from PyQt6.QtGui import QBrush, QColor, QFont, QMouseEvent, QPen, QPixmap
+from PyQt6.QtCore import QObject, QPointF, QRectF, Qt, QEvent, pyqtSignal
+from PyQt6.QtGui import QBrush, QColor, QMouseEvent, QPalette, QPen, QPixmap
 from PyQt6.QtWidgets import (
     QCheckBox,
     QFrame,
@@ -15,11 +15,13 @@ from PyQt6.QtWidgets import (
     QLabel,
     QPushButton,
     QSlider,
-    QSplitter,
     QVBoxLayout,
     QWidget,
 )
 
+from ...i18n.catalog import t
+from ..components import make_secondary, themed_splitter
+from ..design_tokens import CONTROL_GAP, CONTROL_HEIGHT_SM, SPACE_XS, SPACE_XXS
 from .preview_conversions import numpy_to_qpixmap
 from .zoomable_view import ZoomableGraphicsView
 
@@ -69,6 +71,8 @@ class ImagePreviewWidget(QWidget):
             "processed": None,
         }
         
+        self._placeholder_items: Dict[str, Any] = {}
+
         self._setup_ui()
         self.show_placeholder()
     
@@ -79,28 +83,41 @@ class ImagePreviewWidget(QWidget):
         self._contour_points = None
         self._manual_seed_points = []
         self._clear_contour_overlay()
-        for scene in [self.original_scene, self.processed_scene]:
+        placeholder_color = self.palette().color(QPalette.ColorRole.PlaceholderText)
+        for scene, text_key in (
+            (self.original_scene, "preview.placeholder"),
+            (self.processed_scene, "preview.placeholder.result"),
+        ):
             scene.clear()
-            
-            # Add icon and text
-            text_item = QGraphicsTextItem("📷\n이미지를 열거나\n드래그하세요")
-            font = QFont("Segoe UI", 14)
-            font.setBold(True)
-            text_item.setFont(font)
-            text_item.setDefaultTextColor(QColor("#8b949e"))
-            
-            # Center text
+            # Reset any scene rect left over from a previous image so the
+            # placeholder is centred in the view.
+            scene.setSceneRect(QRectF())
+
+            text_item = QGraphicsTextItem()
+            text_item.setPlainText(t(text_key))
+            text_item.setDefaultTextColor(placeholder_color)
+            document = text_item.document()
+            if document is not None:
+                option = document.defaultTextOption()
+                option.setAlignment(Qt.AlignmentFlag.AlignHCenter)
+                document.setDefaultTextOption(option)
+                text_item.setTextWidth(text_item.boundingRect().width())
+
             rect = text_item.boundingRect()
             text_item.setPos(-rect.width() / 2, -rect.height() / 2)
-            
             scene.addItem(text_item)
-            
+            self._placeholder_items[text_key] = text_item
+
         # Reset items references
         self.original_pixmap_item = QGraphicsPixmapItem()
         self.processed_pixmap_item = QGraphicsPixmapItem()
         
         self.original_scene.addItem(self.original_pixmap_item)
         self.processed_scene.addItem(self.processed_pixmap_item)
+        for view in (self.original_view, self.processed_view):
+            # Undo any zoom from the previous image so the text is readable.
+            view.reset_zoom()
+            view.centerOn(0, 0)
         self._pixmap_cache["original"] = None
         self._pixmap_cache["overlay"] = None
         self._pixmap_cache["processed"] = None
@@ -108,20 +125,21 @@ class ImagePreviewWidget(QWidget):
         self._source_cache["overlay"] = None
         self._source_cache["processed"] = None
 
+    def _drop_placeholder(self, text_key: str) -> None:
+        """Remove the empty-state text once a real image is shown."""
+        item = self._placeholder_items.pop(text_key, None)
+        if item is not None and item.scene() is not None:
+            item.scene().removeItem(item)
+
     def _setup_ui(self):
         """Setup UI components."""
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
-        
-        # Graphics views container
-        # Main Vertical Splitter (Image Area / Controls)
-        self._main_splitter = QSplitter(Qt.Orientation.Vertical)
-        self._main_splitter.setHandleWidth(4)
-        
-        # Graphics views container (Resizable Splitter)
-        self._splitter = QSplitter(Qt.Orientation.Horizontal)
-        self._splitter.setHandleWidth(4)
-        
+        layout.setSpacing(SPACE_XS)
+
+        # Original | result, side by side with a draggable divider.
+        self._splitter = themed_splitter(Qt.Orientation.Horizontal)
+
         # Original image view
         self.original_scene = QGraphicsScene()
         self.original_view = ZoomableGraphicsView()
@@ -135,13 +153,10 @@ class ImagePreviewWidget(QWidget):
         original_container = QFrame()
         original_container.setFrameStyle(QFrame.Shape.StyledPanel)
         original_layout = QVBoxLayout(original_container)
-        original_layout.setContentsMargins(8, 8, 8, 8)
-        original_layout.setSpacing(6)
-        original_label = QLabel("📷 원본")
-        original_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        original_label.setObjectName("subtitleLabel")
-        original_label.setFont(QFont("Segoe UI", 10))
-        original_layout.addWidget(original_label)
+        original_layout.setContentsMargins(SPACE_XS, SPACE_XS, SPACE_XS, SPACE_XS)
+        original_layout.setSpacing(SPACE_XXS)
+        self._original_label = make_secondary(QLabel(t("preview.title.original")))
+        original_layout.addWidget(self._original_label)
         original_layout.addWidget(self.original_view)
         # views_layout.addWidget(original_container)
         self._splitter.addWidget(original_container)
@@ -156,13 +171,10 @@ class ImagePreviewWidget(QWidget):
         processed_container = QFrame()
         processed_container.setFrameStyle(QFrame.Shape.StyledPanel)
         processed_layout = QVBoxLayout(processed_container)
-        processed_layout.setContentsMargins(8, 8, 8, 8)
-        processed_layout.setSpacing(6)
-        processed_label = QLabel("✂️ 처리 결과")
-        processed_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        processed_label.setObjectName("subtitleLabel")
-        processed_label.setFont(QFont("Segoe UI", 10))
-        processed_layout.addWidget(processed_label)
+        processed_layout.setContentsMargins(SPACE_XS, SPACE_XS, SPACE_XS, SPACE_XS)
+        processed_layout.setSpacing(SPACE_XXS)
+        self._processed_label = make_secondary(QLabel(t("preview.title.result")))
+        processed_layout.addWidget(self._processed_label)
         processed_layout.addWidget(self.processed_view)
         # views_layout.addWidget(processed_container)
         self._splitter.addWidget(processed_container)
@@ -170,63 +182,46 @@ class ImagePreviewWidget(QWidget):
         # Set initial sizes (equal)
         self._splitter.setStretchFactor(0, 1)
         self._splitter.setStretchFactor(1, 1)
+        self._splitter.setSizes([10000, 10000])
         
-        self._main_splitter.addWidget(self._splitter)
-        
-        # Controls bar
-        controls_frame = QFrame()
-        controls_frame.setObjectName("statsFrame")
-        controls_layout = QHBoxLayout(controls_frame)
-        controls_layout.setContentsMargins(2, 2, 2, 2)
-        controls_layout.setSpacing(6)
-        
-        self.contour_check = QCheckBox("🔲 영역(점 드래그/4점 지정)")
+        layout.addWidget(self._splitter, 1)
+
+        # View controls: area overlay on the left, zoom on the right.
+        controls_layout = QHBoxLayout()
+        controls_layout.setContentsMargins(0, 0, 0, 0)
+        controls_layout.setSpacing(CONTROL_GAP)
+
+        self.contour_check = QCheckBox(t("preview.show_area"))
+        self.contour_check.setToolTip(t("preview.show_area.tooltip"))
         self.contour_check.setChecked(True)
         self.contour_check.stateChanged.connect(self._on_contour_toggle)
         controls_layout.addWidget(self.contour_check)
-        
+
         controls_layout.addStretch()
-        
-        # Zoom controls
-        zoom_icon = QLabel("🔍")
-        controls_layout.addWidget(zoom_icon)
-        
+
         self.zoom_slider = QSlider(Qt.Orientation.Horizontal)
         self.zoom_slider.setRange(10, 500)
         self.zoom_slider.setValue(100)
-        self.zoom_slider.setFixedWidth(100)
+        self.zoom_slider.setFixedWidth(120)
         self.zoom_slider.valueChanged.connect(self._on_zoom_slider_changed)
         controls_layout.addWidget(self.zoom_slider)
-        
-        self.zoom_label = QLabel("100%")
-        self.zoom_label.setMinimumWidth(40)
-        self.zoom_label.setFont(QFont("Segoe UI", 9, QFont.Weight.Bold))
+
+        self.zoom_label = make_secondary(QLabel("100%"))
+        self.zoom_label.setMinimumWidth(44)
         controls_layout.addWidget(self.zoom_label)
-        
-        # Separator
-        sep = QLabel("|")
-        sep.setStyleSheet("color: #888888;")
-        controls_layout.addWidget(sep)
-        
-        fit_btn = QPushButton("맞춤")
-        fit_btn.setMaximumWidth(50)
-        fit_btn.clicked.connect(self._fit_all)
-        controls_layout.addWidget(fit_btn)
-        
-        reset_btn = QPushButton("1:1")
-        reset_btn.setMaximumWidth(40)
-        reset_btn.clicked.connect(self._reset_zoom)
-        controls_layout.addWidget(reset_btn)
-        
-        self._main_splitter.addWidget(controls_frame)
-        
-        # Set main splitter stretch (Max space for image)
-        self._main_splitter.setStretchFactor(0, 1)
-        self._main_splitter.setStretchFactor(1, 0)
-        self._main_splitter.setCollapsible(1, True)
-        
-        layout.addWidget(self._main_splitter)
-        
+
+        self._fit_btn = QPushButton(t("preview.fit"))
+        self._fit_btn.setMinimumHeight(CONTROL_HEIGHT_SM)
+        self._fit_btn.clicked.connect(self._fit_all)
+        controls_layout.addWidget(self._fit_btn)
+
+        self._reset_btn = QPushButton(t("preview.actual_size"))
+        self._reset_btn.setMinimumHeight(CONTROL_HEIGHT_SM)
+        self._reset_btn.clicked.connect(self._reset_zoom)
+        controls_layout.addWidget(self._reset_btn)
+
+        layout.addLayout(controls_layout)
+
         # Connect zoom signals
         self.original_view.zoom_changed.connect(self._on_zoom_changed)
         self.processed_view.zoom_changed.connect(self._on_zoom_changed)
@@ -253,7 +248,10 @@ class ImagePreviewWidget(QWidget):
         )
         self._manual_seed_points = []
 
-        if image is not self._source_cache["original"]:
+        if image is not None:
+            self._drop_placeholder("preview.placeholder")
+        is_new_image = image is not self._source_cache["original"]
+        if is_new_image:
             self._pixmap_cache["original"] = (
                 numpy_to_qpixmap(image) if image is not None else None
             )
@@ -268,6 +266,9 @@ class ImagePreviewWidget(QWidget):
             self._source_cache["overlay"] = contour_overlay
 
         self._update_original_display()
+        if is_new_image and image is not None:
+            # Show the whole scan first; the user can zoom in from there.
+            self.original_view.fit_in_view()
     
     def set_processed_image(self, image: Optional[np.ndarray]):
         """
@@ -277,17 +278,21 @@ class ImagePreviewWidget(QWidget):
             image: Processed/cropped image
         """
         self._processed_image = image
-        if image is not self._source_cache["processed"]:
+        is_new_image = image is not self._source_cache["processed"]
+        if is_new_image:
             self._pixmap_cache["processed"] = (
                 numpy_to_qpixmap(image) if image is not None else None
             )
             self._source_cache["processed"] = image
 
         if self._pixmap_cache["processed"] is not None:
+            self._drop_placeholder("preview.placeholder.result")
             self.processed_pixmap_item.setPixmap(self._pixmap_cache["processed"])
             self.processed_scene.setSceneRect(
                 self._pixmap_cache["processed"].rect().toRectF()
             )
+            if is_new_image:
+                self.processed_view.fit_in_view()
         else:
             self.processed_pixmap_item.setPixmap(QPixmap())
     
@@ -563,6 +568,17 @@ class ImagePreviewWidget(QWidget):
         # Update slider
         self.zoom_slider.setValue(100)
     
+    def retranslate_ui(self):
+        """Refresh texts after a language change."""
+        self._original_label.setText(t("preview.title.original"))
+        self._processed_label.setText(t("preview.title.result"))
+        self.contour_check.setText(t("preview.show_area"))
+        self.contour_check.setToolTip(t("preview.show_area.tooltip"))
+        self._fit_btn.setText(t("preview.fit"))
+        self._reset_btn.setText(t("preview.actual_size"))
+        if self._original_image is None and self._processed_image is None:
+            self.show_placeholder()
+
     def clear(self):
         """Clear all images and show placeholder."""
         self._original_image = None

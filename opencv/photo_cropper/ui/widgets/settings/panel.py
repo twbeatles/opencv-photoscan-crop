@@ -52,6 +52,7 @@ from ....core.settings_model import (
     NotificationSettings,
 )
 from ....i18n.catalog import get_category_folder_defaults, get_translator, t
+from ...design_tokens import INVALID_INPUT_QSS
 from ....utils.path_validation import (
     validate_single_path_segment,
 )
@@ -119,6 +120,10 @@ class SettingsPanel(QWidget):
             self.tab_widget.setTabVisible(index, not bool(enabled))
         if enabled and self.tab_widget.count() > 0:
             self.tab_widget.setCurrentIndex(0)
+        # A tab bar with a single tab is noise; hide it in simple mode.
+        tab_bar = self.tab_widget.tabBar()
+        if tab_bar is not None:
+            tab_bar.setVisible(not bool(enabled))
 
     def _on_simple_mode_toggled(self, checked: bool = False) -> None:
         if self._block_signals:
@@ -166,12 +171,7 @@ class SettingsPanel(QWidget):
         self._apply_validation_state()
 
     def _set_line_edit_error(self, widget: QLineEdit, is_invalid: bool) -> None:
-        if is_invalid:
-            widget.setStyleSheet(
-                "QLineEdit { border: 1px solid #cf222e; border-radius: 4px; }"
-            )
-        else:
-            widget.setStyleSheet("")
+        widget.setStyleSheet(INVALID_INPUT_QSS if is_invalid else "")
 
     def _validate_form_inputs(self) -> bool:
         return validate_form_inputs(self)
@@ -198,37 +198,6 @@ class SettingsPanel(QWidget):
         self.canny_min_label.setText(str(self.canny_min_slider.value()))
         self.canny_max_label.setText(str(self.canny_max_slider.value()))
         self._emit_settings()
-
-    def _on_scene_preset_changed(self, index: int = 0):
-        """Apply a scene preset to algorithm (and multi-photo) settings."""
-        if self._block_signals:
-            return
-        if not hasattr(self, "scene_preset_combo"):
-            return
-        from ....core.scene_presets import apply_scene_preset
-
-        scene_id = self.scene_preset_combo.currentData()
-        if not scene_id or scene_id == "custom":
-            self._emit_settings()
-            return
-
-        current = self._build_settings() if self._is_form_valid else self._settings
-        updated = apply_scene_preset(current, str(scene_id))
-        # Reload UI controls from updated settings (keeps other tabs intact).
-        self._block_signals = True
-        try:
-            self._load_settings(updated)
-            # Restore selected preset after load (load may not know about it).
-            for i in range(self.scene_preset_combo.count()):
-                if self.scene_preset_combo.itemData(i) == scene_id:
-                    self.scene_preset_combo.setCurrentIndex(i)
-                    break
-        finally:
-            self._block_signals = False
-        self._settings = updated
-        self.settings_changed.emit(updated)
-        if hasattr(self, "auto_preview_check") and self.auto_preview_check.isChecked():
-            self.preview_requested.emit()
 
     def _on_format_changed(self, format_name: str):
         """Handle output format change."""

@@ -88,3 +88,80 @@ def test_legacy_theme_fallback_still_available() -> None:
 
     assert set(get_available_themes()) == {"dark", "light"}
     assert "QMainWindow" in get_theme("dark")
+
+
+def test_workbench_is_first_shell_page() -> None:
+    from photo_cropper.ui.main.builders import PAGE_ORDER
+
+    assert PAGE_ORDER[0] == "workbench"
+    assert set(PAGE_ORDER) == set(fluent.NAV_ICONS)
+
+
+def test_status_badge_kinds() -> None:
+    assert tokens.STATUS_SUCCESS in tokens.status_badge_qss("success")
+    assert tokens.STATUS_SUCCESS not in tokens.status_badge_qss()
+
+
+def test_scene_preset_picker_leads_with_keep_current() -> None:
+    from photo_cropper.core.scene_presets import SCENE_PRESET_META
+    from photo_cropper.i18n.catalog import t
+    from photo_cropper.ui.widgets.settings.controls import scene_preset_ids
+
+    ids = scene_preset_ids()
+    assert ids[0] == "custom"
+    assert set(ids) == set(SCENE_PRESET_META)
+    for sid in ids:
+        assert t(f"scene.{sid}") != f"scene.{sid}"
+
+
+def test_theme_choices_cover_every_theme() -> None:
+    from photo_cropper.ui.widgets.settings.controls import THEME_CHOICES
+
+    assert set(THEME_CHOICES) == set(theme_fluent.AVAILABLE_THEMES)
+
+
+def test_explicit_theme_is_not_overridden_by_os_watcher(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[object] = []
+    monkeypatch.setattr(theme_fluent, "FLUENT_AVAILABLE", True)
+    monkeypatch.setattr(theme_fluent, "_set_theme", calls.append)
+    monkeypatch.setattr(theme_fluent, "_active_mode", theme_fluent.THEME_DARK)
+    theme_fluent.sync_system_theme()
+    assert calls == []
+
+
+def test_image_list_reload_keeps_current_selection(tmp_path) -> None:
+    from types import SimpleNamespace
+
+    import cv2
+    import numpy as np
+
+    from photo_cropper.core.settings_model import AppSettings
+    from photo_cropper.ui.main.actions import NavigationActions
+
+    paths = []
+    for name in ("a.jpg", "b.jpg", "c.jpg"):
+        path = tmp_path / name
+        cv2.imwrite(str(path), np.zeros((8, 8, 3), np.uint8))
+        paths.append(str(path))
+
+    state = SimpleNamespace(
+        settings=AppSettings(),
+        image_list=[],
+        current_image_index=-1,
+        current_image_path=paths[1],
+        review_list_active=True,
+    )
+    refs = SimpleNamespace(
+        input_path_edit=SimpleNamespace(text=lambda: str(tmp_path)),
+        output_path_edit=None,
+        file_count_badge=None,
+    )
+    actions = NavigationActions(state, refs)  # type: ignore[arg-type]
+    actions.update_image_list()
+
+    assert len(state.image_list) == 3
+    assert state.current_image_path == paths[1]
+    assert state.current_image_index == state.image_list.index(paths[1])
+    assert state.review_list_active is False

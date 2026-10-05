@@ -38,6 +38,14 @@ if _FLUENT_SWITCH_AVAILABLE:
             self.setText(text)
             self.checkedChanged.connect(self.toggled.emit)
 
+        def setText(self, text: str) -> None:
+            # SwitchButton swaps its label to "On"/"Off" on every toggle;
+            # pin both states to the caller's label so it stays readable.
+            # (Assigned directly: the public setters call back into setText.)
+            self._onText = text
+            self._offText = text
+            super().setText(text)
+
     ModernToggleSwitch = _FluentToggleSwitch
 
 else:

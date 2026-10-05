@@ -23,6 +23,9 @@ AVAILABLE_THEMES = (THEME_AUTO, THEME_DARK, THEME_LIGHT)
 
 _POLL_MS = 3000
 
+# The user's persisted choice; the OS watcher only acts while this is auto.
+_active_mode = THEME_AUTO
+
 _FluentTheme: Any = None
 _is_dark_theme: Any = None
 _set_theme: Any = None
@@ -61,8 +64,8 @@ def setup_app_theme(app) -> None:
 
 
 def sync_system_theme() -> None:
-    """Reflect the OS dark/light setting in qfluentwidgets."""
-    if not FLUENT_AVAILABLE:
+    """Reflect the OS dark/light setting in qfluentwidgets (auto mode only)."""
+    if not FLUENT_AVAILABLE or _active_mode != THEME_AUTO:
         return
     try:
         import darkdetect
@@ -85,6 +88,9 @@ def _install_theme_watcher(app) -> None:
         color_changed = getattr(hints, "colorSchemeChanged", None)
         if callable(color_changed) and hasattr(color_changed, "connect"):
             color_changed.connect(lambda _scheme: QTimer.singleShot(0, sync_system_theme))
+            color_changed.connect(
+                lambda _scheme: QTimer.singleShot(0, refresh_styled_widgets)
+            )
     except Exception:
         logger.debug("Qt color-scheme watcher unavailable", exc_info=True)
     try:
@@ -95,11 +101,60 @@ def _install_theme_watcher(app) -> None:
         logger.debug("Theme polling watcher unavailable", exc_info=True)
 
 
+def sync_qt_color_scheme(theme_name: str) -> None:
+    """Make native Qt widgets follow the chosen theme (Qt 6.8+).
+
+    Without this, picking a theme that differs from the OS setting leaves
+    native widgets (inputs, tabs, menus) in the OS scheme while Fluent
+    widgets switch, which produces unreadable low-contrast text.
+    """
+    try:
+        from PyQt6.QtCore import Qt
+        from PyQt6.QtGui import QGuiApplication
+
+        hints = QGuiApplication.styleHints()
+        set_scheme = getattr(hints, "setColorScheme", None)
+        if hints is None or not callable(set_scheme):
+            return
+        scheme = {
+            THEME_DARK: Qt.ColorScheme.Dark,
+            THEME_LIGHT: Qt.ColorScheme.Light,
+        }.get(theme_name, Qt.ColorScheme.Unknown)
+        set_scheme(scheme)
+        from PyQt6.QtCore import QTimer
+
+        QTimer.singleShot(0, refresh_styled_widgets)
+    except Exception:
+        logger.debug("Qt color-scheme sync unavailable", exc_info=True)
+
+
+def refresh_styled_widgets() -> None:
+    """Re-polish widgets that carry a stylesheet after a palette change.
+
+    Qt keeps the old palette cached for any widget subtree styled through a
+    stylesheet, so those subtrees would keep dark-theme text on a light
+    window (or the reverse) until their stylesheet is applied again.
+    """
+    try:
+        from PyQt6.QtWidgets import QApplication
+
+        for widget in QApplication.allWidgets():
+            sheet = widget.styleSheet()
+            if sheet:
+                widget.setStyleSheet("")
+                widget.setStyleSheet(sheet)
+    except Exception:
+        logger.debug("Styled-widget refresh failed", exc_info=True)
+
+
 def apply_fluent_theme(theme_name: str) -> str:
     """Apply a persisted theme choice. ``auto`` follows the OS setting."""
+    global _active_mode
     normalized = normalize_theme_name(theme_name)
+    _active_mode = normalized
     if not FLUENT_AVAILABLE:
         return normalized
+    sync_qt_color_scheme(normalized)
     if normalized == THEME_AUTO:
         _set_theme(_FluentTheme.AUTO)
         sync_system_theme()
@@ -139,6 +194,8 @@ __all__ = [
     "normalize_theme_name",
     "setup_app_theme",
     "sync_system_theme",
+    "sync_qt_color_scheme",
+    "refresh_styled_widgets",
     "apply_fluent_theme",
     "is_dark",
     "configure_fluent_window",

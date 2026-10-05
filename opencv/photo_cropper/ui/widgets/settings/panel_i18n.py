@@ -5,6 +5,7 @@
 from __future__ import annotations
 
 from ....i18n.catalog import t
+from .controls import populate_theme_choices
 from .i18n_bindings import apply_settings_i18n_bindings
 
 def retranslate_panel(panel) -> None:
@@ -92,7 +93,7 @@ def retranslate_panel(panel) -> None:
     self.notification_enable_check.setToolTip(t("settings.notification_enable.tooltip"))
     self.notification_sound_check.setText(t("settings.notification_sound"))
     self.notification_error_only_check.setText(t("settings.notification_error_only"))
-    self.language_info_label.setText(f"💡 {t('settings.language.info')}")
+    self.language_info_label.setText(t("settings.language.info"))
 
     self.naming_prefix_edit.setPlaceholderText(t("settings.naming_prefix.placeholder"))
     self.naming_suffix_edit.setPlaceholderText(t("settings.naming_suffix.placeholder"))
@@ -104,6 +105,10 @@ def retranslate_panel(panel) -> None:
         self.debug_output_dir_edit.setPlaceholderText(t("settings.debug_output_dir.placeholder"))
     if hasattr(self, "watermark_font_path_edit"):
         self.watermark_font_path_edit.setPlaceholderText(t("settings.watermark_font.placeholder"))
+
+    populate_theme_choices(self.theme_combo)
+    self.simple_mode_check.setText(t("settings.simple_mode"))
+    self.simple_mode_check.setToolTip(t("settings.simple_mode.tooltip"))
 
     current_code = self.language_combo.itemData(self.language_combo.currentIndex())
     self.language_combo.blockSignals(True)

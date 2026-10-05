@@ -17,11 +17,9 @@ from PyQt6.QtWidgets import (
     QMenu,
     QProgressBar,
     QStatusBar,
-    QToolBar,
     QMainWindow,
 )
 
-from ..widgets.floating_action_button import QuickActionFAB
 from ..widgets.fullscreen_viewer import FullscreenViewerManager
 from ..widgets.histogram_widget import HistogramWidget
 from ..widgets.preview_widget import ImagePreviewWidget
@@ -69,6 +67,8 @@ class WindowState:
     batch_contours_edited: set[str] = field(default_factory=set)
     failed_boundary_files: list[str] = field(default_factory=list)
     low_confidence_files: list[str] = field(default_factory=list)
+    # True while the list shows only scans that need a manual check.
+    review_list_active: bool = False
     manual_extract_thread: Optional[threading.Thread] = None
     manual_extract_stop_event: threading.Event = field(
         default_factory=threading.Event
@@ -84,7 +84,6 @@ class WindowState:
 class WindowRefs:
     """Concrete Qt object references created by UI builders."""
 
-    toolbar: Optional[QToolBar] = None
     statusbar: Optional[QStatusBar] = None
     status_label: Optional[QLabel] = None
     status_progress: Optional[QProgressBar] = None
@@ -97,13 +96,14 @@ class WindowRefs:
     settings_panel: Optional[SettingsPanel] = None
     process_btn: Optional[QPushButton] = None
     preset_combo: Optional[PresetComboBox] = None
-    batch_load_btn: Optional[QPushButton] = None
+    redetect_btn: Optional[QPushButton] = None
+    scene_preset_combo: Optional[Any] = None
+    multi_photo_quick_toggle: Optional[Any] = None
     batch_failed_btn: Optional[QPushButton] = None
     batch_prev_btn: Optional[QPushButton] = None
     batch_next_btn: Optional[QPushButton] = None
     batch_save_edits_btn: Optional[QPushButton] = None
     batch_edit_status_label: Optional[QLabel] = None
-    fab: Optional[QuickActionFAB] = None
     progress_dialog: Optional[ProgressDialog] = None
     shell_nav: Optional[Any] = None
     shell_stack: Optional[Any] = None

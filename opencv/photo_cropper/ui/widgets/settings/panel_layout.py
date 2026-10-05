@@ -7,14 +7,25 @@ from __future__ import annotations
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import QFrame, QScrollArea, QTabWidget, QVBoxLayout, QWidget
 
+from ...design_tokens import SPACE_XS
+from ..toggle_switch import ModernToggleSwitch
+
 def setup_ui(panel):
     self = panel
     """Setup the UI components with 5 consolidated tabs."""
     layout = QVBoxLayout(self)
     layout.setContentsMargins(0, 0, 0, 0)
+    layout.setSpacing(SPACE_XS)
+
+    # Always-visible switch between the everyday options and every option.
+    self.simple_mode_check = ModernToggleSwitch("간단 모드 (고급 탭 숨기기)")
+    self.simple_mode_check.setChecked(True)
+    self.simple_mode_check.toggled.connect(self._on_simple_mode_toggled)
+    layout.addWidget(self.simple_mode_check)
 
     # Tab widget
     self.tab_widget = QTabWidget()
+    self.tab_widget.setDocumentMode(True)
     layout.addWidget(self.tab_widget)
 
     # 5 consolidated tabs (was 11)
@@ -34,8 +45,13 @@ def make_scrollable_tab(panel, content_widget: QWidget) -> QWidget:
     scroll.setFrameShape(QFrame.Shape.NoFrame)
     scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
 
-    # Style the scroll area to be transparent
-    scroll.setStyleSheet("background: transparent;")
+    # Let the tab pane background show through the scroll viewport.
+    # (Scoped selectors: a bare "background" rule would also blank out the
+    # check box and other control indicators inside the tab.)
+    scroll.setStyleSheet(
+        "QScrollArea { background: transparent; }"
+        " QScrollArea > QWidget > QWidget { background: transparent; }"
+    )
 
     return scroll
 

@@ -14,8 +14,11 @@ from PyQt6.QtWidgets import (
     QFrame,
     QSizePolicy,
 )
-from PyQt6.QtCore import Qt, QPropertyAnimation, QEasingCurve, QParallelAnimationGroup
+from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QFont
+
+from ..components import make_secondary
+from ..design_tokens import COLLAPSIBLE_HEADER_QSS, SPACE_SM, SPACE_XS, SPACE_XXS
 
 
 class CollapsibleSection(QWidget):
@@ -49,33 +52,21 @@ class CollapsibleSection(QWidget):
         self._header = QFrame()
         self._header.setObjectName("collapsibleHeader")
         self._header.setCursor(Qt.CursorShape.PointingHandCursor)
-        self._header.setStyleSheet("""
-            QFrame#collapsibleHeader {
-                background-color: rgba(255, 255, 255, 0.03);
-                border: 1px solid rgba(255, 255, 255, 0.06);
-                border-radius: 8px;
-                padding: 6px 10px;
-            }
-            QFrame#collapsibleHeader:hover {
-                background-color: rgba(255, 255, 255, 0.06);
-                border-color: rgba(255, 255, 255, 0.1);
-            }
-        """)
+        self._header.setStyleSheet(COLLAPSIBLE_HEADER_QSS)
 
         header_layout = QHBoxLayout(self._header)
-        header_layout.setContentsMargins(4, 2, 4, 2)
-        header_layout.setSpacing(8)
+        header_layout.setContentsMargins(SPACE_XXS, SPACE_XS, SPACE_XXS, SPACE_XS)
+        header_layout.setSpacing(SPACE_XS)
 
         self._arrow_label = QLabel("▼")
         self._arrow_label.setFixedWidth(16)
-        self._arrow_label.setStyleSheet("color: #8b949e; font-size: 10px;")
+        make_secondary(self._arrow_label)
         header_layout.addWidget(self._arrow_label)
 
         self._title_label = QLabel(title)
         font = self._title_label.font()
         font.setWeight(QFont.Weight.DemiBold)
         self._title_label.setFont(font)
-        self._title_label.setStyleSheet("color: #c9d1d9; font-size: 12px;")
         header_layout.addWidget(self._title_label)
         header_layout.addStretch()
 
@@ -84,8 +75,8 @@ class CollapsibleSection(QWidget):
         # Content area
         self._content_area = QWidget()
         self._content_layout = QVBoxLayout(self._content_area)
-        self._content_layout.setContentsMargins(4, 8, 4, 4)
-        self._content_layout.setSpacing(8)
+        self._content_layout.setContentsMargins(SPACE_XXS, SPACE_XS, SPACE_XXS, SPACE_SM)
+        self._content_layout.setSpacing(SPACE_XS)
 
         main_layout.addWidget(self._content_area)
 

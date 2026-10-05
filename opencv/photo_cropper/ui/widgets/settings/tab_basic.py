@@ -3,15 +3,21 @@ from __future__ import annotations
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import QCheckBox, QFormLayout, QHBoxLayout, QLabel, QVBoxLayout, QWidget
 
+from ...design_tokens import SPACE_LG, SPACE_XS
 from ..collapsible_section import CollapsibleSection
 from ..toggle_switch import ModernToggleSwitch
-from .controls import NoScrollComboBox, NoScrollSlider, NoScrollSpinBox
+from .controls import (
+    NoScrollComboBox,
+    NoScrollSlider,
+    NoScrollSpinBox,
+    populate_theme_choices,
+)
 
 def create_basic_tab(self):
     """Create consolidated basic settings tab (post-processing + UI + output + filter)."""
     content = QWidget()
     layout = QVBoxLayout(content)
-    layout.setSpacing(10)
+    layout.setSpacing(SPACE_XS)
 
     # === Post-processing section ===
     self.post_section = CollapsibleSection("✨ 후처리 옵션")
@@ -35,7 +41,7 @@ def create_basic_tab(self):
     post_layout.addWidget(self.sharpening_check)
 
     sharpening_row = QHBoxLayout()
-    sharpening_row.addSpacing(24)
+    sharpening_row.addSpacing(SPACE_LG)
     sharpening_row.addWidget(QLabel("강도:"))
     self.sharpening_slider = NoScrollSlider(Qt.Orientation.Horizontal)
     self.sharpening_slider.setRange(1, 30)
@@ -112,7 +118,7 @@ def create_basic_tab(self):
     filter_layout.addWidget(self.skip_small_check)
 
     min_size_row = QHBoxLayout()
-    min_size_row.addSpacing(24)
+    min_size_row.addSpacing(SPACE_LG)
     min_size_row.addWidget(QLabel("최소 크기 (px):"))
     self.min_size_spin = NoScrollSpinBox()
     self.min_size_spin.setRange(50, 1000)
@@ -135,18 +141,9 @@ def create_basic_tab(self):
     self.ui_form = QFormLayout(ui_group)
     self.ui_form.setContentsMargins(0, 0, 0, 0)
 
-    self.simple_mode_check = ModernToggleSwitch("간단 모드 (고급 탭 숨기기)")
-    self.simple_mode_check.setToolTip(
-        "켜면 알고리즘/처리/관리/AI 탭을 숨기고 기본 작업에 집중합니다. "
-        "장면 프리셋은 워크벤치 상단에서 사용할 수 있습니다."
-    )
-    self.simple_mode_check.setChecked(True)
-    self.simple_mode_check.toggled.connect(self._on_simple_mode_toggled)
-    self.ui_form.addRow(self.simple_mode_check)
-
     self.theme_combo = NoScrollComboBox()
-    self.theme_combo.addItems(["dark", "light"])
-    self.theme_combo.currentTextChanged.connect(self._on_setting_changed)
+    populate_theme_choices(self.theme_combo)
+    self.theme_combo.currentIndexChanged.connect(self._on_setting_changed)
     self.ui_form.addRow("테마:", self.theme_combo)
 
     self.auto_preview_check = ModernToggleSwitch("설정 변경 시 자동 미리보기")

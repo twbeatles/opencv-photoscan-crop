@@ -50,7 +50,8 @@ def wire_window_actions(window, state, refs, services, signals) -> None:
         open_output_folder=self.input_actions.open_output_folder,
     )
     self.settings_actions.bind(
-        reconfigure_scheduler=self.watch_actions.reconfigure_scheduler
+        reconfigure_scheduler=self.watch_actions.reconfigure_scheduler,
+        request_preview=self.preview_actions.request_preview,
     )
     self.watch_actions.bind(start_processing=self.batch_actions.start_processing)
     self.tool_actions.bind(
@@ -65,7 +66,7 @@ def wire_window_actions(window, state, refs, services, signals) -> None:
         request_preview=self.preview_actions.request_preview,
         navigate_prev=self.navigation_actions.navigate_prev,
         navigate_next=self.navigation_actions.navigate_next,
-        start_processing=self.batch_actions.start_processing,
+        start_processing=self.batch_actions.start_from_ui,
         rotate_preview=self.tool_actions.rotate_preview,
         show_compare_dialog=self.dialog_actions.show_compare_dialog,
         show_fullscreen=self.feature_actions.show_fullscreen,

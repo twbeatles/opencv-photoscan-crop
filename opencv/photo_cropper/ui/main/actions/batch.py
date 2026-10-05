@@ -162,6 +162,29 @@ class BatchActions:
             output_edit.setText(resolved.output_path)
         return resolved.input_path, resolved.output_path
 
+    def _edited_count(self) -> int:
+        image_set = set(self.state.image_list or [])
+        return sum(1 for path in self.state.batch_contours_edited if path in image_set)
+
+    def _review_paths(self) -> list[str]:
+        """Scans worth a manual look: failed detection plus low-confidence ones."""
+        paths: list[str] = list(self.state.failed_boundary_files or [])
+        for path in getattr(self.state, "low_confidence_files", None) or []:
+            if path and path not in paths:
+                paths.append(path)
+        return paths
+
+    def _position_text(self, current: int, total: int, edited: int) -> str:
+        if total <= 0:
+            return t("central.position.empty")
+        filename = os.path.basename(self.state.current_image_path or "")
+        text = t("central.position", current=current, total=total, filename=filename)
+        if getattr(self.state, "review_list_active", False):
+            text = f"{t('central.position.review')} · {text}"
+        if edited > 0:
+            text = f"{text} · {t('central.position.edited', count=edited)}"
+        return text
+
     def update_batch_edit_controls(self) -> None:
         total = len(self.state.image_list) if self.state.image_list else 0
         current = (
@@ -169,18 +192,12 @@ class BatchActions:
             if total > 0 and self.state.current_image_index >= 0
             else 0
         )
-        image_set = set(self.state.image_list or [])
-        edited = sum(1 for path in self.state.batch_contours_edited if path in image_set)
-        failed = len(self.state.failed_boundary_files)
+        edited = self._edited_count()
+        review_count = len(self._review_paths())
+        review_active = bool(getattr(self.state, "review_list_active", False))
         if self.refs.batch_edit_status_label is not None:
             self.refs.batch_edit_status_label.setText(
-                t(
-                    "central.batch_status",
-                    current=current,
-                    total=total,
-                    edited=edited,
-                    failed=failed,
-                )
+                self._position_text(current, total, edited)
             )
 
         busy = bool(
@@ -188,17 +205,30 @@ class BatchActions:
             or (self.batch_processor and self.batch_processor.is_running)
         )
         has_files = total > 0
-        has_failed_targets = failed > 0
         if self.refs.batch_prev_btn is not None:
             self.refs.batch_prev_btn.setEnabled(has_files and total > 1 and not busy)
         if self.refs.batch_next_btn is not None:
             self.refs.batch_next_btn.setEnabled(has_files and total > 1 and not busy)
-        if self.refs.batch_save_edits_btn is not None:
-            self.refs.batch_save_edits_btn.setEnabled(has_files and not busy)
-        if self.refs.batch_failed_btn is not None:
-            self.refs.batch_failed_btn.setEnabled(has_failed_targets and not busy)
-        if self.refs.batch_load_btn is not None:
-            self.refs.batch_load_btn.setEnabled(not busy)
+        save_btn = self.refs.batch_save_edits_btn
+        if save_btn is not None:
+            # Only offered once the user has actually corrected an area.
+            save_btn.setVisible(edited > 0)
+            save_btn.setEnabled(has_files and not busy)
+        failed_btn = self.refs.batch_failed_btn
+        if failed_btn is not None:
+            failed_btn.setVisible(review_active or review_count > 0)
+            failed_btn.setEnabled(not busy)
+            failed_btn.setText(
+                t("central.show_all")
+                if review_active
+                else t("central.load_failed", count=review_count)
+            )
+        redetect_btn = getattr(self.refs, "redetect_btn", None)
+        if redetect_btn is not None:
+            redetect_btn.setEnabled(has_files and not busy)
+        process_btn = getattr(self.refs, "process_btn", None)
+        if process_btn is not None:
+            process_btn.setEnabled(not busy)
 
     def _create_progress_dialog(self, output_path: str) -> None:
         if self.refs.progress_dialog is not None:
@@ -396,6 +426,51 @@ class BatchActions:
             output_path=output_path,
             files=files,
         )
+
+    def _ask_use_edited_areas(self, edited: int) -> Optional[bool]:
+        """Ask how to treat hand-corrected areas. None means cancel."""
+        box = QMessageBox(self.services.host_window)
+        box.setIcon(QMessageBox.Icon.Question)
+        box.setWindowTitle(t("batch.use_edits.title"))
+        box.setText(t("batch.use_edits.body", count=edited))
+        use_edits = box.addButton(
+            t("batch.use_edits.yes"), QMessageBox.ButtonRole.AcceptRole
+        )
+        auto_only = box.addButton(
+            t("batch.use_edits.no"), QMessageBox.ButtonRole.DestructiveRole
+        )
+        box.addButton(QMessageBox.StandardButton.Cancel)
+        box.setDefaultButton(use_edits)
+        box.exec()
+        clicked = box.clickedButton()
+        if clicked is use_edits:
+            return True
+        if clicked is auto_only:
+            return False
+        return None
+
+    def start_from_ui(self, checked: bool = False) -> bool:
+        """Start cropping from the main button or the Space key.
+
+        Automatic cropping ignores areas the user corrected by hand, so when
+        such corrections exist the user chooses which way to save.
+        """
+        busy = bool(self.state.manual_extract_running or self._is_batch_running())
+        edited = self._edited_count()
+        if edited > 0 and not busy and not self._is_watch_running():
+            use_edits = self._ask_use_edited_areas(edited)
+            if use_edits is None:
+                return False
+            if use_edits:
+                return self.save_batch_edited_crops(confirm=False)
+        return self.start_processing()
+
+    def toggle_review_list(self, checked: bool = False) -> None:
+        """Switch between the scans needing a check and the whole folder."""
+        if getattr(self.state, "review_list_active", False):
+            self.load_batch_images_for_edit()
+        else:
+            self.load_failed_boundary_images_for_edit()
 
     def cancel_processing(self) -> None:
         if self.state.manual_extract_running:
@@ -661,8 +736,6 @@ class BatchActions:
             self.update_batch_edit_controls()
             return
 
-        self.state.current_image_index = 0
-        self.state.current_image_path = self.state.image_list[0]
         if self._request_preview is not None:
             self._request_preview()
         if self._update_navigation_status is not None:
@@ -681,10 +754,7 @@ class BatchActions:
             return
 
         # Review queue = boundary failures + low-confidence previews (if any).
-        review_paths: list[str] = list(self.state.failed_boundary_files or [])
-        for path in getattr(self.state, "low_confidence_files", None) or []:
-            if path and path not in review_paths:
-                review_paths.append(path)
+        review_paths = self._review_paths()
 
         if not review_paths:
             QMessageBox.information(
@@ -709,6 +779,7 @@ class BatchActions:
         self.state.image_list = files
         self.state.current_image_index = 0
         self.state.current_image_path = files[0]
+        self.state.review_list_active = True
         if self.refs.status_label is not None:
             self.refs.status_label.setText(
                 t("batch.failed_edit.loaded_status", count=len(files))
@@ -720,23 +791,23 @@ class BatchActions:
             self._update_navigation_status()
         self.update_batch_edit_controls()
 
-    def save_batch_edited_crops(self) -> None:
+    def save_batch_edited_crops(self, checked: bool = False, *, confirm: bool = True) -> bool:
         if self.state.manual_extract_running:
             QMessageBox.information(
                 self.services.host_window,
                 self.messages.info_title,
                 t("batch.manual_extract.already_running"),
             )
-            return
+            return False
         if self.batch_processor and self.batch_processor.is_running:
             QMessageBox.warning(
                 self.services.host_window,
                 self.messages.warning_title,
                 t("batch.manual_extract.batch_running"),
             )
-            return
+            return False
         if not self._validate_runtime_settings():
-            return
+            return False
 
         input_path = self.refs.input_path_edit.text() if self.refs.input_path_edit else ""
         valid, error = validate_directory(input_path)
@@ -746,7 +817,7 @@ class BatchActions:
                 self.messages.warning_title,
                 t("validation.input_dir_error", error=error),
             )
-            return
+            return False
 
         if not self.state.image_list and self._update_image_list is not None:
             self._update_image_list()
@@ -756,7 +827,7 @@ class BatchActions:
                 self.messages.info_title,
                 t("batch.manual_extract.no_images"),
             )
-            return
+            return False
 
         output_path = self.refs.output_path_edit.text().strip() if self.refs.output_path_edit else ""
         if not output_path:
@@ -768,7 +839,7 @@ class BatchActions:
         edited_count = sum(
             1 for path in self.state.image_list if path in self.state.batch_contours_edited
         )
-        reply = confirm_qt(
+        if confirm and not confirm_qt(
             self.services.host_window,
             t("batch.manual_extract.title"),
             t(
@@ -778,9 +849,8 @@ class BatchActions:
             ),
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
             QMessageBox.StandardButton.Yes,
-        )
-        if not reply:
-            return
+        ):
+            return False
 
         contours_snapshot = {}
         for path, points in self.state.batch_contours_norm.items():
@@ -808,6 +878,7 @@ class BatchActions:
             daemon=True,
         )
         self.state.manual_extract_thread.start()
+        return True
 
     def run_manual_extract_worker(
         self,

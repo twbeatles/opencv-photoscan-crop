@@ -76,7 +76,7 @@ photo_cropper/
 - `process_image(image_path) -> CropResult` (+ `failure_reason`, `stage_scores`)
 - `process_preview(image_path, ...)`
 - `load_image`, `rotate_image`, `detect_edges_multiscale`, `find_best_contour`
-- 장면 프리셋: `core/scene_presets.py` / CLI `--scene-preset` / UI 간단 모드
+- 장면 프리셋: `core/scene_presets.py` / CLI `--scene-preset` / UI `스캔 종류` 선택(사진 자르기 화면)
 - 상세: `docs/detection-pipeline.md`
 
 ### 2) BatchProcessor (`core/batch/processor.py`)
@@ -127,7 +127,7 @@ UI composition root입니다.
    - `Input/Toolbar/Menu` -> `PreviewActions.request_preview()` -> `PreviewWorker.process_preview()` -> UI 반영
 
 2. **배치 처리**
-   - `Toolbar/FAB/Menu` -> `BatchActions.start_processing()` -> `BatchProcessor.start_async()`
+   - `자르기 시작 버튼/Space/Menu` -> `BatchActions.start_from_ui()` -> `BatchActions.start_processing()` -> `BatchProcessor.start_async()`
 
 3. **Watch Mode**
    - `WatchActions.start_watch_mode()` -> `WatchModeCoordinator.start()` -> `AutoProcessor` -> `BatchProcessor.process_single()`

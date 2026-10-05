@@ -176,29 +176,37 @@ def new_primary_button(text: str = "", parent=None):
 
 # Navigation icons for the 8 shell pages (FluentIcon priority, RULES Sec 19).
 NAV_ICONS = {
+    "workbench": "CUT",
     "library": "LIBRARY",
-    "workbench": "PHOTO",
-    "review": "SEARCH",
-    "duplicates": "SYNC",
+    "review": "INFO",
+    "duplicates": "COPY",
     "jobs": "HISTORY",
-    "collections": "FOLDER",
-    "recipes": "DOCUMENT",
+    "collections": "ALBUM",
+    "recipes": "SAVE",
     "settings": "SETTING",
 }
 
 
-def nav_icon(page_key: str):
-    """QIcon for a shell page, or None when Fluent icons are unavailable."""
-    if not FLUENT_AVAILABLE:
-        return None
-    icon_name = NAV_ICONS.get(str(page_key or ""))
-    if not icon_name:
+def fluent_icon(icon_name: str):
+    """Theme-aware QIcon for a FluentIcon name, or None when unavailable.
+
+    The icon re-renders for the active dark/light theme on every paint, so
+    it stays readable when the user switches themes at runtime.
+    """
+    if not FLUENT_AVAILABLE or not icon_name:
         return None
     try:
-        return getattr(_FIF, icon_name).icon()
+        from qfluentwidgets.common.icon import Icon
+
+        return Icon(getattr(_FIF, icon_name))
     except Exception:
         logger.debug("FluentIcon %s unavailable", icon_name, exc_info=True)
         return None
+
+
+def nav_icon(page_key: str):
+    """QIcon for a shell page, or None when Fluent icons are unavailable."""
+    return fluent_icon(NAV_ICONS.get(str(page_key or ""), ""))
 
 
 __all__ = [
@@ -211,5 +219,6 @@ __all__ = [
     "confirm_qt",
     "new_button",
     "new_primary_button",
+    "fluent_icon",
     "nav_icon",
 ]

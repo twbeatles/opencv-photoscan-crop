@@ -55,53 +55,58 @@ python -m photo_cropper.cli -i ./scans -o ./cropped
 
 ## 🖥️ GUI User Guide
 
-The Photo Cropper GUI consists of an **8-view navigation sidebar** on the left and the **Workbench / Management area** in the center.
+The window has a **menu on the left** and the **working page** in the centre. The app opens on `Crop Photos`; work top to bottom: choose a folder → check the area → start cropping.
 
 ```text
-┌─────────────────┬────────────────────────────────────────────────────────┐
-│  Sidebar Menu   │  Workbench                                             │
-│                 │  ┌──────────────────────────────────────────────────┐  │
-│  📚 Library     │  │ Input / Output paths | Scene Preset | Multi-Photo │  │
-│  🛠️ Workbench   │  ├────────────────────────┬─────────────────────────┤  │
-│  🔍 Review      │  │                        │ [📷 Basic] [🔬 Algo]    │  │
-│  👥 Duplicates  │  │  Live Preview View     │ [🔧 Process] [📂 Manage]│  │
-│  📋 Jobs        │  │  (Mouse wheel zoom/pan,│ [🤖 AI]                 │  │
-│  📁 Collections │  │   interactive contour) │                         │  │
-│  🍳 Recipes     │  │                        │ Detailed Settings Panel │  │
-│  ⚙️ Settings    │  │  📊 RGB Histogram      │                         │  │
-│                 │  └────────────────────────┴─────────────────────────┘  │
-└─────────────────┴────────────────────────────────────────────────────────┘
+┌───────────────┬──────────────────────────────────────────────────────────┐
+│  Menu         │  Crop Photos                                             │
+│               │  ┌────────────────────────────────────────────────────┐  │
+│  Crop Photos  │  │ Photo folder | Save to | Scan type | Several photos │  │
+│  Photo Library│  ├───────────────────────────────┬────────────────────┤  │
+│  Needs a Check│  │  Original (detected area)     │ [Simple view] switch│  │
+│  Duplicates   │  │  + cropped result preview     │ touch-up / saved    │  │
+│  Job History  │  │  (wheel zoom, drag corners)   │ file options        │  │
+│  Albums       │  ├───────────────────────────────┴────────────────────┤  │
+│  Saved        │  │ Previous | Next | 1 / 12 · file   [Start Cropping]  │  │
+│  Settings     │  └────────────────────────────────────────────────────┘  │
+│  Maintenance  │                                                          │
+└───────────────┴──────────────────────────────────────────────────────────┘
 ```
 
 ### 1. Standard Cropping Workflow
 
-1. **Load Image / Folder**:
-   - Click `Browse` next to `Input Folder` or **drag and drop** folders/images directly onto the app window.
-2. **Select a Scene Preset**:
-   - Choose a preset matching your scan environment (e.g., `Scanner (white bed)`, `Desk / table`, `Album page (multi)`).
-3. **Toggle Multi-Photo Mode (Optional)**:
-   - If your scan contains multiple photos on one page, turn on the **`Multi-photo` toggle switch**.
-4. **Preview & Manual Adjustment**:
-   - Check the detected green boundary.
-   - If slight adjustments are needed, **drag contour corners** directly with your mouse or click 4 points manually.
-   - Use `Ctrl+Z` (Undo) and `Ctrl+Y` (Redo) at any time.
-5. **Start Batch Processing**:
-   - Click `Start Batch Processing` in the bottom toolbar to crop all files with high-speed multithreading.
+1. **Choose the photo folder**
+   - Click `Choose Folder`, or **drag and drop** a folder/image onto the window. The detected area of the first scan appears **automatically**.
+   - Leave `Save to` empty to save into an `output_cropped` folder inside the photo folder.
+2. **Pick a scan type (only if needed)**
+   - If the area is off, pick the closest `Scan type` (`Scanner, white background`, `Photo on a desk or table`, `Dark background`, `Album page`, `Document or paper`).
+   - Turn on **`Several photos per scan`** when one scan holds more than one photo.
+3. **Check and fix the area**
+   - Use `Previous`/`Next` or the `←` `→` keys and check the green outline.
+   - **Drag a corner dot** to fix it. Double-click the original to clear the area, then click the four corners yourself.
+   - When detection fails or confidence is low, a `Needs a Check (N)` button appears to show just those scans.
+4. **Start cropping**
+   - Press `Start Cropping` (or `Space`) to crop and save every photo in the folder.
+   - If you corrected any area by hand, the app first asks whether to **save with your corrections** or crop automatically.
 
-### 2. Main Navigation Views
+### 2. Menu
 
-| View | Purpose & Typical Use |
-|------|-----------------------|
-| **🛠️ Workbench** | The primary workspace for inspecting images, tuning parameters in real-time, manual corner adjustment, and running batch jobs. |
-| **📚 Library** | SQLite-backed catalog of all processed photos. Browse thumbnails, search, and filter by tags/dates. |
-| **🔍 Review** | Dedicated review queue for items with low confidence or failed boundaries. Open directly in Workbench for one-click re-processing. |
-| **👥 Duplicates** | Identifies identical and visual duplicates using pHash, allowing safe cleanup of redundant scans. |
-| **📋 Jobs** | History of past batch executions with success/failure statistics; offers **Rerun Failed Only** for quick recovery. |
-| **📁 Collections** | Organize cropped photos into virtual albums and custom tag groups without moving files on disk. |
-| **🍳 Recipes** | Save and load complete configuration presets (algorithm, resizing, watermark, colors) for one-click reuse. |
-| **⚙️ Settings** | Database maintenance (VACUUM), thumbnail cache clearing, and system diagnostics. |
+| Page | What it does |
+|------|--------------|
+| **Crop Photos** | Choose a folder, check/fix the crop area, and crop everything in one go. |
+| **Photo Library** | Browse processed photos as thumbnails; search by name, note, or tag. |
+| **Needs a Check** | Only the scans where detection failed or confidence was low; re-process them. |
+| **Duplicates** | Find identical or similar photos and tidy them up. |
+| **Job History** | Success/failure statistics of past jobs; **retry failed photos only**. |
+| **Albums** | Group photos by topic without moving files on disk. |
+| **Saved Settings** | Save the settings you use often and apply them in one click. |
+| **Maintenance** | See where library data lives; rebuild thumbnails and duplicate info. |
 
-### 3. Settings Panel (5 Consolidated Tabs)
+> The View menu switches the theme (follow system / light / dark) and shows the colour histogram.
+
+### 3. Settings Panel
+
+> By default **`Simple view`** is on and only everyday options are shown (touch-up, saved file, photos to skip, display). Turn it off to reveal the `Detection` / `Enhance` / `Automation` / `AI` tabs.
 
 - **📷 Basic**: Post-processing defaults, UI themes (Dark/Light), runtime language switcher (KO/EN/JA/ZH/ES), output format (JPG/PNG/WEBP) & compression quality, skip existing files.
 - **🔬 Algorithm**: Detection modes (`fast`, `balanced`, `accurate`), Canny edge thresholds, CLAHE enhancement, background mask delta, min/max area ratios, perspective warp toggle.

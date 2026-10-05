@@ -62,10 +62,9 @@ def _test_ui_canonical_package_import_smoke() -> None:
         )
         from ..ui.main.builders import (
             build_central_widget,
-            build_fab,
             build_menu,
             build_statusbar,
-            build_toolbar,
+            build_workbench_page,
         )
         from ..ui.main.models import WindowRefs, WindowServices, WindowSignals, WindowState
     except Exception as e:
@@ -83,10 +82,9 @@ def _test_ui_canonical_package_import_smoke() -> None:
     assert ToolActions is not None
     assert WatchActions is not None
     assert build_central_widget is not None
-    assert build_fab is not None
     assert build_menu is not None
     assert build_statusbar is not None
-    assert build_toolbar is not None
+    assert build_workbench_page is not None
     assert WindowRefs is not None
     assert WindowServices is not None
     assert WindowSignals is not None

@@ -10,7 +10,7 @@ import numpy as np
 import cv2
 from PyQt6.QtWidgets import QWidget, QVBoxLayout, QLabel
 from PyQt6.QtCore import Qt
-from PyQt6.QtGui import QPainter, QPen, QColor, QPainterPath
+from PyQt6.QtGui import QPainter, QPalette, QPen, QColor, QPainterPath
 
 from ...i18n.catalog import t
 
@@ -26,7 +26,6 @@ class HistogramWidget(QWidget):
         super().__init__(parent)
         
         self._histograms = None  # List of (color, histogram_data)
-        self._background_color = QColor(30, 30, 50)
         
         self.setMinimumHeight(100)
         self.setMaximumHeight(150)
@@ -76,12 +75,13 @@ class HistogramWidget(QWidget):
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
         
-        # Background
-        painter.fillRect(self.rect(), self._background_color)
+        # Background and placeholder follow the active dark/light palette.
+        palette = self.palette()
+        painter.fillRect(self.rect(), palette.color(QPalette.ColorRole.Base))
         
         if not self._histograms:
             # Draw placeholder text
-            painter.setPen(QPen(QColor(100, 100, 100)))
+            painter.setPen(QPen(palette.color(QPalette.ColorRole.PlaceholderText)))
             painter.drawText(
                 self.rect(),
                 Qt.AlignmentFlag.AlignCenter,

@@ -9,10 +9,12 @@ from typing import Callable, Optional
 
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QDragEnterEvent, QDropEvent, QKeyEvent
-from PyQt6.QtWidgets import QFileDialog, QMessageBox
+from PyQt6.QtWidgets import QFileDialog
 
 from ....i18n.catalog import t
 from ....utils.file_helpers import SUPPORTED_IMAGE_FORMATS, get_image_files, open_file_explorer
+from ...design_tokens import status_badge_qss
+from ...widgets.toast_notification import ToastManager
 from ..models import WindowRefs, WindowServices, WindowState
 
 
@@ -112,52 +114,60 @@ class InputActions:
                 self.state.batch_contours_norm.clear()
                 self.state.batch_contours_edited.clear()
                 self.state.failed_boundary_files = []
+                self.state.low_confidence_files = []
                 self.state.last_detected_contour = None
-            files = get_image_files(path)
-            if self.refs.file_count_badge is not None:
-                self.refs.file_count_badge.setText(t("status.file_count", count=len(files)))
-                self.refs.file_count_badge.setStyleSheet(
-                    """
-                background-color: rgba(46, 160, 67, 0.2);
-                color: #3fb950;
-                border-radius: 4px;
-                padding: 2px 8px;
-                margin: 0 4px;
-                font-weight: bold;
-            """
-                )
             if self._update_image_list is not None:
                 self._update_image_list()
+            count = len(self.state.image_list)
+            if self.refs.file_count_badge is not None:
+                self.refs.file_count_badge.setText(t("status.file_count", count=count))
+                self.refs.file_count_badge.setStyleSheet(
+                    status_badge_qss("success" if count else "neutral")
+                )
+            if count:
+                # Show the first scan right away so the user sees what will
+                # be cropped without an extra "preview" step.
+                if self._request_preview is not None:
+                    self._request_preview()
+            else:
+                self._clear_preview()
+                if self.refs.status_label is not None:
+                    self.refs.status_label.setText(t("input.folder.no_images"))
         else:
             if self.refs.file_count_badge is not None:
                 self.refs.file_count_badge.setText(t("status.file_empty"))
-                self.refs.file_count_badge.setStyleSheet(
-                    """
-                background-color: rgba(128, 128, 128, 0.2);
-                color: #8b949e;
-                border-radius: 4px;
-                padding: 2px 8px;
-                margin: 0 4px;
-            """
-                )
+                self.refs.file_count_badge.setStyleSheet(status_badge_qss())
             self.state.active_input_root = ""
             self.state.image_list = []
             self.state.current_image_index = -1
             self.state.current_image_path = None
             self.state.failed_boundary_files = []
+            self.state.low_confidence_files = []
+            self.state.review_list_active = False
+            self._clear_preview()
         if self._update_batch_edit_controls is not None:
             self._update_batch_edit_controls()
+
+    def _clear_preview(self) -> None:
+        preview = getattr(self.refs, "preview_widget", None)
+        if preview is not None:
+            preview.clear()
+        self.state.last_original = None
+        self.state.last_processed = None
+        self.state.last_detected_contour = None
+        if self.refs.image_info_badge is not None:
+            self.refs.image_info_badge.setText(t("status.image_empty"))
 
     def open_output_folder(self) -> None:
         path = self.refs.output_path_edit.text() if self.refs.output_path_edit else ""
         if path and os.path.exists(path):
             open_file_explorer(path)
-        else:
-            QMessageBox.warning(
-                self.services.host_window,
-                t("dialog.warning"),
-                t("validation.output_missing"),
-            )
+            return
+        # Not an error worth a blocking dialog: nothing has been saved yet.
+        message = t("validation.output_missing")
+        if self.refs.status_label is not None:
+            self.refs.status_label.setText(message)
+        ToastManager.info(message)
 
     def open_single_image(self) -> None:
         path, _ = QFileDialog.getOpenFileName(

@@ -54,6 +54,14 @@ class FeatureActions:
             parent=self.services.host_window,
         )
 
+    def set_histogram_visible(self, visible: bool) -> None:
+        histogram = self.refs.histogram_widget
+        if histogram is None:
+            return
+        histogram.setVisible(bool(visible))
+        if visible and self.state.last_original is not None:
+            histogram.set_image(self.state.last_original)
+
     def undo(self) -> None:
         if self.refs.status_label is None:
             return

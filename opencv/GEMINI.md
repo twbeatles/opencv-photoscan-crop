@@ -115,7 +115,7 @@
 | `main/window.py` | 메인 윈도우 composition root |
 | `main/composition/` | 서비스 생성, 액션 바인딩, 레이아웃 조립 |
 | `main/actions/` | preview/batch/input/watch/tools/settings/lifecycle 계층 |
-| `main/builders/` | menu/toolbar/central/statusbar/fab 빌더 |
+| `main/builders/` | menu/central(셸·내비)/workbench(사진 자르기 화면)/statusbar 빌더 |
 | `main/services/` | runtime flow/message helper 계층 |
 | `main/management_runtime.py` | 관리탭 signal/runtime 연결 |
 | `main/translation.py` | 메인 윈도우 런타임 번역 갱신 |

@@ -99,11 +99,6 @@ TEXT_BINDINGS = {
     "중복 병합 거리(px):": "settings.multi_photo_merge_distance",
     "파일별 하위폴더(<원본파일명>_photos)로 저장": "settings.multi_photo_separate",
     "각 사진 ROI를 단일 탐지로 재정제 (권장)": "settings.multi_photo_refine",
-    "장면:": "settings.scene_preset",
-    (
-        "프리셋을 고르면 Canny·CLAHE·면적 비율 등이 자동 조정됩니다. "
-        "세부 값은 아래에서 다시 수정할 수 있습니다."
-    ): "settings.scene_preset.hint",
     "하위 폴더 포함 (재귀 처리)": "settings.recursive",
     "파일명 규칙 사용:": "settings.naming_rules",
     "접두사:": "settings.naming_prefix",
@@ -140,7 +135,6 @@ TEXT_BINDINGS = {
 }
 
 TITLE_BINDINGS = {
-    "장면 프리셋 (빠른 설정)": "settings.scene_preset.group",
     "🔍 Canny 엣지 검출": "settings.canny",
     "🎛️ CLAHE 대비 향상": "settings.clahe",
     "➰ 윤곽선 처리": "settings.contour",

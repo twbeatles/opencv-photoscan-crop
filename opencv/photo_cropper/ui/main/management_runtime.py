@@ -120,8 +120,7 @@ class ManagementRuntimeMixin:
         focus = getattr(review_page, "focus_job", None)
         if callable(focus):
             focus(int(job_id))
-        if self.refs.shell_nav is not None:
-            self.refs.shell_nav.setCurrentRow(2)
+        self.show_page("review")
 
     def _set_management_page_busy(self, page_key: str, busy: bool) -> None:
         page = self.refs.management_pages.get(page_key)

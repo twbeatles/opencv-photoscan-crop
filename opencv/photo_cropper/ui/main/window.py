@@ -204,6 +204,7 @@ class MainWindow(ManagementRuntimeMixin, TranslationRuntimeMixin, QMainWindow):
                 available.x() + (available.width() - self.width()) // 2,
                 available.y() + (available.height() - self.height()) // 2,
             )
+
     def dragEnterEvent(self, a0: Optional[QDragEnterEvent]) -> None:
         self.input_actions.drag_enter_event(a0)
 
@@ -223,6 +224,13 @@ class MainWindow(ManagementRuntimeMixin, TranslationRuntimeMixin, QMainWindow):
             pass
         self.lifecycle_actions.close_event(a0)
 
+    def show_page(self, page_key: str) -> None:
+        """Switch the shell to a page by key (order-independent)."""
+        nav = self.refs.shell_nav
+        keys = list(self.refs.management_pages.keys())
+        if nav is not None and page_key in keys:
+            nav.setCurrentRow(keys.index(page_key))
+
     def open_path_in_workbench(self, image_path: str) -> None:
         normalized = os.path.abspath(str(image_path or ""))
         if not normalized or not os.path.exists(normalized):
@@ -233,8 +241,7 @@ class MainWindow(ManagementRuntimeMixin, TranslationRuntimeMixin, QMainWindow):
         if self.refs.output_path_edit is not None and not self.refs.output_path_edit.text().strip():
             self.refs.output_path_edit.setText(os.path.join(parent_dir, "output_cropped"))
         self.state.current_image_path = normalized
-        if self.refs.shell_nav is not None:
-            self.refs.shell_nav.setCurrentRow(1)
+        self.show_page("workbench")
         self.preview_actions.request_preview()
 
     def apply_recipe_from_management(self, recipe_name: str) -> None:
