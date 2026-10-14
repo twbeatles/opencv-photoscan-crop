@@ -531,6 +531,8 @@ class ImagePreviewWidget(QWidget):
                 self._hover_handle_index = None
                 if self._drag_handle_index is None:
                     viewport.setCursor(Qt.CursorShape.ArrowCursor)
+        if watched is None:
+            return False
         return super().eventFilter(watched, event)
     
     def _on_zoom_changed(self, zoom: float):

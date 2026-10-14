@@ -202,8 +202,11 @@ class ThumbnailLoader(QThread):
 class FlowLayout(QVBoxLayout):
     """Flow layout that wraps items to next row."""
     
-    def __init__(self, parent=None):
-        super().__init__(parent)
+    def __init__(self, parent: QWidget | None = None):
+        if parent is None:
+            super().__init__()
+        else:
+            super().__init__(parent)
         self._items: List[QWidget] = []
         self._spacing = 10
     

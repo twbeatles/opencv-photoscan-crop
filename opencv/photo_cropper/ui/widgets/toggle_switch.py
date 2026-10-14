@@ -80,14 +80,14 @@ else:
             # Initialize position
             self._thumb_pos = 1.0 if self.isChecked() else 0.0
         
-        @Property(float)
-        def thumb_pos(self):
+        def get_thumb_pos(self) -> float:
             return self._thumb_pos
         
-        @thumb_pos.setter
-        def thumb_pos(self, pos):
+        def set_thumb_pos(self, pos: float) -> None:
             self._thumb_pos = pos
             self.update()
+
+        thumb_pos = Property(float, get_thumb_pos, set_thumb_pos)
         
         def _start_animation(self, checked):
             self._animation.setStartValue(self._thumb_pos)
