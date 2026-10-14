@@ -1,8 +1,8 @@
 # Photo Cropper - Requirements
 # Install with: pip install -r requirements.txt
 # Verified 2026-10-14 in project .venv (opencv/.venv) on Python 3.15:
-# opencv 4.14.0.94, numpy 2.5.4, Pillow 12.3.0, PyQt6 6.11.0,
-# PyQt6-Fluent-Widgets 1.11.3, pytest 9.1.1. CI matrix runs Python 3.11,
+# opencv 4.14.0.94, numpy 2.5.4, Pillow 12.3.0, PySide6 6.12.0,
+# PySide6-Fluent-Widgets 1.11.3, pytest 9.1.1. CI matrix runs Python 3.11,
 # where pip resolves the same floors to 3.11-compatible builds.
 # Effective Python floor is 3.11: numpy 2.x / Pillow 12 / pytest 9 need >=3.10.
 
@@ -15,14 +15,14 @@ numpy>=2.0
 Pillow>=12
 
 # GUI (Qt 6.8 LTS baseline; additive-only APIs used)
-PyQt6>=6.8
+PySide6==6.12.0
 
 # v9.0: Windows notifications (optional)
 winotify>=1.1.0; platform_system == "Windows"
 
 # Fluent UI (desktop, ktrain-style)
-# NOTE: install ONLY the PyQt6 edition. The PySide6 edition uses the same
+# NOTE: install ONLY the PySide6 edition. The PyQt6 edition uses the same
 # `qfluentwidgets` namespace with incompatible Qt objects and must never be
 # installed alongside it (ui/fluent.py treats it as unavailable).
-PyQt6-Fluent-Widgets>=1.9
+PySide6-Fluent-Widgets==1.11.3
 darkdetect>=0.8

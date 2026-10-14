@@ -10,14 +10,14 @@ import os
 import logging
 from typing import Optional, List, Callable
 
-from PyQt6.QtWidgets import (
+from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QScrollArea, QFrame,
     QLabel, QPushButton, QGridLayout, QSizePolicy, QMenu,
     QToolButton, QButtonGroup, QStackedWidget, QListWidget,
     QListWidgetItem, QAbstractItemView
 )
-from PyQt6.QtCore import Qt, pyqtSignal, QSize, QThread, QTimer
-from PyQt6.QtGui import QPixmap, QImage, QPainter, QColor, QIcon
+from PySide6.QtCore import Qt, Signal, QSize, QThread, QTimer
+from PySide6.QtGui import QPixmap, QImage, QPainter, QColor, QIcon
 
 import cv2
 import numpy as np
@@ -59,9 +59,9 @@ def _load_thumbnail_qimage(filepath: str, size: int) -> Optional[QImage]:
 class ThumbnailItem(QFrame):
     """Individual thumbnail item widget."""
     
-    clicked = pyqtSignal(str)  # filepath
-    double_clicked = pyqtSignal(str)  # filepath
-    context_menu_requested = pyqtSignal(str, object)  # filepath, QPoint
+    clicked = Signal(str)  # filepath
+    double_clicked = Signal(str)  # filepath
+    context_menu_requested = Signal(str, object)  # filepath, QPoint
     
     def __init__(
         self,
@@ -171,7 +171,7 @@ class ThumbnailItem(QFrame):
 class ThumbnailLoader(QThread):
     """Background thread for loading thumbnails."""
     
-    thumbnail_loaded = pyqtSignal(str, QImage)
+    thumbnail_loaded = Signal(str, QImage)
     
     def __init__(self, filepaths: List[str], size: int = 150):
         super().__init__()
@@ -232,9 +232,9 @@ class ThumbnailGridWidget(QWidget):
     """
     
     # Signals
-    file_selected = pyqtSignal(str)
-    file_double_clicked = pyqtSignal(str)
-    selection_changed = pyqtSignal(list)
+    file_selected = Signal(str)
+    file_double_clicked = Signal(str)
+    selection_changed = Signal(list)
     
     def __init__(
         self,

@@ -6,7 +6,7 @@ from __future__ import annotations
 
 import os
 
-from PyQt6.QtWidgets import QDialog
+from PySide6.QtWidgets import QDialog
 
 from ....core.history_manager import CallableCommand, CommandType
 from ....i18n.catalog import t

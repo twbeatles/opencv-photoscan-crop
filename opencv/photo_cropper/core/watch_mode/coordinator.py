@@ -8,7 +8,7 @@ import logging
 import os
 from typing import Callable, Optional
 
-from PyQt6.QtCore import QObject, pyqtSignal
+from PySide6.QtCore import QObject, Signal
 
 from ..batch import BatchProcessor
 from ..folder_watcher import AutoProcessor
@@ -22,10 +22,10 @@ logger = logging.getLogger(__name__)
 class WatchModeCoordinator(QObject):
     """Stateful coordinator for watch mode lifecycle and file processing."""
 
-    processing_started = pyqtSignal(str)
-    processing_completed = pyqtSignal(str, bool)
-    processing_completed_detailed = pyqtSignal(str, bool, str, str, int)
-    queue_metrics_updated = pyqtSignal(int, int)
+    processing_started = Signal(str)
+    processing_completed = Signal(str, bool)
+    processing_completed_detailed = Signal(str, bool, str, str, int)
+    queue_metrics_updated = Signal(int, int)
 
     def __init__(
         self,

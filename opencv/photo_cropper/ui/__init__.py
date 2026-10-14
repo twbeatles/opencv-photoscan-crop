@@ -1,4 +1,4 @@
 # UI module
 """
-PyQt6 user interface components.
+PySide6 user interface components.
 """

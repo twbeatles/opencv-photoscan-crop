@@ -1,12 +1,12 @@
 """Standalone rotation control widget."""
 
-from PyQt6.QtCore import Qt, pyqtSignal
-from PyQt6.QtWidgets import QHBoxLayout, QLabel, QDoubleSpinBox, QSlider, QWidget
+from PySide6.QtCore import Qt, Signal
+from PySide6.QtWidgets import QHBoxLayout, QLabel, QDoubleSpinBox, QSlider, QWidget
 
 class RotationWidget(QWidget):
     """Simple rotation control widget."""
     
-    rotation_changed = pyqtSignal(float)
+    rotation_changed = Signal(float)
     
     def __init__(self, parent=None):
         super().__init__(parent)

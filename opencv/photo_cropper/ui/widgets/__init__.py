@@ -1,6 +1,6 @@
 # Widgets module
 """
-Reusable PyQt6 widgets.
+Reusable PySide6 widgets.
 """
 
 from .toast_notification import ToastNotification, ToastManager

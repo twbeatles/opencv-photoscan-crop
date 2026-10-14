@@ -42,7 +42,7 @@
 
 ### 3. 푸시 훅이 시스템 Python을 사용
 
-- **현상**: `scripts/pre-push` → `scripts/verify.sh`가 PATH의 `python`과 `pyright`를 그대로 씁니다. 시스템 Python에 PyQt6·OpenCV가 없으면 selftest 95건이 import 오류로 실패해 푸시가 막힙니다.
+- **현상**: `scripts/pre-push` → `scripts/verify.sh`가 PATH의 `python`과 `pyright`를 그대로 씁니다. 시스템 Python에 PySide6·OpenCV가 없으면 selftest 95건이 import 오류로 실패해 푸시가 막힙니다.
 - **임시 방법**: `opencv/.venv/Scripts`를 PATH 맨 앞에 두고 푸시합니다.
 - **제안**: verify 스크립트가 `opencv/.venv`가 있으면 그 인터프리터를 먼저 쓰도록 합니다 (`verify.sh`, `verify.ps1` 둘 다).
 

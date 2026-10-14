@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from typing import Callable
 
-from PyQt6.QtCore import Qt, pyqtSignal
-from PyQt6.QtWidgets import (
+from PySide6.QtCore import Qt, Signal
+from PySide6.QtWidgets import (
     QFileDialog,
     QHBoxLayout,
     QInputDialog,
@@ -22,7 +22,7 @@ from ....core.settings_model import AppSettings
 from ....i18n.catalog import t
 
 class RecipesPage(QWidget):
-    recipe_applied = pyqtSignal(str)
+    recipe_applied = Signal(str)
 
     def __init__(
         self,

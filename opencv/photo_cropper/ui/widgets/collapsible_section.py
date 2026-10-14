@@ -6,7 +6,7 @@ Collapsible Section Widget for Photo Cropper v9.0.
 Provides animated collapsible sections for settings panel organization.
 """
 
-from PyQt6.QtWidgets import (
+from PySide6.QtWidgets import (
     QWidget,
     QVBoxLayout,
     QHBoxLayout,
@@ -14,8 +14,8 @@ from PyQt6.QtWidgets import (
     QFrame,
     QSizePolicy,
 )
-from PyQt6.QtCore import Qt
-from PyQt6.QtGui import QFont
+from PySide6.QtCore import Qt
+from PySide6.QtGui import QFont
 
 from ..components import make_secondary
 from ..design_tokens import COLLAPSIBLE_HEADER_QSS, SPACE_SM, SPACE_XS, SPACE_XXS

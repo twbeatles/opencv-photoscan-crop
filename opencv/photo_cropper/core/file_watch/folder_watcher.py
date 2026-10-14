@@ -8,7 +8,7 @@ import logging
 import os
 from typing import Callable, Dict, List, Optional, Sequence, Set, Tuple
 
-from PyQt6.QtCore import QObject, QFileSystemWatcher, QTimer, pyqtSignal
+from PySide6.QtCore import QObject, QFileSystemWatcher, QTimer, Signal
 
 from ...utils.file_helpers import is_path_within, normalize_path
 from .types import SUPPORTED_EXTENSIONS
@@ -18,11 +18,11 @@ logger = logging.getLogger(__name__)
 class FolderWatcher(QObject):
     """Watch a directory tree and emit new image events with debounce."""
 
-    new_file_detected = pyqtSignal(str)
-    file_removed = pyqtSignal(str)
-    watch_started = pyqtSignal(str)
-    watch_stopped = pyqtSignal()
-    error_occurred = pyqtSignal(str)
+    new_file_detected = Signal(str)
+    file_removed = Signal(str)
+    watch_started = Signal(str)
+    watch_stopped = Signal()
+    error_occurred = Signal(str)
 
     def __init__(
         self,

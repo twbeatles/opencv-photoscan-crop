@@ -3,9 +3,9 @@
 from typing import Optional
 
 import numpy as np
-from PyQt6.QtCore import Qt
-from PyQt6.QtGui import QKeyEvent
-from PyQt6.QtWidgets import (
+from PySide6.QtCore import Qt
+from PySide6.QtGui import QKeyEvent
+from PySide6.QtWidgets import (
     QComboBox,
     QHBoxLayout,
     QLabel,

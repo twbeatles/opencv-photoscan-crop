@@ -9,9 +9,9 @@ import logging
 import os
 from typing import Optional
 
-from PyQt6.QtCore import QTimer, pyqtSignal
-from PyQt6.QtGui import QCloseEvent, QDragEnterEvent, QDropEvent, QKeyEvent
-from PyQt6.QtWidgets import QApplication, QMainWindow
+from PySide6.QtCore import QTimer, Signal
+from PySide6.QtGui import QCloseEvent, QDragEnterEvent, QDropEvent, QKeyEvent
+from PySide6.QtWidgets import QApplication, QMainWindow
 
 from ..widgets.toast_notification import ToastManager
 from .composition import build_main_window_shell, wire_window_actions
@@ -47,11 +47,11 @@ class MainWindow(ManagementRuntimeMixin, TranslationRuntimeMixin, QMainWindow):
 
     VERSION = "9.0"
     TITLE = f"사진 자동 자르기 v{VERSION}"
-    preview_process_requested = pyqtSignal(int, str, int, object)
-    batch_progress_received = pyqtSignal(object)
-    batch_log_received = pyqtSignal(str, str)
-    batch_complete_received = pyqtSignal(object, object)
-    management_task_finished = pyqtSignal(str)
+    preview_process_requested = Signal(int, str, int, object)
+    batch_progress_received = Signal(object)
+    batch_log_received = Signal(str, str)
+    batch_complete_received = Signal(object, object)
+    management_task_finished = Signal(str)
 
     def __init__(self):
         super().__init__()

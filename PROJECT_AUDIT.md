@@ -25,7 +25,7 @@
 
 ## 1. Executive Summary
 
-Photo Cropper v9.0은 PyQt6 GUI·CLI·Watch Mode·SQLite 기반 관리 셸을 갖춘 성숙한 이미지 처리 애플리케이션입니다. `selftests/`에 100개 이상의 통합 자가검증이 있고, 이번 감사 환경에서 `python -m photo_cropper.selftest`는 **SELFTEST OK**, `compileall`은 통과했습니다.
+Photo Cropper v9.0은 PySide6 GUI·CLI·Watch Mode·SQLite 기반 관리 셸을 갖춘 성숙한 이미지 처리 애플리케이션입니다. `selftests/`에 100개 이상의 통합 자가검증이 있고, 이번 감사 환경에서 `python -m photo_cropper.selftest`는 **SELFTEST OK**, `compileall`은 통과했습니다.
 
 그러나 **Superpowers(엄격 TDD·계획 기반 개발·에이전트 자동화·환경 격리)** 관점에서는 다음이 전체 위험도를 **Medium–High**로 끌어올립니다.
 
@@ -238,7 +238,7 @@ def get_library_repository() -> LibraryRepository:
 
 | 항목 | 설명 |
 |------|------|
-| **추정:** Linux headless CI에서 일부 Qt selftest 스킵/불안정 | `_ensure_qt_app`은 `QT_QPA_PLATFORM=offscreen` 설정하나, 환경에 따라 PyQt6/display 의존 테스트가 flaky할 수 있음 |
+| **추정:** Linux headless CI에서 일부 Qt selftest 스킵/불안정 | `_ensure_qt_app`은 `QT_QPA_PLATFORM=offscreen` 설정하나, 환경에 따라 PySide6/display 의존 테스트가 flaky할 수 있음 |
 | **추정:** `getsize` 실패 시 max_image_size_mb 우회 | `_single_file.py` L126–127 `except Exception: pass` — 권한/경합 오류 시 대용량 파일이 제한 없이 처리될 수 있음 |
 | **추정:** CLI job tracking 실패 시 조용한 degradation | `process_batch` L470–473에서 library 초기화 실패 시 warning만 남기고 job 기록 없이 진행 — 운영 추적 공백 |
 | **추정:** `backups/` 로컬 폴더 잔존 | gitignore 대상이나 워크스페이스에 구버전 스냅샷 존재 시 에이전트가 잘못된 파일을 참조할 수 있음 |
@@ -269,7 +269,7 @@ def get_library_repository() -> LibraryRepository:
 
 1. **싱글톤 reset / 테스트 DB 경로 오버라이드** — `PHOTOCROPPER_LIBRARY_DB`, `reset_library_repository_for_tests()`
 2. **경로 리네이밍 검토** — `;opencv` → `opencv` (breaking이지만 장기 자동화 ROI 큼)
-3. **GitHub Actions** — Windows + Linux matrix, OpenCV·PyQt6 설치, selftest headless
+3. **GitHub Actions** — Windows + Linux matrix, OpenCV·PySide6 설치, selftest headless
 4. **CLI exit code 문서화 보강** — cancelled vs failed vs fatal 우선순위 표 추가
 5. **모듈 패치 → mock.patch 전환**
 

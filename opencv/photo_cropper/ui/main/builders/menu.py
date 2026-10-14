@@ -4,7 +4,7 @@
 
 from __future__ import annotations
 
-from PyQt6.QtGui import QAction, QKeySequence
+from PySide6.QtGui import QAction, QKeySequence
 
 from ....i18n.catalog import t
 from ...theme_fluent import AVAILABLE_THEMES

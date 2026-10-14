@@ -7,8 +7,8 @@ from __future__ import annotations
 import os
 from typing import Callable, Optional
 
-from PyQt6.QtGui import QKeySequence, QShortcut
-from PyQt6.QtWidgets import (
+from PySide6.QtGui import QKeySequence, QShortcut
+from PySide6.QtWidgets import (
     QDialog,
     QDialogButtonBox,
     QHBoxLayout,

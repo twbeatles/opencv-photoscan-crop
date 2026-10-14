@@ -7,7 +7,7 @@ from __future__ import annotations
 import os
 from typing import Callable, Optional
 
-from PyQt6.QtWidgets import QInputDialog, QMessageBox
+from PySide6.QtWidgets import QInputDialog, QMessageBox
 
 from ....core.batch_profile_manager import get_batch_profile_manager
 from ....core.smart_enhancer import EnhancementPreset, get_smart_enhancer

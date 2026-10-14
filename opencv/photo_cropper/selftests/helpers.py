@@ -17,9 +17,9 @@ def _ensure_qt_app(context: str):
 
     os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
     try:
-        from PyQt6.QtWidgets import QApplication
+        from PySide6.QtWidgets import QApplication
     except Exception as e:
-        print(f"WARN: PyQt6 unavailable for {context}: {e}")
+        print(f"WARN: PySide6 unavailable for {context}: {e}")
         return None, False
 
     app = QApplication.instance()

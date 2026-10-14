@@ -329,7 +329,7 @@ TRANSLATIONS = {
     "msg.help.title": "How To Use",
     "msg.help.body": "1. Choose the folder with your scans (or drop it on the window).\n2. Check the green outline on the original. Drag a corner dot if it is off.\n3. Press Start Cropping. Results go to the save location.\n\nTips\n• Left/Right arrows move between photos.\n• Mouse wheel zooms, Ctrl+drag moves the picture.\n• Double-click the original to clear the area, then click four corners.",
     "msg.about.title": "About",
-    "msg.about.body": "{app_name} v{version}\n\nAutomatically detects and crops photos using OpenCV and PyQt6.",
+    "msg.about.body": "{app_name} v{version}\n\nAutomatically detects and crops photos using OpenCV and PySide6.",
     "validation.input_invalid": "Please select a valid input folder.",
     "validation.output_missing": "The save folder does not exist yet. It is created when you start cropping.",
     "validation.input_dir_error": "Input folder error: {error}",

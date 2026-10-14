@@ -10,7 +10,7 @@ import os
 import threading
 from typing import cast
 
-from PyQt6.QtCore import QTimer
+from PySide6.QtCore import QTimer
 
 from ...core.batch import FileResult
 from ...i18n.catalog import t

@@ -82,16 +82,16 @@ EXCLUDES = [
     # OpenCV unused submodules (reduces size significantly)
     'cv2.gapi',
     
-    # PyQt6 unused modules
-    'PyQt6.QtBluetooth', 'PyQt6.QtDBus', 'PyQt6.QtDesigner',
-    'PyQt6.QtHelp', 'PyQt6.QtMultimedia', 'PyQt6.QtMultimediaWidgets',
-    'PyQt6.QtNetwork', 'PyQt6.QtNfc', 'PyQt6.QtOpenGL',
-    'PyQt6.QtOpenGLWidgets', 'PyQt6.QtPositioning', 'PyQt6.QtPrintSupport',
-    'PyQt6.QtQml', 'PyQt6.QtQuick', 'PyQt6.QtQuick3D', 'PyQt6.QtQuickWidgets',
-    'PyQt6.QtRemoteObjects', 'PyQt6.QtSensors', 'PyQt6.QtSerialPort',
-    'PyQt6.QtSpatialAudio', 'PyQt6.QtSql',
-    'PyQt6.QtTest', 'PyQt6.QtWebChannel', 'PyQt6.QtWebEngineCore',
-    'PyQt6.QtWebEngineQuick', 'PyQt6.QtWebEngineWidgets', 'PyQt6.QtWebSockets',
+    # PySide6 unused modules
+    'PySide6.QtBluetooth', 'PySide6.QtDBus', 'PySide6.QtDesigner',
+    'PySide6.QtHelp', 'PySide6.QtMultimedia', 'PySide6.QtMultimediaWidgets',
+    'PySide6.QtNetwork', 'PySide6.QtNfc', 'PySide6.QtOpenGL',
+    'PySide6.QtOpenGLWidgets', 'PySide6.QtPositioning', 'PySide6.QtPrintSupport',
+    'PySide6.QtQml', 'PySide6.QtQuick', 'PySide6.QtQuick3D', 'PySide6.QtQuickWidgets',
+    'PySide6.QtRemoteObjects', 'PySide6.QtSensors', 'PySide6.QtSerialPort',
+    'PySide6.QtSpatialAudio', 'PySide6.QtSql',
+    'PySide6.QtTest', 'PySide6.QtWebChannel', 'PySide6.QtWebEngineCore',
+    'PySide6.QtWebEngineQuick', 'PySide6.QtWebEngineWidgets', 'PySide6.QtWebSockets',
     
     # Misc
     'lib2to3', 'distutils', 'setuptools', 'pkg_resources', 'pip',
@@ -240,9 +240,9 @@ a = Analysis(
         'photo_cropper.ui.design_tokens',
         'photo_cropper.ui.fluent',
         'photo_cropper.ui.theme_fluent',
-        'PyQt6.QtCore',
-        'PyQt6.QtGui', 
-        'PyQt6.QtWidgets',
+        'PySide6.QtCore',
+        'PySide6.QtGui', 
+        'PySide6.QtWidgets',
         *COLLECTED_HIDDENIMPORTS,
     ])),
     hookspath=[],

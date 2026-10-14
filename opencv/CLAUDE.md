@@ -6,7 +6,7 @@
 
 - **진입점**: `run.py`, `photo_cropper/main.py`
 - **Python**: 3.11+
-- **프레임워크**: PyQt6(GUI), OpenCV(이미지 처리)
+- **프레임워크**: PySide6(GUI), OpenCV(이미지 처리)
 
 ## 의존성 요약
 
@@ -14,7 +14,7 @@
 opencv-python>=4.14,<5
 numpy>=2.0
 Pillow>=12
-PyQt6>=6.8
+PySide6==6.12.0
 winotify>=1.1.0  # Windows 알림(선택)
 ```
 
@@ -248,7 +248,7 @@ pyinstaller photo_cropper.spec --clean
 ## 2026-03-04 Consistency Check Notes
 
 - `pyright --project pyrightconfig.json`: 0 errors / 0 warnings
-- QWidget 이벤트 오버라이드 시그니처를 PyQt6 스텁 기준 이벤트 타입 + 파라미터명(`a0`)까지 정렬하고, 필수 window timer service를 non-optional로 승격
+- QWidget 이벤트 오버라이드 시그니처를 PySide6 스텁 기준 이벤트 타입 + 파라미터명(`a0`)까지 정렬하고, 필수 window timer service를 non-optional로 승격
 - `photo_cropper.spec` hidden imports에 `watch_mode`, `manual_extract`, `session_service`, `save_io`, `dialog_actions`를 명시
 
 ## 2026-03-16 Consistency Check Notes

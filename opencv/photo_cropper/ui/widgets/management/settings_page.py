@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from PyQt6.QtCore import Qt, pyqtSignal
-from PyQt6.QtWidgets import QGridLayout, QLabel, QPushButton, QVBoxLayout, QWidget
+from PySide6.QtCore import Qt, Signal
+from PySide6.QtWidgets import QGridLayout, QLabel, QPushButton, QVBoxLayout, QWidget
 
 from ....core.app_paths import ensure_library_dirs
 from ....core.library import get_provider_status
@@ -10,8 +10,8 @@ from ....i18n.catalog import t
 from .shared import _translated_job_kind
 
 class SettingsInfoPage(QWidget):
-    maintenance_requested = pyqtSignal(str)
-    workbench_requested = pyqtSignal()
+    maintenance_requested = Signal(str)
+    workbench_requested = Signal()
 
     def __init__(self, repository, recipe_manager: RecipeManager, parent=None):
         super().__init__(parent)

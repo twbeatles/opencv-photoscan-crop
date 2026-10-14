@@ -4,9 +4,9 @@ from __future__ import annotations
 import math
 from typing import Optional
 
-from PyQt6.QtCore import QSize, Qt, pyqtSignal
-from PyQt6.QtGui import QIcon
-from PyQt6.QtWidgets import (
+from PySide6.QtCore import QSize, Qt, Signal
+from PySide6.QtGui import QIcon
+from PySide6.QtWidgets import (
     QAbstractItemView,
     QCheckBox,
     QComboBox,
@@ -44,8 +44,8 @@ from .shared import (
 )
 
 class LibraryPage(QWidget):
-    open_requested = pyqtSignal(str)
-    import_requested = pyqtSignal(str, bool)
+    open_requested = Signal(str)
+    import_requested = Signal(str, bool)
 
     def __init__(
         self,

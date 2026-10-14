@@ -7,9 +7,9 @@ from __future__ import annotations
 import os
 from typing import Callable, Optional
 
-from PyQt6.QtCore import Qt
-from PyQt6.QtGui import QDragEnterEvent, QDropEvent, QKeyEvent
-from PyQt6.QtWidgets import QFileDialog
+from PySide6.QtCore import Qt
+from PySide6.QtGui import QDragEnterEvent, QDropEvent, QKeyEvent
+from PySide6.QtWidgets import QFileDialog
 
 from ....i18n.catalog import t
 from ....utils.file_helpers import SUPPORTED_IMAGE_FORMATS, get_image_files, open_file_explorer

@@ -11,7 +11,7 @@ from collections import deque
 from concurrent.futures import Future, ThreadPoolExecutor
 from typing import Any, Callable, Deque, Dict, List, Optional, Sequence, Set, Tuple
 
-from PyQt6.QtCore import QObject, QTimer, pyqtSignal
+from PySide6.QtCore import QObject, QTimer, Signal
 
 from .folder_watcher import FolderWatcher
 from .types import WatchProcessResult
@@ -21,12 +21,12 @@ logger = logging.getLogger(__name__)
 class AutoProcessor(QObject):
     """Auto-process files detected by FolderWatcher."""
 
-    processing_started = pyqtSignal(str)
-    processing_completed = pyqtSignal(str, bool)
-    processing_completed_detailed = pyqtSignal(str, bool, str, str, int)
-    queue_updated = pyqtSignal(int)
-    queue_metrics_updated = pyqtSignal(int, int)
-    worker_result_ready = pyqtSignal(str, bool, str, str, int)
+    processing_started = Signal(str)
+    processing_completed = Signal(str, bool)
+    processing_completed_detailed = Signal(str, bool, str, str, int)
+    queue_updated = Signal(int)
+    queue_metrics_updated = Signal(int, int)
+    worker_result_ready = Signal(str, bool, str, str, int)
 
     def __init__(
         self,

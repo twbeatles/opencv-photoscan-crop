@@ -3,9 +3,9 @@
 from typing import Any, Dict, List, Optional
 
 import numpy as np
-from PyQt6.QtCore import QObject, QPointF, QRectF, Qt, QEvent, pyqtSignal
-from PyQt6.QtGui import QBrush, QColor, QMouseEvent, QPalette, QPen, QPixmap
-from PyQt6.QtWidgets import (
+from PySide6.QtCore import QObject, QPointF, QRectF, Qt, QEvent, Signal
+from PySide6.QtGui import QBrush, QColor, QMouseEvent, QPalette, QPen, QPixmap
+from PySide6.QtWidgets import (
     QCheckBox,
     QFrame,
     QGraphicsPixmapItem,
@@ -36,7 +36,7 @@ class ImagePreviewWidget(QWidget):
         - Side-by-side comparison mode
     """
     
-    contour_edited = pyqtSignal(object)  # np.ndarray(4,2) in preview coordinates
+    contour_edited = Signal(object)  # np.ndarray(4,2) in preview coordinates
 
     def __init__(self, parent=None):
         super().__init__(parent)

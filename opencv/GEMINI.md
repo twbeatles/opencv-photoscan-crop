@@ -5,7 +5,7 @@
 | 항목 | 값 |
 |------|-----|
 | 언어 | Python 3.11+ |
-| GUI | PyQt6 |
+| GUI | PySide6 |
 | 이미지 처리 | OpenCV 4.14+ (<5) |
 | 진입점 | `run.py` |
 | 설정 파일 | Windows: `%APPDATA%/PhotoCropper/settings.json`<br>macOS/Linux: `~/.photo_cropper/photo_cropper_settings.json` |
@@ -409,7 +409,7 @@ See also: repository root `CONTRIBUTING.md`, `PROJECT_AUDIT.md`.
 ## 2026-03-04 Consistency Check Notes
 
 - Verified `pyright --project pyrightconfig.json` with 0 errors / 0 warnings.
-- Updated `QWidget` override event signatures to match PyQt6 stub event types and parameter names (`a0`), and promoted required window timers to non-optional services.
+- Updated `QWidget` override event signatures to match PySide6 stub event types and parameter names (`a0`), and promoted required window timers to non-optional services.
 - Added explicit PyInstaller hidden imports for split modules:
   `watch_mode`, `manual_extract`, `session_service`, `save_io`, `dialog_actions`.
 

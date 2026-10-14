@@ -15,14 +15,14 @@ import cv2
 from typing import Optional, List, Tuple
 from enum import Enum
 
-from PyQt6.QtWidgets import (
+from PySide6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QGridLayout,
     QLabel, QPushButton, QComboBox, QCheckBox, QToolBar,
     QSplitter, QFrame, QScrollArea, QSizePolicy, QFileDialog,
     QGraphicsView, QGraphicsScene, QGraphicsPixmapItem
 )
-from PyQt6.QtCore import Qt, pyqtSignal, QRectF, QPointF
-from PyQt6.QtGui import QPixmap, QImage, QWheelEvent, QMouseEvent, QAction, QIcon
+from PySide6.QtCore import Qt, Signal, QRectF, QPointF
+from PySide6.QtGui import QPixmap, QImage, QWheelEvent, QMouseEvent, QAction, QIcon
 
 from ...i18n.catalog import t
 from ...utils.image_io import load_image_unicode
@@ -83,8 +83,8 @@ class CompareLayout(Enum):
 class SyncedGraphicsView(QGraphicsView):
     """Graphics view with synchronized zoom/pan."""
     
-    zoom_changed = pyqtSignal(float)
-    pan_changed = pyqtSignal(QPointF)
+    zoom_changed = Signal(float)
+    pan_changed = Signal(QPointF)
     
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -208,7 +208,7 @@ class SyncedGraphicsView(QGraphicsView):
 class ImagePanel(QFrame):
     """Panel containing image view with controls."""
     
-    image_changed = pyqtSignal()
+    image_changed = Signal()
     
     def __init__(self, index: int, parent=None):
         super().__init__(parent)

@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""Fluent theme bootstrap for the Photo Cropper desktop UI (PyQt6).
+"""Fluent theme bootstrap for the Photo Cropper desktop UI (PySide6).
 
 qfluentwidgets owns dark/light rendering; this module only selects the
 theme and keeps a few native Qt widgets readable in dark mode.
-Port of the ktrain ``gui/theme.py`` pattern to the PyQt6 binding.
+Port of the ktrain ``gui/theme.py`` pattern to the PySide6 binding.
 """
 
 from __future__ import annotations
@@ -80,8 +80,8 @@ def sync_system_theme() -> None:
 
 
 def _install_theme_watcher(app) -> None:
-    from PyQt6.QtCore import QTimer
-    from PyQt6.QtGui import QGuiApplication
+    from PySide6.QtCore import QTimer
+    from PySide6.QtGui import QGuiApplication
 
     try:
         hints = QGuiApplication.styleHints()
@@ -109,8 +109,8 @@ def sync_qt_color_scheme(theme_name: str) -> None:
     widgets switch, which produces unreadable low-contrast text.
     """
     try:
-        from PyQt6.QtCore import Qt
-        from PyQt6.QtGui import QGuiApplication
+        from PySide6.QtCore import Qt
+        from PySide6.QtGui import QGuiApplication
 
         hints = QGuiApplication.styleHints()
         set_scheme = getattr(hints, "setColorScheme", None)
@@ -121,7 +121,7 @@ def sync_qt_color_scheme(theme_name: str) -> None:
             THEME_LIGHT: Qt.ColorScheme.Light,
         }.get(theme_name, Qt.ColorScheme.Unknown)
         set_scheme(scheme)
-        from PyQt6.QtCore import QTimer
+        from PySide6.QtCore import QTimer
 
         QTimer.singleShot(0, refresh_styled_widgets)
     except Exception:
@@ -136,7 +136,7 @@ def refresh_styled_widgets() -> None:
     window (or the reverse) until their stylesheet is applied again.
     """
     try:
-        from PyQt6.QtWidgets import QApplication
+        from PySide6.QtWidgets import QApplication
 
         for widget in QApplication.allWidgets():
             sheet = widget.styleSheet()

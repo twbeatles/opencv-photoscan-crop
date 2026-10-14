@@ -9,7 +9,7 @@ Provides tabbed settings interface for all application settings.
 
 from typing import Optional
 
-from PyQt6.QtWidgets import (
+from PySide6.QtWidgets import (
     QWidget,
     QVBoxLayout,
     QHBoxLayout,
@@ -28,7 +28,7 @@ from PyQt6.QtWidgets import (
     QScrollArea,
     QFileDialog,
 )
-from PyQt6.QtCore import Qt, pyqtSignal
+from PySide6.QtCore import Qt, Signal
 
 from ....core.settings_model import (
     AppSettings,
@@ -90,8 +90,8 @@ class SettingsPanel(QWidget):
         preview_requested: Emitted when preview is requested
     """
 
-    settings_changed = pyqtSignal(AppSettings)
-    preview_requested = pyqtSignal()
+    settings_changed = Signal(AppSettings)
+    preview_requested = Signal()
 
     def __init__(self, settings: Optional[AppSettings] = None, parent=None):
         super().__init__(parent)

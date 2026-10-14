@@ -3,8 +3,8 @@
 from typing import List, Optional, Tuple
 
 import numpy as np
-from PyQt6.QtCore import QRectF, Qt, pyqtSignal
-from PyQt6.QtWidgets import (
+from PySide6.QtCore import QRectF, Qt, Signal
+from PySide6.QtWidgets import (
     QButtonGroup,
     QCheckBox,
     QDoubleSpinBox,
@@ -27,8 +27,8 @@ class CropEditorWidget(QWidget):
     """Complete crop editor widget with controls."""
     
     # Signals
-    crop_applied = pyqtSignal(np.ndarray)  # Cropped image
-    crop_cancelled = pyqtSignal()
+    crop_applied = Signal(np.ndarray)  # Cropped image
+    crop_cancelled = Signal()
     
     def __init__(self, parent=None):
         super().__init__(parent)

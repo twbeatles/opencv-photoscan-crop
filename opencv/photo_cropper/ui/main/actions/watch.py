@@ -8,8 +8,8 @@ import logging
 import os
 from typing import Callable, Optional
 
-from PyQt6.QtCore import QTime
-from PyQt6.QtWidgets import QMessageBox
+from PySide6.QtCore import QTime
+from PySide6.QtWidgets import QMessageBox
 
 from ....core.scheduler import ScheduleRunStatus, ScheduleTask, ScheduleType
 from ....core.settings_model.validation import (

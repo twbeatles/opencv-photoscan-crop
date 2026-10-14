@@ -53,6 +53,6 @@ except Exception:  # pragma: no cover - optional runtime dependency (cv2)
 
 try:
     from .watch_mode import WatchModeCoordinator, WatchStartResult
-except Exception:  # pragma: no cover - optional runtime dependency (PyQt6)
+except Exception:  # pragma: no cover - optional runtime dependency (PySide6)
     WatchModeCoordinator = None  # type: ignore[assignment]
     WatchStartResult = None  # type: ignore[assignment]

@@ -7,13 +7,13 @@ Provides batch processing progress display with cancel support.
 Enhanced UI/UX v7.2
 """
 
-from PyQt6.QtWidgets import (
+from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, 
     QProgressBar, QPushButton, QTextEdit, QGroupBox,
     QFrame, QGraphicsOpacityEffect, QSizePolicy, QWidget
 )
-from PyQt6.QtCore import Qt, pyqtSignal, QTimer, QPropertyAnimation, QEasingCurve
-from PyQt6.QtGui import QFont, QTextCursor
+from PySide6.QtCore import Qt, Signal, QTimer, QPropertyAnimation, QEasingCurve
+from PySide6.QtGui import QFont, QTextCursor
 import os
 import time
 
@@ -121,8 +121,8 @@ class ProgressDialog(QDialog):
         cancel_requested: Emitted when cancel is clicked
     """
     
-    cancel_requested = pyqtSignal()
-    open_output_requested = pyqtSignal()
+    cancel_requested = Signal()
+    open_output_requested = Signal()
     
     def __init__(self, parent=None):
         super().__init__(parent)

@@ -7,7 +7,7 @@ from __future__ import annotations
 import os
 from typing import Optional
 
-from PyQt6.QtCore import QObject, pyqtSignal, pyqtSlot
+from PySide6.QtCore import QObject, Signal, Slot
 
 from ...core.image import ImageProcessor
 from ...core.settings_model import AppSettings
@@ -17,15 +17,15 @@ from ...i18n.catalog import t
 class PreviewWorker(QObject):
     """Background preview worker running in a dedicated QThread."""
 
-    preview_ready = pyqtSignal(int, object)
-    preview_failed = pyqtSignal(int, str)
+    preview_ready = Signal(int, object)
+    preview_failed = Signal(int, str)
 
     def __init__(self, parent=None):
         super().__init__(parent)
         self._processor: Optional[ImageProcessor] = None
         self._settings_revision: int = -1
 
-    @pyqtSlot(int, str, int, object)
+    @Slot(int, str, int, object)
     def process_preview(
         self,
         request_id: int,

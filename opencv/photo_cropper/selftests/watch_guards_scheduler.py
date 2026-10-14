@@ -14,8 +14,8 @@ def _test_watch_actions_block_while_batch_or_manual_running() -> None:
     if app is None:
         return
 
-    from PyQt6.QtGui import QAction
-    from PyQt6.QtWidgets import QLabel, QLineEdit, QMainWindow, QMessageBox
+    from PySide6.QtGui import QAction
+    from PySide6.QtWidgets import QLabel, QLineEdit, QMainWindow, QMessageBox
 
     from ..core.settings_model import AppSettings
     from ..ui.main.actions.watch import WatchActions
@@ -93,7 +93,7 @@ def _test_batch_actions_block_when_watch_running() -> None:
     if app is None:
         return
 
-    from PyQt6.QtWidgets import QLineEdit, QMainWindow, QMessageBox
+    from PySide6.QtWidgets import QLineEdit, QMainWindow, QMessageBox
 
     from ..core.settings_model import AppSettings
     from ..i18n.catalog import t
@@ -215,7 +215,7 @@ def _test_scheduled_batch_uses_task_paths() -> None:
     if app is None:
         return
 
-    from PyQt6.QtWidgets import QLabel, QLineEdit, QMainWindow
+    from PySide6.QtWidgets import QLabel, QLineEdit, QMainWindow
 
     from ..core.scheduler import ScheduleRunStatus
     from ..core.settings_model import AppSettings

@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from typing import Optional
 
-from PyQt6.QtCore import Qt, pyqtSignal
-from PyQt6.QtWidgets import (
+from PySide6.QtCore import Qt, Signal
+from PySide6.QtWidgets import (
     QAbstractItemView,
     QHBoxLayout,
     QInputDialog,
@@ -27,8 +27,8 @@ from .shared import (
 )
 
 class ReviewPage(QWidget):
-    open_requested = pyqtSignal(str)
-    reprocess_requested = pyqtSignal(int)
+    open_requested = Signal(str)
+    reprocess_requested = Signal(int)
 
     def __init__(self, review_service, parent=None):
         super().__init__(parent)

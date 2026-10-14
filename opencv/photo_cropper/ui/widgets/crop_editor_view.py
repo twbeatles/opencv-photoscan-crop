@@ -3,9 +3,9 @@
 from typing import List, Optional, Tuple
 
 import numpy as np
-from PyQt6.QtCore import QLineF, QPointF, QRectF, Qt, pyqtSignal
-from PyQt6.QtGui import QBrush, QColor, QCursor, QMouseEvent, QPainter, QPen, QWheelEvent
-from PyQt6.QtWidgets import (
+from PySide6.QtCore import QLineF, QPointF, QRectF, Qt, Signal
+from PySide6.QtGui import QBrush, QColor, QCursor, QMouseEvent, QPainter, QPen, QWheelEvent
+from PySide6.QtWidgets import (
     QGraphicsEllipseItem,
     QGraphicsLineItem,
     QGraphicsPixmapItem,
@@ -21,9 +21,9 @@ class CropEditorView(QGraphicsView):
     """Graphics view for crop editing with handles."""
     
     # Signals
-    region_changed = pyqtSignal(QRectF)  # Crop rectangle changed
-    perspective_changed = pyqtSignal(list)  # 4-point perspective changed
-    rotation_changed = pyqtSignal(float)  # Rotation angle changed
+    region_changed = Signal(QRectF)  # Crop rectangle changed
+    perspective_changed = Signal(list)  # 4-point perspective changed
+    rotation_changed = Signal(float)  # Rotation angle changed
     
     HANDLE_SIZE = 12
     HANDLE_COLOR = QColor(0, 120, 215)

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from PyQt6.QtCore import Qt, pyqtSignal
-from PyQt6.QtWidgets import (
+from PySide6.QtCore import Qt, Signal
+from PySide6.QtWidgets import (
     QHBoxLayout,
     QInputDialog,
     QMessageBox,
@@ -24,8 +24,8 @@ from .shared import (
 )
 
 class DuplicatesPage(QWidget):
-    open_requested = pyqtSignal(str)
-    maintenance_requested = pyqtSignal(str)
+    open_requested = Signal(str)
+    maintenance_requested = Signal(str)
 
     def __init__(self, duplicate_service, parent=None):
         super().__init__(parent)

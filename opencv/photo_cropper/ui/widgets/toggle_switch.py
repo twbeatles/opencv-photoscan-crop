@@ -4,21 +4,17 @@
 Modern Toggle Switch Widget.
 """
 
-from typing import Any, Callable
-
-from PyQt6.QtWidgets import QCheckBox
-from PyQt6.QtCore import Qt, QPropertyAnimation, QPoint, QEasingCurve, QRectF, pyqtSignal
-from PyQt6 import QtCore
-from PyQt6.QtGui import QPainter, QColor, QBrush, QFont, QPen
-
-_qt_pyqt_property = getattr(QtCore, "pyqtProperty", None)
-if _qt_pyqt_property is None:
-    def pyqtProperty(_type: Any) -> Callable[[Callable[..., Any]], property]:
-        def _decorator(func: Callable[..., Any]) -> property:
-            return property(func)
-        return _decorator
-else:
-    pyqtProperty = _qt_pyqt_property
+from PySide6.QtWidgets import QCheckBox
+from PySide6.QtCore import (
+    Property,
+    QEasingCurve,
+    QPoint,
+    QPropertyAnimation,
+    QRectF,
+    Qt,
+    Signal,
+)
+from PySide6.QtGui import QBrush, QColor, QFont, QPainter, QPen
 
 from ..fluent import FLUENT_AVAILABLE as _FLUENT_SWITCH_AVAILABLE
 
@@ -31,7 +27,7 @@ if _FLUENT_SWITCH_AVAILABLE:
     class _FluentToggleSwitch(_FluentSwitchButton):
         """Fluent switch with a QCheckBox-compatible ``toggled`` signal."""
 
-        toggled = pyqtSignal(bool)
+        toggled = Signal(bool)
 
         def __init__(self, text: str = "", parent=None) -> None:
             super().__init__(parent)
@@ -84,7 +80,7 @@ else:
             # Initialize position
             self._thumb_pos = 1.0 if self.isChecked() else 0.0
         
-        @pyqtProperty(float)
+        @Property(float)
         def thumb_pos(self):
             return self._thumb_pos
         

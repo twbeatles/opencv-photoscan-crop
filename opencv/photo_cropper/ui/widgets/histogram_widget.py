@@ -8,9 +8,9 @@ Displays RGB histogram of images.
 
 import numpy as np
 import cv2
-from PyQt6.QtWidgets import QWidget, QVBoxLayout, QLabel
-from PyQt6.QtCore import Qt
-from PyQt6.QtGui import QPainter, QPalette, QPen, QColor, QPainterPath
+from PySide6.QtWidgets import QWidget, QVBoxLayout, QLabel
+from PySide6.QtCore import Qt
+from PySide6.QtGui import QPainter, QPalette, QPen, QColor, QPainterPath
 
 from ...i18n.catalog import t
 

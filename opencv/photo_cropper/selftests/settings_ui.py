@@ -35,9 +35,9 @@ def _test_settings_panel_performance_roundtrip() -> None:
 
     os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
     try:
-        from PyQt6.QtWidgets import QApplication
+        from PySide6.QtWidgets import QApplication
     except Exception as e:
-        print(f"WARN: PyQt6 unavailable for settings panel test: {e}")
+        print(f"WARN: PySide6 unavailable for settings panel test: {e}")
         return
 
     from ..core.settings_model import AppSettings
@@ -83,9 +83,9 @@ def _test_settings_panel_ai_roundtrip() -> None:
 
     os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
     try:
-        from PyQt6.QtWidgets import QApplication
+        from PySide6.QtWidgets import QApplication
     except Exception as e:
-        print(f"WARN: PyQt6 unavailable for AI roundtrip test: {e}")
+        print(f"WARN: PySide6 unavailable for AI roundtrip test: {e}")
         return
 
     from ..core.settings_model import AppSettings
@@ -128,9 +128,9 @@ def _test_settings_panel_classification_folder_roundtrip() -> None:
 
     os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
     try:
-        from PyQt6.QtWidgets import QApplication
+        from PySide6.QtWidgets import QApplication
     except Exception as e:
-        print(f"WARN: PyQt6 unavailable for classification folder roundtrip test: {e}")
+        print(f"WARN: PySide6 unavailable for classification folder roundtrip test: {e}")
         return
 
     from ..core.settings_model import AppSettings
@@ -208,9 +208,9 @@ def _test_settings_panel_legacy_custom_alias_and_schedule_once_hint() -> None:
 
     os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
     try:
-        from PyQt6.QtWidgets import QApplication
+        from PySide6.QtWidgets import QApplication
     except Exception as e:
-        print(f"WARN: PyQt6 unavailable for settings alias/hint test: {e}")
+        print(f"WARN: PySide6 unavailable for settings alias/hint test: {e}")
         return
 
     from ..core.settings_model import AppSettings
@@ -304,9 +304,9 @@ def _test_settings_panel_algorithm_tuning_roundtrip() -> None:
 
     os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
     try:
-        from PyQt6.QtWidgets import QApplication
+        from PySide6.QtWidgets import QApplication
     except Exception as e:
-        print(f"WARN: PyQt6 unavailable for algorithm tuning roundtrip test: {e}")
+        print(f"WARN: PySide6 unavailable for algorithm tuning roundtrip test: {e}")
         return
 
     from ..core.settings_model import AppSettings

@@ -14,7 +14,7 @@ from typing import Optional, Callable, List
 from dataclasses import dataclass
 from enum import Enum
 
-from PyQt6.QtCore import QObject, pyqtSignal, QTimer, QTime
+from PySide6.QtCore import QObject, Signal, QTimer, QTime
 
 logger = logging.getLogger(__name__)
 
@@ -64,11 +64,11 @@ class Scheduler(QObject):
     """
     
     # Signals
-    task_started = pyqtSignal(str)      # task_id
-    task_completed = pyqtSignal(str, bool)  # task_id, success
-    task_added = pyqtSignal(str)        # task_id
-    task_removed = pyqtSignal(str)      # task_id
-    schedule_updated = pyqtSignal()
+    task_started = Signal(str)      # task_id
+    task_completed = Signal(str, bool)  # task_id, success
+    task_added = Signal(str)        # task_id
+    task_removed = Signal(str)      # task_id
+    schedule_updated = Signal()
     
     def __init__(
         self,

@@ -26,7 +26,7 @@
     - **Smart Memory Management**: Optimized for large resolution images.
 
 ## 🚀 Installation
-1. **Requirements**: Python 3.9+, PyQt6, OpenCV, NumPy
+1. **Requirements**: Python 3.9+, PySide6, OpenCV, NumPy
 2. **Install Dependencies**:
    ```bash
    pip install -r requirements.txt
@@ -72,7 +72,7 @@
 1. **필수 사항**: Python 3.9 이상
 2. **라이브러리 설치**:
    ```bash
-   pip install PyQt6 opencv-python numpy
+   pip install PySide6 opencv-python numpy
    ```
 
 ## 🖥️ 사용법

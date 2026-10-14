@@ -9,9 +9,9 @@ per-widget QSS (see DESKTOP_UI_DESIGN_RULES Sec 9 and 24).
 
 from __future__ import annotations
 
-from PyQt6.QtCore import Qt
-from PyQt6.QtGui import QPalette
-from PyQt6.QtWidgets import QLabel, QSplitter, QWidget
+from PySide6.QtCore import Qt
+from PySide6.QtGui import QPalette
+from PySide6.QtWidgets import QLabel, QSplitter, QWidget
 
 from .design_tokens import (
     PATH_LABEL_MIN_WIDTH,

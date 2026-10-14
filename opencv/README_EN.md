@@ -40,7 +40,7 @@ A Python application that automatically detects and accurately crops scanned pho
 - **CLI support**: Script and pipeline integration
 
 ### UI/UX
-- **Modern PyQt6 UI**: Dark/Light themes
+- **Modern PySide6 UI**: Dark/Light themes
 - **Real-time preview**: Mouse wheel zoom, zoom slider (10%–500%)
 - **Runtime language switching**: Korean, English, Japanese, Chinese, Spanish (no restart needed)
 - **Drag and drop**: Drop folders or images directly onto the window

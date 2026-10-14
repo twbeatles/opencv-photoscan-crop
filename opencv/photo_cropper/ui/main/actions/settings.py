@@ -6,8 +6,8 @@ from __future__ import annotations
 
 from typing import Callable, Optional
 
-from PyQt6.QtCore import QSettings, QTimer
-from PyQt6.QtWidgets import QMessageBox
+from PySide6.QtCore import QSettings, QTimer
+from PySide6.QtWidgets import QMessageBox
 
 from ....core.history_manager import CallableCommand, CommandType
 from ....core.scene_presets import apply_scene_preset

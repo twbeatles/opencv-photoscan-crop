@@ -3,9 +3,9 @@
 from typing import Optional
 
 import numpy as np
-from PyQt6.QtCore import QPointF, QRectF, Qt, pyqtSignal
-from PyQt6.QtGui import QColor, QMouseEvent, QPainter, QPen, QWheelEvent
-from PyQt6.QtWidgets import QGraphicsPixmapItem, QGraphicsScene, QGraphicsView, QWidget
+from PySide6.QtCore import QPointF, QRectF, Qt, Signal
+from PySide6.QtGui import QColor, QMouseEvent, QPainter, QPen, QWheelEvent
+from PySide6.QtWidgets import QGraphicsPixmapItem, QGraphicsScene, QGraphicsView, QWidget
 
 from ...i18n.catalog import t
 from .compare_conversions import numpy_to_qpixmap
@@ -13,8 +13,8 @@ from .compare_conversions import numpy_to_qpixmap
 class CompareGraphicsView(QGraphicsView):
     """Graphics view with synchronized zoom/pan for comparison."""
     
-    zoom_changed = pyqtSignal(float)
-    pan_changed = pyqtSignal(QPointF)
+    zoom_changed = Signal(float)
+    pan_changed = Signal(QPointF)
     
     def __init__(self, parent=None):
         super().__init__(parent)

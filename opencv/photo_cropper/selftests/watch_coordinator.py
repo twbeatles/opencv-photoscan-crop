@@ -132,9 +132,9 @@ def _test_recursive_watch_new_subdir_initial_scan() -> None:
 
     os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
     try:
-        from PyQt6.QtWidgets import QApplication
+        from PySide6.QtWidgets import QApplication
     except Exception as e:
-        print(f"WARN: PyQt6 unavailable for recursive watch test: {e}")
+        print(f"WARN: PySide6 unavailable for recursive watch test: {e}")
         return
 
     from ..core.folder_watcher import FolderWatcher
@@ -227,9 +227,9 @@ def _test_watch_max_wait_roundtrip() -> None:
 
     os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
     try:
-        from PyQt6.QtWidgets import QApplication
+        from PySide6.QtWidgets import QApplication
     except Exception as e:
-        print(f"WARN: PyQt6 unavailable for watch max wait test: {e}")
+        print(f"WARN: PySide6 unavailable for watch max wait test: {e}")
         return
 
     from ..core.folder_watcher import AutoProcessor
@@ -271,9 +271,9 @@ def _test_watch_callback_runs_on_background_worker() -> None:
 
     os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
     try:
-        from PyQt6.QtWidgets import QApplication
+        from PySide6.QtWidgets import QApplication
     except Exception as e:
-        print(f"WARN: PyQt6 unavailable for watch worker thread test: {e}")
+        print(f"WARN: PySide6 unavailable for watch worker thread test: {e}")
         return
 
     from ..core.folder_watcher import AutoProcessor
@@ -343,9 +343,9 @@ def _test_watch_readiness_is_owned_by_auto_processor() -> None:
 
     os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
     try:
-        from PyQt6.QtWidgets import QApplication
+        from PySide6.QtWidgets import QApplication
     except Exception as e:
-        print(f"WARN: PyQt6 unavailable for watch readiness ownership test: {e}")
+        print(f"WARN: PySide6 unavailable for watch readiness ownership test: {e}")
         return
 
     from ..core.folder_watcher import AutoProcessor

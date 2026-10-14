@@ -383,7 +383,7 @@ def _test_batch_actions_recursive_output_guard() -> None:
     if app is None:
         return
 
-    from PyQt6.QtWidgets import QLineEdit, QMainWindow, QMessageBox
+    from PySide6.QtWidgets import QLineEdit, QMainWindow, QMessageBox
 
     from ..core.settings_model import AppSettings
     from ..i18n.catalog import t

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from PyQt6.QtCore import Qt, pyqtSignal
-from PyQt6.QtWidgets import (
+from PySide6.QtCore import Qt, Signal
+from PySide6.QtWidgets import (
     QHBoxLayout,
     QInputDialog,
     QMessageBox,
@@ -18,7 +18,7 @@ from ....i18n.catalog import t
 from .shared import _selected_row_payload, _stretch_table
 
 class CollectionsPage(QWidget):
-    open_requested = pyqtSignal(str)
+    open_requested = Signal(str)
 
     def __init__(self, query_service, repository, history_manager: HistoryManager | None = None, parent=None):
         super().__init__(parent)

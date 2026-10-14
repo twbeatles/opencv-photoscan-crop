@@ -3,8 +3,8 @@ from __future__ import annotations
 import os
 from typing import Optional
 
-from PyQt6.QtCore import Qt, pyqtSignal
-from PyQt6.QtWidgets import (
+from PySide6.QtCore import Qt, Signal
+from PySide6.QtWidgets import (
     QHBoxLayout,
     QMessageBox,
     QPushButton,
@@ -26,8 +26,8 @@ from .shared import (
 )
 
 class JobsPage(QWidget):
-    rerun_requested = pyqtSignal(int, bool)
-    open_review_requested = pyqtSignal(int)
+    rerun_requested = Signal(int, bool)
+    open_review_requested = Signal(int)
 
     def __init__(self, query_service, parent=None):
         super().__init__(parent)

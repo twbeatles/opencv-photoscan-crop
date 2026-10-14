@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from PyQt6.QtGui import QWheelEvent
-from PyQt6.QtWidgets import QComboBox, QDoubleSpinBox, QSlider, QSpinBox
+from PySide6.QtGui import QWheelEvent
+from PySide6.QtWidgets import QComboBox, QDoubleSpinBox, QSlider, QSpinBox
 
 from ....core.scene_presets import SCENE_PRESET_META
 from ....i18n.catalog import t

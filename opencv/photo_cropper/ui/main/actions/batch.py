@@ -10,7 +10,7 @@ import threading
 from typing import Callable, Optional
 
 import numpy as np
-from PyQt6.QtWidgets import QMessageBox
+from PySide6.QtWidgets import QMessageBox
 
 from ....core.batch import BatchProgress
 from ....core.settings_model import AppSettings

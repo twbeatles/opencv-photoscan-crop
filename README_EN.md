@@ -2,7 +2,7 @@
 
 🌐 **English** | [한국어](README.md)
 
-A high-performance Python/PyQt6 application designed to automatically detect, perspective-correct, and batch crop scanned photos, album pages, and documents on complex backgrounds using intelligent computer vision algorithms.
+A high-performance Python/PySide6 application designed to automatically detect, perspective-correct, and batch crop scanned photos, album pages, and documents on complex backgrounds using intelligent computer vision algorithms.
 
 ---
 

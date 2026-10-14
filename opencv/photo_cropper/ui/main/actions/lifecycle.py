@@ -6,9 +6,9 @@ from __future__ import annotations
 
 from typing import Callable, Optional
 
-from PyQt6.QtCore import QThread
-from PyQt6.QtGui import QCloseEvent
-from PyQt6.QtWidgets import QMessageBox
+from PySide6.QtCore import QThread
+from PySide6.QtGui import QCloseEvent
+from PySide6.QtWidgets import QMessageBox
 
 from ....i18n.catalog import t
 from ...fluent import confirm_qt

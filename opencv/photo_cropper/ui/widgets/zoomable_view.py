@@ -1,8 +1,8 @@
 """Zoom/pan-capable graphics view."""
 
-from PyQt6.QtCore import QPointF, Qt, pyqtSignal
-from PyQt6.QtGui import QMouseEvent, QPainter, QWheelEvent
-from PyQt6.QtWidgets import QGraphicsView
+from PySide6.QtCore import QPointF, Qt, Signal
+from PySide6.QtGui import QMouseEvent, QPainter, QWheelEvent
+from PySide6.QtWidgets import QGraphicsView
 
 class ZoomableGraphicsView(QGraphicsView):
     """
@@ -14,7 +14,7 @@ class ZoomableGraphicsView(QGraphicsView):
         - Smooth zooming
     """
     
-    zoom_changed = pyqtSignal(float)
+    zoom_changed = Signal(float)
     
     def __init__(self, parent=None):
         super().__init__(parent)

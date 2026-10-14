@@ -7,9 +7,9 @@ from __future__ import annotations
 import logging
 from typing import Any, Dict, List, Optional
 
-from PyQt6.QtCore import pyqtSignal
-from PyQt6.QtGui import QAction, QIcon
-from PyQt6.QtWidgets import (
+from PySide6.QtCore import Signal
+from PySide6.QtGui import QAction, QIcon
+from PySide6.QtWidgets import (
     QComboBox,
     QGroupBox,
     QHBoxLayout,
@@ -67,8 +67,8 @@ class PresetManager:
 class PresetManagerWidget(QWidget):
     """Widget for managing presets."""
 
-    preset_selected = pyqtSignal(str)
-    preset_applied = pyqtSignal(str)
+    preset_selected = Signal(str)
+    preset_applied = Signal(str)
 
     def __init__(self, settings: Optional[AppSettings] = None, parent=None):
         super().__init__(parent)
@@ -203,7 +203,7 @@ class PresetManagerWidget(QWidget):
 class PresetComboBox(QComboBox):
     """Combo box for quick preset selection."""
 
-    preset_selected = pyqtSignal(str)
+    preset_selected = Signal(str)
 
     def __init__(self, parent=None):
         super().__init__(parent)

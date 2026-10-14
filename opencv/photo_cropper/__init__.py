@@ -1,6 +1,6 @@
 # Photo Cropper - OpenCV Photo Auto-Crop Tool
 """
-Modern photo auto-cropping application with PyQt6 UI.
+Modern photo auto-cropping application with PySide6 UI.
 """
 
 __version__ = "9.0.0"

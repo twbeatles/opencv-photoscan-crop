@@ -4,7 +4,7 @@
 
 from __future__ import annotations
 
-from PyQt6.QtWidgets import QLabel, QProgressBar, QStatusBar
+from PySide6.QtWidgets import QLabel, QProgressBar, QStatusBar
 
 from ....i18n.catalog import t
 from ...design_tokens import SPACE_XXS, status_badge_qss

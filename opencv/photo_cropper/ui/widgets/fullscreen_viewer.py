@@ -10,12 +10,12 @@ import os
 import logging
 from typing import Optional, List
 
-from PyQt6.QtWidgets import (
+from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
     QFrame, QApplication
 )
-from PyQt6.QtCore import Qt, pyqtSignal, QTimer
-from PyQt6.QtGui import QPixmap, QImage, QKeyEvent, QResizeEvent, QPainter, QColor
+from PySide6.QtCore import Qt, Signal, QTimer
+from PySide6.QtGui import QPixmap, QImage, QKeyEvent, QResizeEvent, QPainter, QColor
 
 import cv2
 import numpy as np
@@ -37,8 +37,8 @@ class FullscreenViewer(QWidget):
         - Auto-hide controls
     """
     
-    closed = pyqtSignal()
-    image_changed = pyqtSignal(int)  # current index
+    closed = Signal()
+    image_changed = Signal(int)  # current index
     
     def __init__(
         self,
