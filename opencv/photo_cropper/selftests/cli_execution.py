@@ -388,6 +388,7 @@ def _test_batch_actions_recursive_output_guard() -> None:
     from ..core.settings_model import AppSettings
     from ..i18n.catalog import t
     from ..ui.main.actions.batch import BatchActions
+    from ..ui import fluent as _fluent_ui
 
     class FakeProcessor:
         is_running = False
@@ -440,8 +441,10 @@ def _test_batch_actions_recursive_output_guard() -> None:
     warnings = []
     original_question = QMessageBox.question
     original_warning = QMessageBox.warning
+    original_fluent_confirm = _fluent_ui.confirm
     QMessageBox.question = lambda *_args, **_kwargs: QMessageBox.StandardButton.Yes
     QMessageBox.warning = lambda *_args, **_kwargs: warnings.append((_args, _kwargs))
+    _fluent_ui.confirm = lambda *args, **kwargs: True
     try:
         with tempfile.TemporaryDirectory(prefix="photocropper_batch_guard_") as td:
             input_dir = os.path.join(td, "input")
@@ -464,6 +467,7 @@ def _test_batch_actions_recursive_output_guard() -> None:
     finally:
         QMessageBox.question = original_question
         QMessageBox.warning = original_warning
+        _fluent_ui.confirm = original_fluent_confirm
         host_window.deleteLater()
         refs.input_path_edit.deleteLater()
         refs.output_path_edit.deleteLater()

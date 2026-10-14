@@ -208,6 +208,7 @@ def _test_retry_failed_files_normalizes_empty_output_path() -> None:
     from ..core.settings_model import AppSettings
     from ..i18n.catalog import t
     from ..ui.main.actions.batch import BatchActions
+    from ..ui import fluent as _fluent_ui
 
     class FakeProcessor:
         def __init__(self) -> None:
@@ -270,9 +271,11 @@ def _test_retry_failed_files_normalizes_empty_output_path() -> None:
     original_question = QMessageBox.question
     original_warning = QMessageBox.warning
     original_information = QMessageBox.information
+    original_fluent_confirm = _fluent_ui.confirm
     QMessageBox.question = lambda *_args, **_kwargs: QMessageBox.StandardButton.Yes
     QMessageBox.warning = lambda *_args, **_kwargs: QMessageBox.StandardButton.Ok
     QMessageBox.information = lambda *_args, **_kwargs: QMessageBox.StandardButton.Ok
+    _fluent_ui.confirm = lambda *args, **kwargs: True
     try:
         with tempfile.TemporaryDirectory(prefix="photocropper_retry_failed_") as td:
             input_dir = os.path.join(td, "input")
@@ -305,6 +308,7 @@ def _test_retry_failed_files_normalizes_empty_output_path() -> None:
         QMessageBox.question = original_question
         QMessageBox.warning = original_warning
         QMessageBox.information = original_information
+        _fluent_ui.confirm = original_fluent_confirm
         host_window.deleteLater()
         refs.input_path_edit.deleteLater()
         refs.output_path_edit.deleteLater()
