@@ -18,6 +18,8 @@ Optimized for:
 - No UPX compression for Qt/PyQt stability under App Control
 """
 
+import os
+import sys
 from PyInstaller.utils.hooks import collect_data_files, collect_submodules
 
 block_cipher = None
@@ -252,6 +254,15 @@ a = Analysis(
     cipher=block_cipher,
     noarchive=False,
 )
+
+# Python 3.15 abi3t: cryptography _rust.pyd links python3t.dll
+# (<prefix>\abi3t-compat), which PyInstaller does not auto-collect.
+# Without it the frozen exe dies with "DLL load failed while importing _rust".
+_py3t_dll = os.path.join(sys.base_prefix, 'abi3t-compat', 'python3t.dll')
+_py3t_dest = 'python3t.dll'
+if os.path.isfile(_py3t_dll) and not any(
+        (b[0] or '').lower() == _py3t_dest for b in a.binaries):
+    a.binaries.append((_py3t_dest, _py3t_dll, 'BINARY'))
 
 # ============================================
 # Remove excluded binaries
