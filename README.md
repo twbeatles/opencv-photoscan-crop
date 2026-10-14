@@ -22,7 +22,7 @@
 
 ### 1. 요구 사항 & 설치
 
-- **Python**: 3.8 이상 권장
+- **Python**: 3.11 이상 권장
 - **운영체제**: Windows 10/11, macOS, Linux
 
 ```bash

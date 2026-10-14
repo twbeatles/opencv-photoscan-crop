@@ -4,9 +4,9 @@
 
 | 항목 | 값 |
 |------|-----|
-| 언어 | Python 3.8+ |
+| 언어 | Python 3.11+ |
 | GUI | PyQt6 |
-| 이미지 처리 | OpenCV 4.8+ |
+| 이미지 처리 | OpenCV 4.14+ (<5) |
 | 진입점 | `run.py` |
 | 설정 파일 | Windows: `%APPDATA%/PhotoCropper/settings.json`<br>macOS/Linux: `~/.photo_cropper/photo_cropper_settings.json` |
 

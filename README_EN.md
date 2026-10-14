@@ -22,7 +22,7 @@ A high-performance Python/PyQt6 application designed to automatically detect, pe
 
 ### 1. Requirements & Installation
 
-- **Python**: 3.8 or higher
+- **Python**: 3.11 or higher
 - **OS**: Windows 10/11, macOS, Linux
 
 ```bash

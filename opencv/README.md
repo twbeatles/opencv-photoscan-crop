@@ -72,7 +72,7 @@
 ## 설치
 
 **요구 사항**
-- Python 3.8 이상
+- Python 3.11 이상
 - Windows / macOS / Linux
 
 ```bash

@@ -5,16 +5,16 @@
 스캔된 사진 또는 배경 위에 놓인 사진을 자동으로 감지해 크롭하고 후처리하는 Python 애플리케이션입니다.
 
 - **진입점**: `run.py`, `photo_cropper/main.py`
-- **Python**: 3.8+
+- **Python**: 3.11+
 - **프레임워크**: PyQt6(GUI), OpenCV(이미지 처리)
 
 ## 의존성 요약
 
 ```txt
-opencv-python>=4.8.0
-numpy>=1.24.0
-Pillow>=10.0.0
-PyQt6>=6.5.0
+opencv-python>=4.14,<5
+numpy>=2.0
+Pillow>=12
+PyQt6>=6.8
 winotify>=1.1.0  # Windows 알림(선택)
 ```
 

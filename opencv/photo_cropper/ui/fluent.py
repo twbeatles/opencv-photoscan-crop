@@ -13,9 +13,13 @@ from __future__ import annotations
 
 import logging
 import sys
-from typing import Any, Optional
+from typing import TYPE_CHECKING, Any, Optional, cast
 
 logger = logging.getLogger(__name__)
+
+
+if TYPE_CHECKING:
+    from PyQt6.QtGui import QIcon  # static only; QIcon proven at runtime
 
 
 def _load_fluent_widgets() -> Optional[tuple[Any, ...]]:
@@ -187,7 +191,7 @@ NAV_ICONS = {
 }
 
 
-def fluent_icon(icon_name: str):
+def fluent_icon(icon_name: str) -> Optional["QIcon"]:
     """Theme-aware QIcon for a FluentIcon name, or None when unavailable.
 
     The icon re-renders for the active dark/light theme on every paint, so
@@ -198,13 +202,13 @@ def fluent_icon(icon_name: str):
     try:
         from qfluentwidgets.common.icon import Icon
 
-        return Icon(getattr(_FIF, icon_name))
+        return cast("QIcon", Icon(getattr(_FIF, icon_name)))
     except Exception:
         logger.debug("FluentIcon %s unavailable", icon_name, exc_info=True)
         return None
 
 
-def nav_icon(page_key: str):
+def nav_icon(page_key: str) -> Optional["QIcon"]:
     """QIcon for a shell page, or None when Fluent icons are unavailable."""
     return fluent_icon(NAV_ICONS.get(str(page_key or ""), ""))
 

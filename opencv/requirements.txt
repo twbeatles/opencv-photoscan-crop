@@ -1,17 +1,28 @@
 # Photo Cropper - Requirements
 # Install with: pip install -r requirements.txt
+# Verified 2026-10-14 in project .venv (opencv/.venv) on Python 3.15:
+# opencv 4.14.0.94, numpy 2.5.4, Pillow 12.3.0, PyQt6 6.11.0,
+# PyQt6-Fluent-Widgets 1.11.3, pytest 9.1.1. CI matrix runs Python 3.11,
+# where pip resolves the same floors to 3.11-compatible builds.
+# Effective Python floor is 3.11: numpy 2.x / Pillow 12 / pytest 9 need >=3.10.
 
 # Core dependencies
-opencv-python>=4.8.0
-numpy>=1.24.0
-Pillow>=10.0.0
+# NOTE: opencv 5.x removed cv2.CascadeClassifier, which Haar face/eye
+# detection relies on (no offline replacement). Stay on 4.x until the
+# face backend is migrated (e.g. DNN/YuNet with bundled models).
+opencv-python>=4.14,<5
+numpy>=2.0
+Pillow>=12
 
-# GUI
-PyQt6>=6.5.0
+# GUI (Qt 6.8 LTS baseline; additive-only APIs used)
+PyQt6>=6.8
 
 # v9.0: Windows notifications (optional)
 winotify>=1.1.0; platform_system == "Windows"
 
 # Fluent UI (desktop, ktrain-style)
-PyQt6-Fluent-Widgets>=1.6
+# NOTE: install ONLY the PyQt6 edition. The PySide6 edition uses the same
+# `qfluentwidgets` namespace with incompatible Qt objects and must never be
+# installed alongside it (ui/fluent.py treats it as unavailable).
+PyQt6-Fluent-Widgets>=1.9
 darkdetect>=0.8

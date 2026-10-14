@@ -46,7 +46,9 @@ def _test_batch_session_service_reentry_guard() -> None:
 
 def _test_batch_thread_local_reuse() -> None:
     import threading
-    from concurrent.futures import ThreadPoolExecutor
+    # NOTE: submodule import: on Python 3.15 concurrent.futures exposes lazy
+    # placeholders that can leak across threads in long suites.
+    from concurrent.futures.thread import ThreadPoolExecutor
 
     from ..core.batch import BatchProcessor
     from ..core.settings_model import AppSettings
@@ -138,7 +140,8 @@ def _test_batch_post_pipeline_order() -> None:
 def _test_output_reservation_is_thread_safe() -> None:
     import os
     import tempfile
-    from concurrent.futures import ThreadPoolExecutor
+    # NOTE: same as above -- submodule import avoids 3.15 lazy placeholders.
+    from concurrent.futures.thread import ThreadPoolExecutor
 
     from ..core.batch import BatchProcessor
     from ..core.settings_model import AppSettings
