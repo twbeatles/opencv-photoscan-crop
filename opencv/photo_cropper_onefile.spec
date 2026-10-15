@@ -73,7 +73,7 @@ EXCLUDES = [
     'pytest', 'unittest', 'nose', 'mock', 'hypothesis',
     'IPython', 'jupyter', 'notebook', 'ipykernel', 'debugpy',
     'sphinx', 'docutils', 'jedi', 'black', 'flake8', 'pylint',
-    'tkinter', '_tkinter', 'tcl', 'tk', 'wx', 'PySide6', 'PyGObject',
+    'tkinter', '_tkinter', 'tcl', 'tk', 'wx', 'PyQt5', 'PyQt6', 'PyGObject',
     'sqlalchemy', 'aiohttp', 'asyncio', 'tornado', 'flask', 'django',
     'requests', 'urllib3', 'httpx', 'websockets',
     'cv2.gapi',

@@ -72,8 +72,8 @@ EXCLUDES = [
     'IPython', 'jupyter', 'notebook', 'ipykernel', 'debugpy',
     'sphinx', 'docutils', 'jedi', 'black', 'flake8', 'pylint',
     
-    # Unused GUI frameworks
-    'tkinter', '_tkinter', 'tcl', 'tk', 'wx', 'PySide6', 'PyGObject',
+    # Unused GUI frameworks (PySide6 is the app binding: never exclude it)
+    'tkinter', '_tkinter', 'tcl', 'tk', 'wx', 'PyQt5', 'PyQt6', 'PyGObject',
     
     # Unused database / network
     'sqlalchemy', 'aiohttp', 'asyncio', 'tornado', 'flask', 'django',
