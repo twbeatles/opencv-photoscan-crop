@@ -9,6 +9,7 @@
     "**/backups"
   ],
   "typeCheckingMode": "basic",
+  "reportMissingImports": "none",
   "reportIncompatibleMethodOverride": "none",
   "reportMissingTypeStubs": "none",
   "reportUnknownMemberType": "none",
