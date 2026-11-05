@@ -55,6 +55,8 @@ SPLIT_PACKAGES = [
     'photo_cropper.ui.widgets.settings',
     'photo_cropper.ui.widgets.management',
     'photo_cropper.i18n.catalog.locales',
+    # Fluent UI (explicit: optional imports + compiled _rc resources)
+    'qfluentwidgets',
 ]
 
 COLLECTED_HIDDENIMPORTS = []
@@ -83,10 +85,9 @@ EXCLUDES = [
     'PySide6.QtOpenGLWidgets', 'PySide6.QtPositioning', 'PySide6.QtPrintSupport',
     'PySide6.QtQml', 'PySide6.QtQuick', 'PySide6.QtQuick3D', 'PySide6.QtQuickWidgets',
     'PySide6.QtRemoteObjects', 'PySide6.QtSensors', 'PySide6.QtSerialPort',
-    'PySide6.QtSpatialAudio', 'PySide6.QtSql', 'PySide6.QtSvg', 'PySide6.QtSvgWidgets',
+    'PySide6.QtSpatialAudio', 'PySide6.QtSql',
     'PySide6.QtTest', 'PySide6.QtWebChannel', 'PySide6.QtWebEngineCore',
     'PySide6.QtWebEngineQuick', 'PySide6.QtWebEngineWidgets', 'PySide6.QtWebSockets',
-    'PySide6.QtXml',
     'lib2to3', 'distutils', 'setuptools', 'pkg_resources', 'pip',
 ]
 
@@ -216,6 +217,13 @@ a = Analysis(
         'photo_cropper.utils.image_io',
         'photo_cropper.utils.path_validation',
         'winotify',
+        'darkdetect',
+        'qframelesswindow',
+        'qfluentwidgets._rc.resource',
+        'photo_cropper.ui.components',
+        'photo_cropper.ui.design_tokens',
+        'photo_cropper.ui.fluent',
+        'photo_cropper.ui.theme_fluent',
         'PySide6.QtCore',
         'PySide6.QtGui',
         'PySide6.QtWidgets',
