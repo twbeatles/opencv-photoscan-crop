@@ -215,7 +215,6 @@ def _test_resize_fill_no_upscale_boundary() -> None:
 def _test_recursive_output_paths_preserve_relative_dirs() -> None:
     import os
     import tempfile
-    from types import SimpleNamespace
 
     import numpy as np
 
@@ -349,7 +348,6 @@ def _test_exif_orientation_normalization() -> None:
     import os
     import tempfile
 
-    import cv2
     import numpy as np
 
     try:

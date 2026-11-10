@@ -13,7 +13,6 @@ Provides OpenCV-based automatic image classification:
 import cv2
 import numpy as np
 import logging
-import os
 from dataclasses import dataclass, field
 from typing import Optional, Tuple, List, Dict
 from enum import Enum

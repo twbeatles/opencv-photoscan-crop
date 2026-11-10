@@ -1,24 +1,11 @@
 from __future__ import annotations
 
-import os
 import cv2
 import numpy as np
 import logging
-import traceback
-import json
-import time
 import math
 from typing import Optional, Tuple, List, Dict, Any
 
-from ..settings_model import (
-    AlgorithmSettings,
-    ProcessingSettings,
-    AdvancedProcessingSettings,
-    PerformanceSettings,
-    DebugSettings,
-)
-from ..advanced import AdvancedImageProcessor, GPUAccelerator
-from .types import CropResult, DetectionStage, PreviewProcessResult
 
 logger = logging.getLogger(__name__)
 
@@ -200,8 +187,8 @@ class ImageDetectionStageMixin:
         parsed: List[Dict[str, Any]] = []
         # OpenCV 4 returns (N,1,4); OpenCV 5 may return (N,4).
         flat_lines = np.asarray(lines).reshape(-1, 4)
-        for l in flat_lines[:500]:
-            x1, y1, x2, y2 = [float(v) for v in l[:4]]
+        for ln in flat_lines[:500]:
+            x1, y1, x2, y2 = [float(v) for v in ln[:4]]
             dx = x2 - x1
             dy = y2 - y1
             length = math.hypot(dx, dy)

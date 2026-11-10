@@ -234,7 +234,6 @@ def _test_watch_max_wait_roundtrip() -> None:
 
     from ..core.folder_watcher import AutoProcessor
     from ..core.settings_model import AppSettings
-    from ..i18n.catalog import t
     from ..ui.widgets.settings import SettingsPanel
 
     app = QApplication.instance()

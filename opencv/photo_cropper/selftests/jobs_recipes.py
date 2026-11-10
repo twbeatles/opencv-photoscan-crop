@@ -5,7 +5,6 @@
 
 from __future__ import annotations
 
-from .helpers import _SignalRecorder, _ensure_qt_app
 
 def _test_job_orchestrator_records_variants_and_review_queue() -> None:
     import os

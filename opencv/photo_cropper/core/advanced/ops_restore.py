@@ -1,8 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-from __future__ import annotations
-
 """Restoration, denoise, border-crop, and sharpen operations."""
+from __future__ import annotations
 
 from typing import Any, cast
 
@@ -45,12 +44,12 @@ class RestorationOpsMixin:
         # Step 2: Contrast enhancement using CLAHE
         if enhance_contrast:
             lab = cv2.cvtColor(result, cv2.COLOR_BGR2LAB)
-            l, a, b = cv2.split(lab)
+            l_ch, a, b = cv2.split(lab)
 
             # Use cached CLAHE from the composed processor.
-            l = getattr(self, "_clahe_strong").apply(l)
+            l_ch = getattr(self, "_clahe_strong").apply(l_ch)
 
-            lab = cv2.merge([l, a, b])
+            lab = cv2.merge([l_ch, a, b])
             result = cv2.cvtColor(lab, cv2.COLOR_LAB2BGR)
 
         # Step 3: Color restoration

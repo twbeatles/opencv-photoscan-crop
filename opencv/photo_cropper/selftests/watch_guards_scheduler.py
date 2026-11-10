@@ -96,7 +96,6 @@ def _test_batch_actions_block_when_watch_running() -> None:
     from PySide6.QtWidgets import QLineEdit, QMainWindow, QMessageBox
 
     from ..core.settings_model import AppSettings
-    from ..i18n.catalog import t
     from ..ui.main.actions.batch import BatchActions
 
     class FakeProcessor:

@@ -15,7 +15,7 @@ import cv2
 import numpy as np
 import logging
 from dataclasses import dataclass, field
-from typing import Optional, Tuple, List, Dict, Any
+from typing import Optional, Tuple, List, Dict
 from enum import Enum
 
 logger = logging.getLogger(__name__)
@@ -233,10 +233,10 @@ class SmartEnhancer:
             if adjust_exposure:
                 # Nudge luminance toward a mid target using a bounded delta.
                 lab = cv2.cvtColor(result, cv2.COLOR_BGR2LAB)
-                l = lab[:, :, 0].astype(np.float32)
-                mean_l = float(np.mean(l))
+                l_ch = lab[:, :, 0].astype(np.float32)
+                mean_l = float(np.mean(l_ch))
                 delta = np.clip((128.0 - mean_l) * (0.20 + 0.50 * level), -24.0, 24.0)
-                lab[:, :, 0] = np.clip(l + delta, 0, 255).astype(np.uint8)
+                lab[:, :, 0] = np.clip(l_ch + delta, 0, 255).astype(np.uint8)
                 result = cv2.cvtColor(lab, cv2.COLOR_LAB2BGR)
 
             if adjust_color_balance:
@@ -292,7 +292,7 @@ class SmartEnhancer:
             if settings.clahe_enabled:
                 result = self._apply_clahe(result, settings.clahe_clip_limit,
                                           settings.clahe_grid_size)
-                applied.append(f"대비 향상 (CLAHE)")
+                applied.append("대비 향상 (CLAHE)")
             
             # 4. Auto white balance
             if settings.auto_white_balance:

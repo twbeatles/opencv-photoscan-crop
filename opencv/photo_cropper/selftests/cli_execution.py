@@ -265,7 +265,6 @@ def _test_library_repository_singleton_reset() -> None:
         get_library_repository,
         reset_library_repository_for_tests,
     )
-    from ..core.library.sqlite_store import LibrarySqliteStore
 
     with tempfile.TemporaryDirectory(prefix="photocropper_repo_reset_") as td:
         db_a = os.path.join(td, "a.db")

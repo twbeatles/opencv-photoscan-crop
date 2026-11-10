@@ -1,24 +1,10 @@
 from __future__ import annotations
 
-import os
 import cv2
 import numpy as np
 import logging
-import traceback
-import json
-import time
-import math
-from typing import Optional, Tuple, List, Dict, Any
+from typing import Optional, Any
 
-from ..settings_model import (
-    AlgorithmSettings,
-    ProcessingSettings,
-    AdvancedProcessingSettings,
-    PerformanceSettings,
-    DebugSettings,
-)
-from ..advanced import AdvancedImageProcessor, GPUAccelerator
-from .types import CropResult, DetectionStage, PreviewProcessResult
 from ...utils.image_io import load_image_unicode
 
 logger = logging.getLogger(__name__)
@@ -65,13 +51,13 @@ class ImageLoadAndClaheMixin:
 
         # Convert to LAB color space
         lab = cv2.cvtColor(image, cv2.COLOR_BGR2LAB)
-        l, a, b = cv2.split(lab)
+        l_ch, a, b = cv2.split(lab)
 
         # Apply CLAHE to L channel
-        l = clahe.apply(l)
+        l_ch = clahe.apply(l_ch)
 
         # Merge and convert back
-        lab = cv2.merge([l, a, b])
+        lab = cv2.merge([l_ch, a, b])
         return cv2.cvtColor(lab, cv2.COLOR_LAB2BGR)
     def _get_clahe_with_settings(self: Any, clip_limit: float, grid_size: int):
         """Get cached CLAHE object or create new one if settings changed."""

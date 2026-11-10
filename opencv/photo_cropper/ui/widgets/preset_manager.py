@@ -8,7 +8,7 @@ import logging
 from typing import Any, Dict, List, Optional
 
 from PySide6.QtCore import Signal
-from PySide6.QtGui import QAction, QIcon
+from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import (
     QComboBox,
     QGroupBox,

@@ -5,7 +5,6 @@
 
 from __future__ import annotations
 
-from .helpers import _SignalRecorder, _ensure_qt_app
 
 def _test_crop_editor_import_smoke() -> None:
     try:

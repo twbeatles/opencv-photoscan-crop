@@ -18,16 +18,15 @@ from enum import Enum
 from PySide6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QGridLayout,
     QLabel, QPushButton, QComboBox, QCheckBox, QToolBar,
-    QSplitter, QFrame, QScrollArea, QSizePolicy, QFileDialog,
+    QFrame, QFileDialog,
     QGraphicsView, QGraphicsScene, QGraphicsPixmapItem
 )
 from PySide6.QtCore import Qt, Signal, QRectF, QPointF
-from PySide6.QtGui import QPixmap, QImage, QWheelEvent, QMouseEvent, QAction, QIcon
+from PySide6.QtGui import QPixmap, QImage, QWheelEvent, QMouseEvent, QAction
 
 from ...i18n.catalog import t
 from ...utils.image_io import load_image_unicode
-from ..widgets.toast_notification import ToastManager
-from ...core.smart_enhancer import SmartEnhancer, EnhancementPreset, get_smart_enhancer
+from ...core.smart_enhancer import EnhancementPreset, get_smart_enhancer
 
 
 def numpy_to_qpixmap(image: Optional[np.ndarray]) -> QPixmap:

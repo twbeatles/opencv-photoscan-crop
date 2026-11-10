@@ -5,7 +5,6 @@
 
 from __future__ import annotations
 
-from .helpers import _SignalRecorder, _ensure_qt_app
 
 def _test_multi_photo_close_gap_split() -> None:
     import cv2

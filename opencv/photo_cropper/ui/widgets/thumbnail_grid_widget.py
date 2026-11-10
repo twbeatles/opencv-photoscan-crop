@@ -8,16 +8,16 @@ Provides grid view of images with thumbnails.
 
 import os
 import logging
-from typing import Optional, List, Callable
+from typing import Optional, List
 
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QScrollArea, QFrame,
-    QLabel, QPushButton, QGridLayout, QSizePolicy, QMenu,
-    QToolButton, QButtonGroup, QStackedWidget, QListWidget,
+    QLabel, QGridLayout, QMenu,
+    QToolButton, QStackedWidget, QListWidget,
     QListWidgetItem, QAbstractItemView
 )
-from PySide6.QtCore import Qt, Signal, QSize, QThread, QTimer
-from PySide6.QtGui import QPixmap, QImage, QPainter, QColor, QIcon
+from PySide6.QtCore import Qt, Signal, QSize, QThread
+from PySide6.QtGui import QPixmap, QImage
 
 import cv2
 import numpy as np

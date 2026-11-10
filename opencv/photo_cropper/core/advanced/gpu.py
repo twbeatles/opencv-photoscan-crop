@@ -1,8 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-from __future__ import annotations
-
 """Optional CUDA acceleration helpers."""
+from __future__ import annotations
 
 import logging
 from typing import Any, Optional, Tuple
@@ -73,7 +72,7 @@ class GPUAccelerator:
             gpu_src = self.upload(image)
             # Note: cv2.cuda.fastNlMeansDenoising works on grayscale
             # For color, we process channels separately or fallback
-            result = self.download(gpu_src)
+            self.download(gpu_src)
             # Fallback to CPU for color denoising as CUDA version is limited
             return cv2.fastNlMeansDenoisingColored(
                 image, None, h, h, template_window_size, search_window_size

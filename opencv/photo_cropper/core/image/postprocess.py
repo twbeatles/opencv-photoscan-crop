@@ -1,24 +1,12 @@
 from __future__ import annotations
 
-import os
 import cv2
 import numpy as np
 import logging
-import traceback
-import json
-import time
 import math
-from typing import Optional, Tuple, List, Dict, Any
+from typing import Optional, Tuple, Any
 
-from ..settings_model import (
-    AlgorithmSettings,
-    ProcessingSettings,
-    AdvancedProcessingSettings,
-    PerformanceSettings,
-    DebugSettings,
-)
-from ..advanced import AdvancedImageProcessor, GPUAccelerator
-from .types import CropResult, DetectionStage, PreviewProcessResult
+from .types import CropResult, PreviewProcessResult
 
 logger = logging.getLogger(__name__)
 
@@ -191,9 +179,9 @@ class ImagePostprocessMixin:
             else:
                 # Color - apply CLAHE to L channel in LAB
                 lab = cv2.cvtColor(result, cv2.COLOR_BGR2LAB)
-                l, a, b = cv2.split(lab)
-                l = self._clahe_default.apply(l)
-                lab = cv2.merge([l, a, b])
+                l_ch, a, b = cv2.split(lab)
+                l_ch = self._clahe_default.apply(l_ch)
+                lab = cv2.merge([l_ch, a, b])
                 result = cv2.cvtColor(lab, cv2.COLOR_LAB2BGR)
 
         # Sharpening

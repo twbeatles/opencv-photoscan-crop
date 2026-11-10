@@ -10,14 +10,14 @@ Enhanced UI/UX v7.2
 from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, 
     QProgressBar, QPushButton, QTextEdit, QGroupBox,
-    QFrame, QGraphicsOpacityEffect, QSizePolicy, QWidget
+    QFrame, QSizePolicy, QWidget
 )
-from PySide6.QtCore import Qt, Signal, QTimer, QPropertyAnimation, QEasingCurve
+from PySide6.QtCore import Qt, Signal, QTimer
 from PySide6.QtGui import QFont, QTextCursor
 import os
 import time
 
-from ...core.batch import BatchProgress, FileResult, ProcessStatus
+from ...core.batch import BatchProgress
 from ...i18n.catalog import t
 
 

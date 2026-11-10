@@ -6,9 +6,8 @@ History Manager for Photo Cropper v9.0.
 Provides undo/redo functionality using the Command pattern.
 """
 
-import copy
 import logging
-from typing import Optional, List, Callable, Any
+from typing import Optional, List, Callable
 from dataclasses import dataclass, field
 from abc import ABC, abstractmethod
 from enum import Enum

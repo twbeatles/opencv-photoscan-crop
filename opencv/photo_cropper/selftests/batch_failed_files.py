@@ -206,7 +206,6 @@ def _test_retry_failed_files_normalizes_empty_output_path() -> None:
     from PySide6.QtWidgets import QLineEdit, QMainWindow, QMessageBox
 
     from ..core.settings_model import AppSettings
-    from ..i18n.catalog import t
     from ..ui.main.actions.batch import BatchActions
     from ..ui import fluent as _fluent_ui
 

@@ -37,7 +37,6 @@ def setup_ui(panel):
 
 
 def make_scrollable_tab(panel, content_widget: QWidget) -> QWidget:
-    self = panel
     """Wrap widget in a scroll area for tab content."""
     scroll = QScrollArea()
     scroll.setWidget(content_widget)

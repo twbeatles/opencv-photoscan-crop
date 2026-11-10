@@ -13,7 +13,6 @@ Provides Windows system notifications and sounds:
 from __future__ import annotations
 
 import os
-import sys
 import logging
 import threading
 from typing import Any, Callable, Optional
@@ -37,7 +36,7 @@ except ImportError:
 
 # Try to import winsound for sound effects
 try:
-    import winsound
+    import winsound  # noqa: F401 # availability probe (WINSOUND_AVAILABLE read below)
     WINSOUND_AVAILABLE = True
 except ImportError:
     WINSOUND_AVAILABLE = False

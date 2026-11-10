@@ -5,7 +5,6 @@
 
 from __future__ import annotations
 
-from .helpers import _SignalRecorder, _ensure_qt_app
 
 def _test_classification_settings_custom_alias_normalizes_to_advanced() -> None:
     from ..core.settings_model import AppSettings, ClassificationSettings
@@ -41,7 +40,6 @@ def _test_settings_panel_performance_roundtrip() -> None:
         return
 
     from ..core.settings_model import AppSettings
-    from ..i18n.catalog import t
     from ..ui.widgets.settings import SettingsPanel
 
     app = QApplication.instance()

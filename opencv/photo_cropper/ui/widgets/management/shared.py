@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from PySide6.QtCore import Qt
-from PySide6.QtWidgets import QLabel, QTableWidget
+from PySide6.QtWidgets import QTableWidget
 
 from ....i18n.catalog import t
 

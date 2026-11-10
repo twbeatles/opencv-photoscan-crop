@@ -1,8 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-from __future__ import annotations
-
 """Result types for advanced image processing."""
+from __future__ import annotations
 
 from dataclasses import dataclass
 

@@ -328,11 +328,11 @@ class MultiPhotoDetector:
         """Detect contours using color-based segmentation."""
         # Convert to LAB color space
         lab = cv2.cvtColor(image, cv2.COLOR_BGR2LAB)
-        l, a, b = cv2.split(lab)
+        l_ch, a, b = cv2.split(lab)
         
         # Apply CLAHE to L channel
         clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
-        l_enhanced = clahe.apply(l)
+        l_enhanced = clahe.apply(l_ch)
         
         # Threshold based on luminance variation
         _, thresh = cv2.threshold(l_enhanced, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)

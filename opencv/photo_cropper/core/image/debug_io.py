@@ -4,21 +4,8 @@ import os
 import cv2
 import numpy as np
 import logging
-import traceback
-import json
-import time
-import math
-from typing import Optional, Tuple, List, Dict, Any
+from typing import Optional, List, Any
 
-from ..settings_model import (
-    AlgorithmSettings,
-    ProcessingSettings,
-    AdvancedProcessingSettings,
-    PerformanceSettings,
-    DebugSettings,
-)
-from ..advanced import AdvancedImageProcessor, GPUAccelerator
-from .types import CropResult, DetectionStage, PreviewProcessResult
 
 logger = logging.getLogger(__name__)
 

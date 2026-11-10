@@ -11,58 +11,17 @@ from typing import Optional
 
 from PySide6.QtWidgets import (
     QWidget,
-    QVBoxLayout,
-    QHBoxLayout,
-    QTabWidget,
-    QGroupBox,
-    QLabel,
-    QSlider,
-    QSpinBox,
-    QDoubleSpinBox,
-    QCheckBox,
-    QComboBox,
-    QPushButton,
-    QFormLayout,
-    QFrame,
     QLineEdit,
-    QScrollArea,
     QFileDialog,
 )
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import Signal
 
 from ....core.settings_model import (
     AppSettings,
-    AlgorithmSettings,
     CLASSIFICATION_CATEGORY_KEYS,
-    DebugSettings,
-    ProcessingSettings,
-    OutputSettings,
-    FilterSettings,
-    UISettings,
-    AdvancedProcessingSettings,
-    FileManagementSettings,
-    PerformanceSettings,
-    WatermarkSettings,
-    ResizeSettings,
-    WatchModeSettings,
-    MultiPhotoSettings,
-    ClassificationSettings,
-    FaceDetectionSettings,
-    SmartEnhancementSettings,
-    NotificationSettings,
 )
 from ....i18n.catalog import get_category_folder_defaults, get_translator, t
 from ...design_tokens import INVALID_INPUT_QSS
-from ....utils.path_validation import (
-    validate_single_path_segment,
-)
-from .controls import (
-    NoScrollComboBox,
-    NoScrollDoubleSpinBox,
-    NoScrollSlider,
-    NoScrollSpinBox,
-)
-from .i18n_bindings import apply_settings_i18n_bindings
 from .panel_i18n import retranslate_panel
 from .panel_layout import make_scrollable_tab, setup_ui
 from .panel_settings import (

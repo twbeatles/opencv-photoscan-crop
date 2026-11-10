@@ -12,10 +12,10 @@ from typing import Optional, List
 
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
-    QFrame, QApplication
+    QFrame
 )
 from PySide6.QtCore import Qt, Signal, QTimer
-from PySide6.QtGui import QPixmap, QImage, QKeyEvent, QResizeEvent, QPainter, QColor
+from PySide6.QtGui import QPixmap, QImage, QKeyEvent, QResizeEvent
 
 import cv2
 import numpy as np

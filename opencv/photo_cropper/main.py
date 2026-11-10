@@ -9,7 +9,6 @@ Launches the PySide6 photo auto-cropping application.
 import logging
 import sys
 
-from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QApplication
 
 try:

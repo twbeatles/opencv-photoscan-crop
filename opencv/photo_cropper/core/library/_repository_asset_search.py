@@ -1,12 +1,8 @@
 from __future__ import annotations
 
-import json
-import os
-from typing import Any, Optional
+from typing import Any
 
-from ...utils.file_helpers import compute_file_hash, get_image_dimensions
-from .types import AssetQuery, AssetTimelineEvent
-from ._repository_shared import compute_perceptual_hash, now_iso, safe_json_loads
+from ._repository_shared import now_iso
 from ._repository_protocol import LibraryRepositoryProtocol
 
 

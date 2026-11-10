@@ -14,7 +14,7 @@ from PySide6.QtCore import (
     Qt,
     Signal,
 )
-from PySide6.QtGui import QBrush, QColor, QFont, QPainter, QPen
+from PySide6.QtGui import QBrush, QColor, QPainter
 
 from ..fluent import FLUENT_AVAILABLE as _FLUENT_SWITCH_AVAILABLE
 

@@ -1,8 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-from __future__ import annotations
-
 """Automatic color correction operations."""
+from __future__ import annotations
 
 import cv2
 import numpy as np
@@ -80,14 +79,14 @@ class ColorOpsMixin:
         """Histogram-based color correction."""
         # Convert to LAB color space
         lab = cv2.cvtColor(image, cv2.COLOR_BGR2LAB)
-        l, a, b = cv2.split(lab)
+        l_ch, a, b = cv2.split(lab)
 
         # Apply CLAHE to L channel
         clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
-        l = clahe.apply(l)
+        l_ch = clahe.apply(l_ch)
 
         # Merge and convert back
-        lab = cv2.merge([l, a, b])
+        lab = cv2.merge([l_ch, a, b])
         return cv2.cvtColor(lab, cv2.COLOR_LAB2BGR)
 
 auto_color_correct = ColorOpsMixin.auto_color_correct

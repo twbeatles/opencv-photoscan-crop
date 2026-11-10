@@ -3,7 +3,7 @@
 Core processing components for photo cropping.
 """
 
-from .batch_profile_manager import (
+from .batch_profile_manager import (  # noqa: F401 # public re-export hub
     BatchProfile,
     BatchProfileManager,
     get_batch_profile_manager,

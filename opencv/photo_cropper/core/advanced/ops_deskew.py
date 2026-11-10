@@ -1,8 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-from __future__ import annotations
-
 """Deskew detection and correction operations."""
+from __future__ import annotations
 
 import logging
 

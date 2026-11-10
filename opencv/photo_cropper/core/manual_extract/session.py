@@ -7,7 +7,7 @@ from __future__ import annotations
 import os
 import time
 from threading import Event
-from typing import Callable, Dict, List, Optional
+from typing import Callable, Dict, List
 
 import numpy as np
 

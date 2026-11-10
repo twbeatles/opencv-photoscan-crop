@@ -4,29 +4,18 @@ from __future__ import annotations
 import math
 from typing import Optional
 
-from PySide6.QtCore import QSize, Qt, Signal
+from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import (
-    QAbstractItemView,
-    QCheckBox,
     QComboBox,
     QFileDialog,
-    QFormLayout,
-    QGroupBox,
     QHBoxLayout,
     QInputDialog,
     QLabel,
     QLineEdit,
-    QListWidget,
     QListWidgetItem,
     QMessageBox,
-    QPushButton,
-    QSplitter,
-    QTabWidget,
-    QTableWidget,
     QTableWidgetItem,
-    QTextEdit,
-    QVBoxLayout,
     QWidget,
 )
 
@@ -35,7 +24,6 @@ from ....core.library import AssetQuery, get_provider_status
 from ....i18n.catalog import t
 from .library import build_library_page_ui
 from .shared import (
-    _stretch_table,
     _translated_job_status,
     _translated_review_status,
     _translated_tag_kind,
