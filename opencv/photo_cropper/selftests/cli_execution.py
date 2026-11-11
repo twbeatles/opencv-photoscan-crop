@@ -5,7 +5,8 @@
 
 from __future__ import annotations
 
-from .helpers import _SignalRecorder, _ensure_qt_app
+from .helpers import _ensure_qt_app, _SignalRecorder
+
 
 def _test_cli_cancel_exit_code_130() -> None:
     import os
@@ -386,8 +387,8 @@ def _test_batch_actions_recursive_output_guard() -> None:
 
     from ..core.settings_model import AppSettings
     from ..i18n.catalog import t
-    from ..ui.main.actions.batch import BatchActions
     from ..ui import fluent as _fluent_ui
+    from ..ui.main.actions.batch import BatchActions
 
     class FakeProcessor:
         is_running = False

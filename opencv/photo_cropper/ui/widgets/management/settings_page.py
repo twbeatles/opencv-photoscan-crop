@@ -9,6 +9,7 @@ from ....core.recipes import RecipeManager
 from ....i18n.catalog import t
 from .shared import _translated_job_kind
 
+
 class SettingsInfoPage(QWidget):
     maintenance_requested = Signal(str)
     workbench_requested = Signal()

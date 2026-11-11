@@ -14,7 +14,6 @@ from typing import Dict, Optional, Tuple
 
 from .settings_model import AlgorithmSettings, AppSettings, MultiPhotoSettings
 
-
 # id -> (display_key, description_key) — UI resolves via i18n or fallback labels
 SCENE_PRESET_META: Dict[str, Tuple[str, str]] = {
     "scanner_white": ("Scanner (white bed)", "Bright scanner background, single photo"),

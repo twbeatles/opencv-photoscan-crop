@@ -21,6 +21,7 @@ from ....core.recipes import RecipeManager
 from ....core.settings_model import AppSettings
 from ....i18n.catalog import t
 
+
 class RecipesPage(QWidget):
     recipe_applied = Signal(str)
 

@@ -10,22 +10,26 @@ modules — :mod:`.types` (values), :mod:`.model_store` (DNN downloads),
 (crop/rotation/visualization) — and the singleton in :mod:`.factory`.
 """
 
+import logging
+from typing import List, Optional, Tuple
+
 import cv2
 import numpy as np
-import logging
-from typing import Optional, Tuple, List
 
 from .detect_dnn import detect_faces_dnn
 from .detect_haar import detect_eyes, detect_faces_cascade
+from .factory import get_face_detector, reset_face_detector_for_tests
 from .geometry import (
     calculate_crop_region,
     calculate_rotation_angle,
+)
+from .geometry import (
     draw_detections as _draw_detections,
+)
+from .geometry import (
     rotate_to_align_eyes as _rotate_to_align_eyes,
 )
-from .factory import get_face_detector, reset_face_detector_for_tests
 from .model_store import (
-    _sha256_file as _hash_file,
     DNN_CONFIDENCE_THRESHOLD,
     DNN_MODEL_FILENAME,
     DNN_MODEL_SHA256,
@@ -38,6 +42,9 @@ from .model_store import (
     ensure_model_file,
     get_model_cache_dir,
     is_valid_model_file,
+)
+from .model_store import (
+    _sha256_file as _hash_file,
 )
 from .types import EyeRect, FaceDetectionResult, FaceRect
 

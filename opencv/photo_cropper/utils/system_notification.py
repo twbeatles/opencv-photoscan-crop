@@ -12,12 +12,12 @@ Provides Windows system notifications and sounds:
 
 from __future__ import annotations
 
-import os
 import logging
+import os
 import threading
-from typing import Any, Callable, Optional
-from enum import Enum
 from dataclasses import dataclass
+from enum import Enum
+from typing import Any, Callable, Optional
 
 from ..i18n.catalog import t
 

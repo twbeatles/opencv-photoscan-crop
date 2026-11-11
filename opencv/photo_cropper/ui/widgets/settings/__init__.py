@@ -1,8 +1,8 @@
 from .controls import (
-    NoScrollSpinBox,
-    NoScrollDoubleSpinBox,
     NoScrollComboBox,
+    NoScrollDoubleSpinBox,
     NoScrollSlider,
+    NoScrollSpinBox,
 )
 from .panel import SettingsPanel
 

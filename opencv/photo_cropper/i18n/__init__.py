@@ -10,10 +10,10 @@ from .catalog import (
     TranslationManager,
     detect_system_language,
     get_category_folder_defaults,
+    get_current_language,
     get_translator,
-    t,
     set_language,
-    get_current_language
+    t,
 )
 
 __all__ = [

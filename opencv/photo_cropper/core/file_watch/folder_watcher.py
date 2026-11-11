@@ -8,7 +8,7 @@ import logging
 import os
 from typing import Callable, Dict, List, Optional, Sequence, Set, Tuple
 
-from PySide6.QtCore import QObject, QFileSystemWatcher, QTimer, Signal
+from PySide6.QtCore import QFileSystemWatcher, QObject, QTimer, Signal
 
 from ...utils.file_helpers import is_path_within, normalize_path
 from .types import SUPPORTED_EXTENSIONS

@@ -17,7 +17,10 @@ import time
 from typing import Optional
 
 try:
-    from ..core.settings_model.validation import build_validation_summary, validate_settings
+    from ..core.settings_model.validation import (
+        build_validation_summary,
+        validate_settings,
+    )
     from ..utils.file_helpers import is_output_inside_input
 except ImportError:  # Support direct execution: python photo_cropper/cli.py
     sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))

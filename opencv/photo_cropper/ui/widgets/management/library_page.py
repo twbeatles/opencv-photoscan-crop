@@ -31,6 +31,7 @@ from .shared import (
     _translated_variant_kind,
 )
 
+
 class LibraryPage(QWidget):
     open_requested = Signal(str)
     import_requested = Signal(str, bool)

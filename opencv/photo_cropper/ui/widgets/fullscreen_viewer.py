@@ -6,19 +6,22 @@ Fullscreen Viewer for Photo Cropper v9.0.
 Provides fullscreen image preview with navigation.
 """
 
-import os
 import logging
-from typing import Optional, List
-
-from PySide6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
-    QFrame
-)
-from PySide6.QtCore import Qt, Signal, QTimer
-from PySide6.QtGui import QPixmap, QImage, QKeyEvent, QResizeEvent
+import os
+from typing import List, Optional
 
 import cv2
 import numpy as np
+from PySide6.QtCore import Qt, QTimer, Signal
+from PySide6.QtGui import QImage, QKeyEvent, QPixmap, QResizeEvent
+from PySide6.QtWidgets import (
+    QFrame,
+    QHBoxLayout,
+    QLabel,
+    QPushButton,
+    QVBoxLayout,
+    QWidget,
+)
 
 from ...i18n.catalog import t
 from ...utils.image_io import load_image_unicode

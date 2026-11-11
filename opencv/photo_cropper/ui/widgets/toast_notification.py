@@ -6,9 +6,9 @@ Toast Notification Widget for Photo Cropper.
 Provides non-intrusive, animated toast notifications for user feedback.
 """
 
-from PySide6.QtWidgets import QWidget, QLabel, QHBoxLayout, QGraphicsOpacityEffect
-from PySide6.QtCore import Qt, QTimer, QPropertyAnimation, QEasingCurve, QPoint, Signal
+from PySide6.QtCore import QEasingCurve, QPoint, QPropertyAnimation, Qt, QTimer, Signal
 from PySide6.QtGui import QFont
+from PySide6.QtWidgets import QGraphicsOpacityEffect, QHBoxLayout, QLabel, QWidget
 
 from ..fluent import notify as _fluent_notify
 

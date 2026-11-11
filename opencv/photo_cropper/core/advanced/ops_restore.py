@@ -8,6 +8,7 @@ from typing import Any, cast
 import cv2
 import numpy as np
 
+
 class RestorationOpsMixin:
     """Restoration operations for AdvancedImageProcessor."""
 

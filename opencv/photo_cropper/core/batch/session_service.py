@@ -6,9 +6,9 @@ from __future__ import annotations
 
 from typing import Any, Callable, List, Optional
 
+from ..settings_model import AppSettings
 from .processor import BatchProcessor
 from .types import BatchProgress
-from ..settings_model import AppSettings
 
 
 class BatchSessionService:

@@ -18,7 +18,6 @@ import json
 import re
 from typing import Any, Dict, Tuple
 
-
 _LEGACY_KEY_ALIASES = {
     "advanced_processing": "advanced",
 }

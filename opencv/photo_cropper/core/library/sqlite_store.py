@@ -6,8 +6,7 @@ import threading
 from contextlib import contextmanager
 from typing import Iterator
 
-from ..app_paths import get_library_db_path, ensure_library_dirs
-
+from ..app_paths import ensure_library_dirs, get_library_db_path
 
 SCHEMA_STATEMENTS = [
     """

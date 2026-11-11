@@ -3,10 +3,16 @@ from __future__ import annotations
 from collections.abc import Iterable
 from typing import Any
 
-from PySide6.QtWidgets import QAbstractButton, QComboBox, QGroupBox, QLabel, QLineEdit, QWidget
+from PySide6.QtWidgets import (
+    QAbstractButton,
+    QComboBox,
+    QGroupBox,
+    QLabel,
+    QLineEdit,
+    QWidget,
+)
 
 from ....i18n.catalog import t
-
 
 TEXT_BINDINGS = {
     "✨ 후처리 옵션": "settings.section.post",

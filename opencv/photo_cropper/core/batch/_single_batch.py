@@ -1,18 +1,18 @@
 from __future__ import annotations
 
-import os
 import logging
-from concurrent.futures import ThreadPoolExecutor, wait, FIRST_COMPLETED, CancelledError
+import os
+from concurrent.futures import FIRST_COMPLETED, CancelledError, ThreadPoolExecutor, wait
 from datetime import datetime
-from typing import Optional, List, Any, Tuple
+from typing import Any, List, Optional, Tuple
 
 from ...utils.file_helpers import (
     build_recursive_excluded_roots,
-    get_image_files,
     classify_failed_files,
+    get_image_files,
 )
-from ...utils.processing_log import get_processing_logger
 from ...utils.naming_rules import NamingRule, NamingRuleEngine
+from ...utils.processing_log import get_processing_logger
 from .types import BatchProgress, FileResult, ProcessStatus
 
 logger = logging.getLogger(__name__)

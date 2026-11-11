@@ -3,10 +3,8 @@
 from __future__ import annotations
 
 import pytest
-
 from photo_cropper.ui import design_tokens as tokens
-from photo_cropper.ui import fluent
-from photo_cropper.ui import theme_fluent
+from photo_cropper.ui import fluent, theme_fluent
 
 
 def test_spacing_scale_is_ordered() -> None:
@@ -136,7 +134,6 @@ def test_image_list_reload_keeps_current_selection(tmp_path) -> None:
 
     import cv2
     import numpy as np
-
     from photo_cropper.core.settings_model import AppSettings
     from photo_cropper.ui.main.actions import NavigationActions
 

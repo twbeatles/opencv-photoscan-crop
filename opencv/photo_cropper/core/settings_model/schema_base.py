@@ -1,10 +1,10 @@
 from .app_settings import (
     AlgorithmSettings,
-    ProcessingSettings,
-    OutputSettings,
-    FilterSettings,
-    UISettings,
     DebugSettings,
+    FilterSettings,
+    OutputSettings,
+    ProcessingSettings,
+    UISettings,
 )
 
 __all__ = [

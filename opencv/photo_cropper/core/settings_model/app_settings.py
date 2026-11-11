@@ -8,9 +8,9 @@ Provides dataclasses and managers for application settings persistence.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field, asdict, fields
-from typing import Dict, Any
+from dataclasses import asdict, dataclass, field, fields
 from enum import Enum
+from typing import Any, Dict
 
 from .migration import normalize_category_folder_map
 

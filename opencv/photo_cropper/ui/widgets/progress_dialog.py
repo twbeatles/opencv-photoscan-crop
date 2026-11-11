@@ -7,15 +7,24 @@ Provides batch processing progress display with cancel support.
 Enhanced UI/UX v7.2
 """
 
-from PySide6.QtWidgets import (
-    QDialog, QVBoxLayout, QHBoxLayout, QLabel, 
-    QProgressBar, QPushButton, QTextEdit, QGroupBox,
-    QFrame, QSizePolicy, QWidget
-)
-from PySide6.QtCore import Qt, Signal, QTimer
-from PySide6.QtGui import QFont, QTextCursor
 import os
 import time
+
+from PySide6.QtCore import Qt, QTimer, Signal
+from PySide6.QtGui import QFont, QTextCursor
+from PySide6.QtWidgets import (
+    QDialog,
+    QFrame,
+    QGroupBox,
+    QHBoxLayout,
+    QLabel,
+    QProgressBar,
+    QPushButton,
+    QSizePolicy,
+    QTextEdit,
+    QVBoxLayout,
+    QWidget,
+)
 
 from ...core.batch import BatchProgress
 from ...i18n.catalog import t

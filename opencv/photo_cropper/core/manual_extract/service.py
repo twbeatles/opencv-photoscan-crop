@@ -15,12 +15,11 @@ from typing import Any, Callable, Optional, Tuple
 
 import numpy as np
 
+from ...utils.file_helpers import relative_display_path
 from ..batch import BatchProcessor, FileResult, ProcessStatus
 from ..image import ImageProcessor
 from ..settings_model import AppSettings
-from ...utils.file_helpers import relative_display_path
 from .contour_utils import axis_aligned_crop, crop_manual_contour
-
 
 ContourDenormalizeFn = Callable[[Any, Any], Optional[np.ndarray]]
 

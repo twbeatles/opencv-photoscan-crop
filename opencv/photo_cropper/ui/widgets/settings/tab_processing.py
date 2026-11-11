@@ -1,11 +1,21 @@
 from __future__ import annotations
 
-from PySide6.QtWidgets import QCheckBox, QFormLayout, QHBoxLayout, QLabel, QLineEdit, QPushButton, QVBoxLayout, QWidget
+from PySide6.QtWidgets import (
+    QCheckBox,
+    QFormLayout,
+    QHBoxLayout,
+    QLabel,
+    QLineEdit,
+    QPushButton,
+    QVBoxLayout,
+    QWidget,
+)
 
 from ....i18n.catalog import t
 from ..collapsible_section import CollapsibleSection
 from ..toggle_switch import ModernToggleSwitch
 from .controls import NoScrollComboBox, NoScrollDoubleSpinBox, NoScrollSpinBox
+
 
 def create_processing_tab(self):
     """Create consolidated processing tab (watermark + resize + advanced)."""

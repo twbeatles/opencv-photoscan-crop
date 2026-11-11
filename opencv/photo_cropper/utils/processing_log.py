@@ -6,14 +6,14 @@ Processing Log Module for Photo Cropper.
 Provides comprehensive logging of image processing operations.
 """
 
-import os
-import json
 import csv
+import json
 import logging
+import os
+from dataclasses import asdict, dataclass, field
 from datetime import datetime
-from dataclasses import dataclass, field, asdict
-from typing import List, Dict, Any, Optional
 from enum import Enum
+from typing import Any, Dict, List, Optional
 
 logger = logging.getLogger(__name__)
 

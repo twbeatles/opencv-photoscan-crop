@@ -1,7 +1,8 @@
 """Standalone rotation control widget."""
 
 from PySide6.QtCore import Qt, Signal
-from PySide6.QtWidgets import QHBoxLayout, QLabel, QDoubleSpinBox, QSlider, QWidget
+from PySide6.QtWidgets import QDoubleSpinBox, QHBoxLayout, QLabel, QSlider, QWidget
+
 
 class RotationWidget(QWidget):
     """Simple rotation control widget."""

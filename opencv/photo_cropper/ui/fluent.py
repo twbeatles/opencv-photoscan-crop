@@ -26,8 +26,13 @@ def _load_fluent_widgets() -> Optional[tuple[Any, ...]]:
     """Import qfluentwidgets, or return None when unusable in this app."""
     try:
         from qfluentwidgets import FluentIcon as FIF
-        from qfluentwidgets import InfoBar, InfoBarPosition, MessageBox
-        from qfluentwidgets import PrimaryPushButton, PushButton
+        from qfluentwidgets import (
+            InfoBar,
+            InfoBarPosition,
+            MessageBox,
+            PrimaryPushButton,
+            PushButton,
+        )
     except Exception:
         logger.debug("qfluentwidgets unavailable", exc_info=True)
         return None

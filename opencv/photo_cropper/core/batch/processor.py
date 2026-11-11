@@ -13,31 +13,31 @@ Handles batch image processing with:
 import logging
 import threading
 from concurrent.futures import ThreadPoolExecutor
-from typing import Optional, List, Dict, Any, Callable
+from typing import Any, Callable, Dict, List, Optional
 
-from ..image import ImageProcessor
-from ..settings_model import AppSettings
+from ...utils.naming_rules import NamingRuleEngine
+from ...utils.processing_log import ProcessingLogger
 from ..face import FaceDetector
+from ..image import ImageProcessor
 from ..image_classifier import ImageClassifier
-from ..smart_enhancer import SmartEnhancer
-from ..watermark_processor import (
-    WatermarkProcessor,
+from ..multi_photo_detector import MultiPhotoDetector
+from ..processed_index import (
+    ProcessedIndexStore,
 )
 from ..resize_processor import (
     ResizeProcessor,
 )
-from ..multi_photo_detector import MultiPhotoDetector
-from ...utils.processing_log import ProcessingLogger
-from ...utils.naming_rules import NamingRuleEngine
-from ..processed_index import (
-    ProcessedIndexStore,
+from ..settings_model import AppSettings
+from ..smart_enhancer import SmartEnhancer
+from ..watermark_processor import (
+    WatermarkProcessor,
 )
-from .types import BatchProgress, FileResult
 from .context import BatchProcessorContextMixin
 from .io_paths import BatchProcessorIoPathsMixin
 from .pipeline import BatchProcessorPipelineMixin
 from .runner import BatchProcessorRunnerMixin
 from .single import BatchProcessorExecutionMixin
+from .types import BatchProgress, FileResult
 
 logger = logging.getLogger(__name__)
 

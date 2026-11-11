@@ -4,7 +4,15 @@ from typing import List, Optional, Tuple
 
 import numpy as np
 from PySide6.QtCore import QLineF, QPointF, QRectF, Qt, Signal
-from PySide6.QtGui import QBrush, QColor, QCursor, QMouseEvent, QPainter, QPen, QWheelEvent
+from PySide6.QtGui import (
+    QBrush,
+    QColor,
+    QCursor,
+    QMouseEvent,
+    QPainter,
+    QPen,
+    QWheelEvent,
+)
 from PySide6.QtWidgets import (
     QGraphicsEllipseItem,
     QGraphicsLineItem,
@@ -16,6 +24,7 @@ from PySide6.QtWidgets import (
 
 from .crop_editor_conversions import numpy_to_qpixmap
 from .crop_editor_modes import EditMode, HandlePosition
+
 
 class CropEditorView(QGraphicsView):
     """Graphics view for crop editing with handles."""

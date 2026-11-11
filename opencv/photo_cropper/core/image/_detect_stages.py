@@ -1,11 +1,11 @@
 from __future__ import annotations
 
-import cv2
-import numpy as np
 import logging
 import math
-from typing import Optional, Tuple, List, Dict, Any
+from typing import Any, Dict, List, Optional, Tuple
 
+import cv2
+import numpy as np
 
 logger = logging.getLogger(__name__)
 

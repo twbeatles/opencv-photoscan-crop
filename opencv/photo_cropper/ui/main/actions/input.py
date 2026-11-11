@@ -12,7 +12,11 @@ from PySide6.QtGui import QDragEnterEvent, QDropEvent, QKeyEvent
 from PySide6.QtWidgets import QFileDialog
 
 from ....i18n.catalog import t
-from ....utils.file_helpers import SUPPORTED_IMAGE_FORMATS, get_image_files, open_file_explorer
+from ....utils.file_helpers import (
+    SUPPORTED_IMAGE_FORMATS,
+    get_image_files,
+    open_file_explorer,
+)
 from ...design_tokens import status_badge_qss
 from ...widgets.toast_notification import ToastManager
 from ..models import WindowRefs, WindowServices, WindowState

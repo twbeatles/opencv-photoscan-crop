@@ -2,15 +2,13 @@ from __future__ import annotations
 
 from typing import Optional
 
-from .sqlite_store import LibrarySqliteStore
-
-
 from ._repository_assets import LibraryRepositoryAssetMixin
-from ._repository_jobs import LibraryRepositoryJobMixin
-from ._repository_queries import LibraryRepositoryQueryMixin
-from ._repository_metadata import LibraryRepositoryMetadataMixin
 from ._repository_duplicates import LibraryRepositoryDuplicateMixin
+from ._repository_jobs import LibraryRepositoryJobMixin
+from ._repository_metadata import LibraryRepositoryMetadataMixin
+from ._repository_queries import LibraryRepositoryQueryMixin
 from ._repository_recipes import LibraryRepositoryRecipeMixin
+from .sqlite_store import LibrarySqliteStore
 
 
 class LibraryRepository(

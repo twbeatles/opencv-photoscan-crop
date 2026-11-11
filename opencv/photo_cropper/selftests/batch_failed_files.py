@@ -5,7 +5,8 @@
 
 from __future__ import annotations
 
-from .helpers import _SignalRecorder, _ensure_qt_app
+from .helpers import _ensure_qt_app, _SignalRecorder
+
 
 def _test_boundary_failed_file_collection_helper() -> None:
     import os
@@ -206,8 +207,8 @@ def _test_retry_failed_files_normalizes_empty_output_path() -> None:
     from PySide6.QtWidgets import QLineEdit, QMainWindow, QMessageBox
 
     from ..core.settings_model import AppSettings
-    from ..ui.main.actions.batch import BatchActions
     from ..ui import fluent as _fluent_ui
+    from ..ui.main.actions.batch import BatchActions
 
     class FakeProcessor:
         def __init__(self) -> None:
@@ -323,8 +324,8 @@ def _test_skip_processed_with_classification_subfolder() -> None:
     import numpy as np
 
     from ..core.batch import BatchProcessor, ProcessStatus
-    from ..core.image_classifier import ClassificationResult, ImageCategory
     from ..core.image import CropResult, DetectionStage
+    from ..core.image_classifier import ClassificationResult, ImageCategory
     from ..core.settings_model import AppSettings
 
     settings = AppSettings()

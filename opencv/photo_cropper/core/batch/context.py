@@ -1,22 +1,22 @@
 from __future__ import annotations
 
-import os
 import logging
+import os
 import threading
-from typing import Optional, List, Dict, Any, Callable
+from typing import Any, Callable, Dict, List, Optional
 
-from ..image import ImageProcessor
-from ..settings_model import AppSettings
 from ..face import FaceDetector
+from ..image import ImageProcessor
 from ..image_classifier import ImageClassifier, get_classifier
+from ..multi_photo_detector import MultiPhotoDetector
+from ..resize_processor import (
+    ResizeProcessor,
+)
+from ..settings_model import AppSettings
 from ..smart_enhancer import SmartEnhancer
 from ..watermark_processor import (
     WatermarkProcessor,
 )
-from ..resize_processor import (
-    ResizeProcessor,
-)
-from ..multi_photo_detector import MultiPhotoDetector
 from .types import BatchProgress, FileResult
 
 logger = logging.getLogger(__name__)

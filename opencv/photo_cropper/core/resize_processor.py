@@ -6,12 +6,13 @@ Resize Processor for Photo Cropper v9.0.
 Provides image resizing and aspect ratio adjustment.
 """
 
-import cv2
-import numpy as np
 import logging
-from typing import Tuple, Optional
 from dataclasses import dataclass
 from enum import Enum
+from typing import Optional, Tuple
+
+import cv2
+import numpy as np
 
 logger = logging.getLogger(__name__)
 

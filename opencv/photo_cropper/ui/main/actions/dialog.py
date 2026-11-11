@@ -20,10 +20,10 @@ from PySide6.QtWidgets import (
 
 from ....core.manual_extract import scale_contour_to_preview
 from ....i18n.catalog import t
-from ..models import WindowRefs, WindowServices, WindowState
-from ..services import build_editor_position_label, build_editor_title
 from ...widgets.compare_widget import BeforeAfterCompareWidget
 from ...widgets.crop_editor_widget import CropEditorWidget
+from ..models import WindowRefs, WindowServices, WindowState
+from ..services import build_editor_position_label, build_editor_title
 
 
 class DialogActions:

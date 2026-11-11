@@ -25,6 +25,7 @@ from .shared import (
     _translated_job_status,
 )
 
+
 class JobsPage(QWidget):
     rerun_requested = Signal(int, bool)
     open_review_requested = Signal(int)

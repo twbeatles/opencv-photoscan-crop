@@ -2,6 +2,7 @@
 
 from enum import Enum
 
+
 class CompareMode(Enum):
     """Comparison mode enumeration."""
     SLIDER = "slider"      # Horizontal slider divide

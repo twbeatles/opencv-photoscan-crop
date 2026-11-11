@@ -47,12 +47,12 @@ def _test_manual_extract_session_runner_empty() -> None:
 def _test_contour_utils_roundtrip() -> None:
     import numpy as np
 
+    from ..core.image import CropResult
     from ..core.manual_extract import (
-        normalize_contour_points,
         denormalize_contour_points,
+        normalize_contour_points,
         scale_contour_to_preview,
     )
-    from ..core.image import CropResult
 
     pts = np.array([[10, 20], [90, 20], [90, 80], [10, 80]], dtype=np.float32)
     normalized = normalize_contour_points(pts, (100, 100, 3))
@@ -156,7 +156,7 @@ def _test_find_best_contour_uses_score_edge_map() -> None:
 def _test_accurate_mode_global_rerank_prefers_best_stage() -> None:
     import numpy as np
 
-    from ..core.image import ImageProcessor, DetectionStage
+    from ..core.image import DetectionStage, ImageProcessor
     from ..core.settings_model import AlgorithmSettings, ProcessingSettings
 
     algo = AlgorithmSettings(detection_mode="accurate", use_clahe=False)

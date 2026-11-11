@@ -10,6 +10,7 @@ from PySide6.QtWidgets import QFrame, QScrollArea, QTabWidget, QVBoxLayout, QWid
 from ...design_tokens import SPACE_XS
 from ..toggle_switch import ModernToggleSwitch
 
+
 def setup_ui(panel):
     self = panel
     """Setup the UI components with 5 consolidated tabs."""

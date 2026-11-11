@@ -3,7 +3,7 @@
 Reusable PySide6 widgets.
 """
 
-from .toast_notification import ToastNotification, ToastManager
+from .toast_notification import ToastManager, ToastNotification
 
 try:
     from .settings import SettingsPanel

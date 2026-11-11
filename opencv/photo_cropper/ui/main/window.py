@@ -13,11 +13,6 @@ from PySide6.QtCore import QTimer, Signal
 from PySide6.QtGui import QCloseEvent, QDragEnterEvent, QDropEvent, QKeyEvent
 from PySide6.QtWidgets import QApplication, QMainWindow
 
-from ..widgets.toast_notification import ToastManager
-from .composition import build_main_window_shell, wire_window_actions
-from .management_runtime import ManagementRuntimeMixin
-from .models import WindowRefs, WindowServices, WindowSignals, WindowState
-from .translation import TranslationRuntimeMixin
 from ...core.batch import BatchProcessor, BatchSessionService
 from ...core.history_manager import HistoryManager
 from ...core.image import ImageProcessor
@@ -31,11 +26,16 @@ from ...core.library import (
     get_library_repository,
 )
 from ...core.recipes import get_recipe_manager
-from ...i18n.catalog import get_translator, set_language, t
 from ...core.scheduler import Scheduler
 from ...core.settings_model import SettingsManager
 from ...core.watch_mode import WatchModeCoordinator
+from ...i18n.catalog import get_translator, set_language, t
 from ..widgets.fullscreen_viewer import FullscreenViewerManager
+from ..widgets.toast_notification import ToastManager
+from .composition import build_main_window_shell, wire_window_actions
+from .management_runtime import ManagementRuntimeMixin
+from .models import WindowRefs, WindowServices, WindowSignals, WindowState
+from .translation import TranslationRuntimeMixin
 
 logger = logging.getLogger(__name__)
 

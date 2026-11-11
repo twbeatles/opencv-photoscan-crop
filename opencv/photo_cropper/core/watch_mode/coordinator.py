@@ -10,10 +10,10 @@ from typing import Callable, Optional
 
 from PySide6.QtCore import QObject, Signal
 
+from ...utils.file_helpers import build_recursive_excluded_roots, is_output_inside_input
 from ..batch import BatchProcessor
 from ..folder_watcher import AutoProcessor
 from ..settings_model import AppSettings, WatchModeSettings
-from ...utils.file_helpers import build_recursive_excluded_roots, is_output_inside_input
 from .types import WatchStartResult
 
 logger = logging.getLogger(__name__)

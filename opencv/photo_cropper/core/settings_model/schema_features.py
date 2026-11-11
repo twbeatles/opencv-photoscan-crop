@@ -1,15 +1,15 @@
 from .app_settings import (
     AdvancedProcessingSettings,
-    FileManagementSettings,
-    PerformanceSettings,
-    WatermarkSettings,
-    ResizeSettings,
-    WatchModeSettings,
-    MultiPhotoSettings,
     ClassificationSettings,
     FaceDetectionSettings,
-    SmartEnhancementSettings,
+    FileManagementSettings,
+    MultiPhotoSettings,
     NotificationSettings,
+    PerformanceSettings,
+    ResizeSettings,
+    SmartEnhancementSettings,
+    WatchModeSettings,
+    WatermarkSettings,
 )
 
 __all__ = [

@@ -5,9 +5,9 @@
 from __future__ import annotations
 
 from .file_watch import (
+    SUPPORTED_EXTENSIONS,
     AutoProcessor,
     FolderWatcher,
-    SUPPORTED_EXTENSIONS,
     WatchProcessResult,
 )
 

@@ -4,7 +4,6 @@
 Modern Toggle Switch Widget.
 """
 
-from PySide6.QtWidgets import QCheckBox
 from PySide6.QtCore import (
     Property,
     QEasingCurve,
@@ -15,6 +14,7 @@ from PySide6.QtCore import (
     Signal,
 )
 from PySide6.QtGui import QBrush, QColor, QPainter
+from PySide6.QtWidgets import QCheckBox
 
 from ..fluent import FLUENT_AVAILABLE as _FLUENT_SWITCH_AVAILABLE
 

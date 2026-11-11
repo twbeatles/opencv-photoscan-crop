@@ -4,8 +4,8 @@ import json
 import os
 from typing import Any, Optional
 
-from ._repository_shared import now_iso, safe_json_loads
 from ._repository_protocol import LibraryRepositoryProtocol
+from ._repository_shared import now_iso, safe_json_loads
 
 
 class LibraryRepositoryJobMixin:

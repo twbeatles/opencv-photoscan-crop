@@ -23,6 +23,7 @@ from PySide6.QtWidgets import (
 from .crop_editor_modes import EditMode
 from .crop_editor_view import CropEditorView
 
+
 class CropEditorWidget(QWidget):
     """Complete crop editor widget with controls."""
     

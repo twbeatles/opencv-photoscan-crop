@@ -141,6 +141,7 @@ class JobAIMetadataMixin:
     def _load_image_for_ai(self, image_path: str):
         try:
             import cv2
+
             from ...utils.image_io import load_image_unicode
 
             return load_image_unicode(image_path, cv2.IMREAD_COLOR)

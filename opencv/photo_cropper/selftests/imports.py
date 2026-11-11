@@ -25,11 +25,11 @@ def _test_preview_worker_import_smoke() -> None:
 def _test_ui_action_modules_import_smoke() -> None:
     try:
         from ..ui.main.batch_actions import BatchActions
-        from ..ui.main.preview_actions import PreviewActions
-        from ..ui.main.feature_actions import FeatureActions
-        from ..ui.main.navigation_actions import NavigationActions
         from ..ui.main.dialog_actions import DialogActions
+        from ..ui.main.feature_actions import FeatureActions
         from ..ui.main.io_actions import InputActions
+        from ..ui.main.navigation_actions import NavigationActions
+        from ..ui.main.preview_actions import PreviewActions
         from ..ui.main.settings_actions import SettingsActions
         from ..ui.main.watch_actions import WatchActions
     except Exception as e:
@@ -65,7 +65,12 @@ def _test_ui_canonical_package_import_smoke() -> None:
             build_statusbar,
             build_workbench_page,
         )
-        from ..ui.main.models import WindowRefs, WindowServices, WindowSignals, WindowState
+        from ..ui.main.models import (
+            WindowRefs,
+            WindowServices,
+            WindowSignals,
+            WindowState,
+        )
     except Exception as e:
         raise AssertionError(f"UI canonical package import failed: {e}")
 
@@ -99,7 +104,7 @@ def _test_main_window_import_smoke() -> None:
 
 def _test_manual_extract_service_import_smoke() -> None:
     try:
-        from ..core.manual_extract import ManualExtractProcessor, ManualExtractOutcome
+        from ..core.manual_extract import ManualExtractOutcome, ManualExtractProcessor
     except Exception as e:
         raise AssertionError(f"Manual extract service import failed: {e}")
 

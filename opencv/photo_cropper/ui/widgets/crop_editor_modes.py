@@ -2,6 +2,7 @@
 
 from enum import Enum
 
+
 class EditMode(Enum):
     """Editing mode enumeration."""
     NONE = "none"

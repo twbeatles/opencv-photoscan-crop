@@ -4,9 +4,13 @@ import json
 import os
 from typing import Any, Optional
 
-from ...utils.file_helpers import SUPPORTED_IMAGE_FORMATS, compute_file_hash, get_image_dimensions
-from ._repository_shared import compute_perceptual_hash, now_iso
+from ...utils.file_helpers import (
+    SUPPORTED_IMAGE_FORMATS,
+    compute_file_hash,
+    get_image_dimensions,
+)
 from ._repository_protocol import LibraryRepositoryProtocol
+from ._repository_shared import compute_perceptual_hash, now_iso
 
 
 class LibraryRepositoryAssetSourceMixin:

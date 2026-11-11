@@ -18,7 +18,12 @@ from PySide6.QtWidgets import (
 
 from ...i18n.catalog import t
 from .compare_modes import CompareMode
-from .compare_views import CompareGraphicsView, OverlayCompareWidget, SliderCompareWidget
+from .compare_views import (
+    CompareGraphicsView,
+    OverlayCompareWidget,
+    SliderCompareWidget,
+)
+
 
 class BeforeAfterCompareWidget(QWidget):
     """Complete before/after comparison widget with mode selection."""

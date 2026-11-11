@@ -5,7 +5,8 @@
 
 from __future__ import annotations
 
-from .helpers import _SignalRecorder, _ensure_qt_app
+from .helpers import _ensure_qt_app, _SignalRecorder
+
 
 def _test_watch_actions_block_while_batch_or_manual_running() -> None:
     from types import SimpleNamespace
@@ -162,7 +163,12 @@ def _test_batch_actions_block_when_watch_running() -> None:
 
 
 def _test_scheduler_once_preserves_task_until_started() -> None:
-    from ..core.scheduler import Scheduler, ScheduleRunStatus, ScheduleTask, ScheduleType
+    from ..core.scheduler import (
+        Scheduler,
+        ScheduleRunStatus,
+        ScheduleTask,
+        ScheduleType,
+    )
 
     task = ScheduleTask(
         task_id="once",
@@ -185,7 +191,12 @@ def _test_scheduler_once_preserves_task_until_started() -> None:
 def _test_scheduler_once_skip_keeps_next_run_due() -> None:
     from datetime import datetime, timedelta
 
-    from ..core.scheduler import Scheduler, ScheduleRunStatus, ScheduleTask, ScheduleType
+    from ..core.scheduler import (
+        Scheduler,
+        ScheduleRunStatus,
+        ScheduleTask,
+        ScheduleType,
+    )
 
     task = ScheduleTask(
         task_id="once",

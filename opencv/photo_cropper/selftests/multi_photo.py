@@ -39,7 +39,7 @@ def _test_multi_photo_merge_distance_and_separate_folders() -> None:
     import numpy as np
 
     from ..core.batch import BatchProcessor
-    from ..core.multi_photo_detector import MultiPhotoDetector, DetectedPhoto
+    from ..core.multi_photo_detector import DetectedPhoto, MultiPhotoDetector
     from ..core.settings_model import AppSettings
 
     def make_box(x: int, y: int, w: int, h: int) -> np.ndarray:

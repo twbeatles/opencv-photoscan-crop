@@ -6,11 +6,11 @@ Histogram Widget for Photo Cropper.
 Displays RGB histogram of images.
 """
 
-import numpy as np
 import cv2
-from PySide6.QtWidgets import QWidget
+import numpy as np
 from PySide6.QtCore import Qt
-from PySide6.QtGui import QPainter, QPalette, QPen, QColor, QPainterPath
+from PySide6.QtGui import QColor, QPainter, QPainterPath, QPalette, QPen
+from PySide6.QtWidgets import QWidget
 
 from ...i18n.catalog import t
 

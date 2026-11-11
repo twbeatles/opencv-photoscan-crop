@@ -3,7 +3,6 @@ from __future__ import annotations
 import os
 import platform
 
-
 APP_NAME = "PhotoCropper"
 LEGACY_HOME_DIR = ".photo_cropper"
 

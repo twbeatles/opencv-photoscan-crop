@@ -1,10 +1,19 @@
 from __future__ import annotations
 
-from PySide6.QtWidgets import QCheckBox, QFormLayout, QHBoxLayout, QLabel, QLineEdit, QVBoxLayout, QWidget
+from PySide6.QtWidgets import (
+    QCheckBox,
+    QFormLayout,
+    QHBoxLayout,
+    QLabel,
+    QLineEdit,
+    QVBoxLayout,
+    QWidget,
+)
 
 from ..collapsible_section import CollapsibleSection
 from ..toggle_switch import ModernToggleSwitch
 from .controls import NoScrollComboBox, NoScrollDoubleSpinBox, NoScrollSpinBox
+
 
 def create_management_tab(self):
     """Create consolidated management tab (automation + file management + performance)."""

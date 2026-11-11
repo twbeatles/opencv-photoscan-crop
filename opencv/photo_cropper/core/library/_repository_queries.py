@@ -3,8 +3,8 @@ from __future__ import annotations
 import os
 from typing import Any, Optional
 
-from .types import AssetQuery, AssetTimelineEvent
 from ._repository_protocol import LibraryRepositoryProtocol
+from .types import AssetQuery, AssetTimelineEvent
 
 
 class LibraryRepositoryQueryMixin:

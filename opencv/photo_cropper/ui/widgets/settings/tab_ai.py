@@ -1,11 +1,21 @@
 from __future__ import annotations
 
-from PySide6.QtWidgets import QCheckBox, QFormLayout, QGroupBox, QHBoxLayout, QLabel, QLineEdit, QVBoxLayout, QWidget
+from PySide6.QtWidgets import (
+    QCheckBox,
+    QFormLayout,
+    QGroupBox,
+    QHBoxLayout,
+    QLabel,
+    QLineEdit,
+    QVBoxLayout,
+    QWidget,
+)
 
 from ....core.settings_model import CLASSIFICATION_CATEGORY_KEYS
 from ....i18n.catalog import get_category_folder_defaults, t
 from ..toggle_switch import ModernToggleSwitch
 from .controls import NoScrollComboBox, NoScrollSpinBox
+
 
 def create_ai_settings_tab(self):
     """Create v9.0 AI settings tab."""

@@ -1,11 +1,11 @@
 from __future__ import annotations
 
-import os
 import logging
-import numpy as np
-from typing import Optional, List, Any, Tuple
+import os
+from typing import Any, List, Optional, Tuple
 
-from ..image_classifier import ImageCategory
+import numpy as np
+
 from ...utils.file_helpers import (
     SUPPORTED_IMAGE_FORMATS,
     get_unique_filename,
@@ -14,9 +14,10 @@ from ...utils.file_helpers import (
 )
 from ...utils.naming_rules import NamingRule, NamingRuleEngine
 from ...utils.path_validation import resolve_category_folder_map
+from ..image_classifier import ImageCategory
 from ..processed_index import (
-    ProcessedIndexStore,
     RECORD_STATUS_SUCCESS,
+    ProcessedIndexStore,
     build_pipeline_signature,
 )
 

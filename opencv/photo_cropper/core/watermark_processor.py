@@ -6,13 +6,14 @@ Watermark Processor for Photo Cropper v9.0.
 Adds text and image watermarks to processed photos.
 """
 
-import cv2
-import numpy as np
 import logging
-from typing import Any, Tuple, Optional, cast
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
+from typing import Any, Optional, Tuple, cast
+
+import cv2
+import numpy as np
 
 from ..utils.image_io import load_image_unicode
 

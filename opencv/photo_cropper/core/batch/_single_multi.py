@@ -1,11 +1,11 @@
 from __future__ import annotations
 
-import os
 import logging
+import os
 import time
-from typing import Optional, List, Any
+from typing import Any, List, Optional
 
-from ..image import ImageProcessor, CropResult
+from ..image import CropResult, ImageProcessor
 from .types import FileResult, ProcessStatus
 
 logger = logging.getLogger(__name__)

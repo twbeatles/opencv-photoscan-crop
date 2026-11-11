@@ -10,23 +10,34 @@ Provides multi-image comparison in a separate window:
 - Various layout options
 """
 
-import numpy as np
-import cv2
-from typing import Optional, List, Tuple
 from enum import Enum
+from typing import List, Optional, Tuple
 
+import cv2
+import numpy as np
+from PySide6.QtCore import QPointF, QRectF, Qt, Signal
+from PySide6.QtGui import QAction, QImage, QMouseEvent, QPixmap, QWheelEvent
 from PySide6.QtWidgets import (
-    QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QGridLayout,
-    QLabel, QPushButton, QComboBox, QCheckBox, QToolBar,
-    QFrame, QFileDialog,
-    QGraphicsView, QGraphicsScene, QGraphicsPixmapItem
+    QCheckBox,
+    QComboBox,
+    QFileDialog,
+    QFrame,
+    QGraphicsPixmapItem,
+    QGraphicsScene,
+    QGraphicsView,
+    QGridLayout,
+    QHBoxLayout,
+    QLabel,
+    QMainWindow,
+    QPushButton,
+    QToolBar,
+    QVBoxLayout,
+    QWidget,
 )
-from PySide6.QtCore import Qt, Signal, QRectF, QPointF
-from PySide6.QtGui import QPixmap, QImage, QWheelEvent, QMouseEvent, QAction
 
+from ...core.smart_enhancer import EnhancementPreset, get_smart_enhancer
 from ...i18n.catalog import t
 from ...utils.image_io import load_image_unicode
-from ...core.smart_enhancer import EnhancementPreset, get_smart_enhancer
 
 
 def numpy_to_qpixmap(image: Optional[np.ndarray]) -> QPixmap:

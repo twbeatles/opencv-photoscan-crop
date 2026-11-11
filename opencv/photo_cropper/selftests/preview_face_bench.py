@@ -129,7 +129,7 @@ def _test_face_dnn_fallback_when_download_fails() -> None:
 def _test_face_rotation_uses_primary_face() -> None:
     import numpy as np
 
-    from ..core.face.detector import FaceDetector, FaceRect, EyeRect
+    from ..core.face.detector import EyeRect, FaceDetector, FaceRect
 
     detector = FaceDetector(use_dnn=False)
     detector._detect_faces_cascade = lambda _img: [

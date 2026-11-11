@@ -10,7 +10,7 @@ from .batch_profile_manager import (  # noqa: F401 # public re-export hub
 )
 
 try:
-    from .image_classifier import ImageClassifier, ImageCategory, get_classifier
+    from .image_classifier import ImageCategory, ImageClassifier, get_classifier
 except Exception:  # pragma: no cover - optional runtime dependency (cv2)
     ImageClassifier = None  # type: ignore[assignment]
     ImageCategory = None  # type: ignore[assignment]
@@ -35,11 +35,11 @@ try:
         ManualExtractOutcome,
         ManualExtractProcessor,
         ManualExtractSessionRunner,
-        scale_contour_to_preview,
-        normalize_contour_points,
+        collect_boundary_failed_files,
         denormalize_contour_points,
         is_boundary_detection_failure,
-        collect_boundary_failed_files,
+        normalize_contour_points,
+        scale_contour_to_preview,
     )
 except Exception:  # pragma: no cover - optional runtime dependency (cv2)
     ManualExtractOutcome = None  # type: ignore[assignment]

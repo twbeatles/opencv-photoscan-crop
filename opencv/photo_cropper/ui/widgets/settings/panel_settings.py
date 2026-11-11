@@ -5,26 +5,27 @@
 from __future__ import annotations
 
 from ....core.settings_model import (
-    AppSettings,
-    AlgorithmSettings,
     CLASSIFICATION_CATEGORY_KEYS,
-    DebugSettings,
-    ProcessingSettings,
-    OutputSettings,
-    FilterSettings,
-    UISettings,
     AdvancedProcessingSettings,
-    FileManagementSettings,
-    PerformanceSettings,
-    WatermarkSettings,
-    ResizeSettings,
-    WatchModeSettings,
-    MultiPhotoSettings,
+    AlgorithmSettings,
+    AppSettings,
     ClassificationSettings,
+    DebugSettings,
     FaceDetectionSettings,
-    SmartEnhancementSettings,
+    FileManagementSettings,
+    FilterSettings,
+    MultiPhotoSettings,
     NotificationSettings,
+    OutputSettings,
+    PerformanceSettings,
+    ProcessingSettings,
+    ResizeSettings,
+    SmartEnhancementSettings,
+    UISettings,
+    WatchModeSettings,
+    WatermarkSettings,
 )
+
 
 def build_settings(panel):
     self = panel

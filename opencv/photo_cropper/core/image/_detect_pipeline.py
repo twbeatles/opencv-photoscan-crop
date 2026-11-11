@@ -1,13 +1,14 @@
 from __future__ import annotations
 
+import json
+import logging
 import os
+import time
+import traceback
+from typing import Any, Dict, List, Optional, Tuple
+
 import cv2
 import numpy as np
-import logging
-import traceback
-import json
-import time
-from typing import Optional, Tuple, List, Dict, Any
 
 from .types import CropResult, DetectionStage, FailureReason
 

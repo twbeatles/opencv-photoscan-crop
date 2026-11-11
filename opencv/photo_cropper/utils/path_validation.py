@@ -9,8 +9,8 @@ from dataclasses import dataclass
 from typing import Mapping, Optional
 
 from ..core.settings_model.app_settings import (
-    AppSettings,
     CLASSIFICATION_CATEGORY_KEYS,
+    AppSettings,
 )
 
 INVALID_SEGMENT_CHARS_RE = re.compile(r'[<>:"/\\|?*\x00-\x1f]')

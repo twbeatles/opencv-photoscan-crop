@@ -9,6 +9,7 @@ debug I/O, post-process, and save mixins remain on the processor facade.
 
 from __future__ import annotations
 
+import logging
 from typing import Any, Optional
 
 import cv2
@@ -28,8 +29,6 @@ from .geometry import ImageGeometryMixin
 from .postprocess import ImagePostprocessMixin
 from .save_io import ImageSaveMixin
 from .types import CropResult, PreviewProcessResult
-
-import logging
 
 logger = logging.getLogger(__name__)
 

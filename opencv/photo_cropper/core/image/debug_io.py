@@ -1,11 +1,11 @@
 from __future__ import annotations
 
+import logging
 import os
+from typing import Any, List, Optional
+
 import cv2
 import numpy as np
-import logging
-from typing import Optional, List, Any
-
 
 logger = logging.getLogger(__name__)
 

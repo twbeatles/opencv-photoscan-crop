@@ -11,21 +11,15 @@ from typing import Any, Optional
 from PySide6.QtCore import QTimer
 from PySide6.QtGui import QAction
 from PySide6.QtWidgets import (
-    QLineEdit,
     QLabel,
-    QPushButton,
+    QLineEdit,
+    QMainWindow,
     QMenu,
     QProgressBar,
+    QPushButton,
     QStatusBar,
-    QMainWindow,
 )
 
-from ..widgets.fullscreen_viewer import FullscreenViewerManager
-from ..widgets.histogram_widget import HistogramWidget
-from ..widgets.preview_widget import ImagePreviewWidget
-from ..widgets.progress_dialog import ProgressDialog
-from ..widgets.preset_manager import PresetComboBox
-from ..widgets.settings import SettingsPanel
 from ...core.batch import BatchSessionService
 from ...core.history_manager import HistoryManager
 from ...core.image import ImageProcessor
@@ -42,6 +36,12 @@ from ...core.recipes import RecipeManager
 from ...core.scheduler import Scheduler
 from ...core.settings_model import AppSettings, SettingsManager
 from ...core.watch_mode import WatchModeCoordinator
+from ..widgets.fullscreen_viewer import FullscreenViewerManager
+from ..widgets.histogram_widget import HistogramWidget
+from ..widgets.preset_manager import PresetComboBox
+from ..widgets.preview_widget import ImagePreviewWidget
+from ..widgets.progress_dialog import ProgressDialog
+from ..widgets.settings import SettingsPanel
 
 
 @dataclass

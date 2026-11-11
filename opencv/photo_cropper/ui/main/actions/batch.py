@@ -13,12 +13,12 @@ import numpy as np
 from PySide6.QtWidgets import QMessageBox
 
 from ....core.batch import BatchProgress
-from ....core.settings_model import AppSettings
-from ....i18n.catalog import t
 from ....core.manual_extract import (
     ManualExtractSessionRunner,
     collect_boundary_failed_files,
 )
+from ....core.settings_model import AppSettings
+from ....i18n.catalog import t
 from ....utils.file_helpers import (
     build_recursive_excluded_roots,
     get_image_files,

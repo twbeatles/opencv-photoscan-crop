@@ -26,6 +26,7 @@ from .shared import (
     _translated_review_status,
 )
 
+
 class ReviewPage(QWidget):
     open_requested = Signal(str)
     reprocess_requested = Signal(int)

@@ -5,6 +5,7 @@
 
 from __future__ import annotations
 
+
 class _SignalRecorder:
     def __init__(self) -> None:
         self.calls = []

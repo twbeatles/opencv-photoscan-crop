@@ -7,10 +7,10 @@ Provides undo/redo functionality using the Command pattern.
 """
 
 import logging
-from typing import Optional, List, Callable
-from dataclasses import dataclass, field
 from abc import ABC, abstractmethod
+from dataclasses import dataclass, field
 from enum import Enum
+from typing import Callable, List, Optional
 
 import numpy as np
 

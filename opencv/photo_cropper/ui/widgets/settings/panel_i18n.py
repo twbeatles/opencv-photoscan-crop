@@ -8,6 +8,7 @@ from ....i18n.catalog import t
 from .controls import populate_theme_choices
 from .i18n_bindings import apply_settings_i18n_bindings
 
+
 def retranslate_panel(panel) -> None:
     self = panel
     apply_settings_i18n_bindings(self)

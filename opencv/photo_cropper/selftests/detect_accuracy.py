@@ -15,7 +15,11 @@ def _test_crop_accuracy_synthetic() -> None:
     import numpy as np
 
     from ..core.image import ImageProcessor
-    from ..core.settings_model import AlgorithmSettings, ProcessingSettings, DebugSettings
+    from ..core.settings_model import (
+        AlgorithmSettings,
+        DebugSettings,
+        ProcessingSettings,
+    )
 
     random.seed(0)
     np.random.seed(0)
@@ -168,7 +172,11 @@ def _test_crop_accuracy_hard_scenarios() -> None:
     import numpy as np
 
     from ..core.image import ImageProcessor
-    from ..core.settings_model import AlgorithmSettings, DebugSettings, ProcessingSettings
+    from ..core.settings_model import (
+        AlgorithmSettings,
+        DebugSettings,
+        ProcessingSettings,
+    )
 
     random.seed(7)
     np.random.seed(7)
@@ -311,7 +319,11 @@ def _test_no_photo_false_positive_regression() -> None:
     import numpy as np
 
     from ..core.image import ImageProcessor
-    from ..core.settings_model import AlgorithmSettings, ProcessingSettings, DebugSettings
+    from ..core.settings_model import (
+        AlgorithmSettings,
+        DebugSettings,
+        ProcessingSettings,
+    )
 
     random.seed(1)
     np.random.seed(1)

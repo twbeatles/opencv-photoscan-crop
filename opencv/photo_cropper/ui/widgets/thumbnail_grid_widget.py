@@ -6,21 +6,29 @@ Thumbnail Grid Widget for Photo Cropper v9.0.
 Provides grid view of images with thumbnails.
 """
 
-import os
 import logging
-from typing import Optional, List
-
-from PySide6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QScrollArea, QFrame,
-    QLabel, QGridLayout, QMenu,
-    QToolButton, QStackedWidget, QListWidget,
-    QListWidgetItem, QAbstractItemView
-)
-from PySide6.QtCore import Qt, Signal, QSize, QThread
-from PySide6.QtGui import QPixmap, QImage
+import os
+from typing import List, Optional
 
 import cv2
 import numpy as np
+from PySide6.QtCore import QSize, Qt, QThread, Signal
+from PySide6.QtGui import QImage, QPixmap
+from PySide6.QtWidgets import (
+    QAbstractItemView,
+    QFrame,
+    QGridLayout,
+    QHBoxLayout,
+    QLabel,
+    QListWidget,
+    QListWidgetItem,
+    QMenu,
+    QScrollArea,
+    QStackedWidget,
+    QToolButton,
+    QVBoxLayout,
+    QWidget,
+)
 
 from ...i18n.catalog import t
 from ...utils.image_io import load_image_unicode

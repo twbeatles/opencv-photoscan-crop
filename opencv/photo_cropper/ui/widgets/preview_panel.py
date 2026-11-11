@@ -3,7 +3,7 @@
 from typing import Any, Dict, List, Optional
 
 import numpy as np
-from PySide6.QtCore import QObject, QPointF, QRectF, Qt, QEvent, Signal
+from PySide6.QtCore import QEvent, QObject, QPointF, QRectF, Qt, Signal
 from PySide6.QtGui import QBrush, QColor, QMouseEvent, QPalette, QPen, QPixmap
 from PySide6.QtWidgets import (
     QCheckBox,
@@ -24,6 +24,7 @@ from ..components import make_secondary, themed_splitter
 from ..design_tokens import CONTROL_GAP, CONTROL_HEIGHT_SM, SPACE_XS, SPACE_XXS
 from .preview_conversions import numpy_to_qpixmap
 from .zoomable_view import ZoomableGraphicsView
+
 
 class ImagePreviewWidget(QWidget):
     """

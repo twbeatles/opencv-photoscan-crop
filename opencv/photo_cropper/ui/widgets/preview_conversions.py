@@ -5,6 +5,7 @@ from typing import Optional
 import numpy as np
 from PySide6.QtGui import QImage, QPixmap
 
+
 def numpy_to_qimage(image: Optional[np.ndarray]) -> QImage:
     """
     Convert numpy array to QImage.

@@ -5,10 +5,16 @@ from typing import Optional
 import numpy as np
 from PySide6.QtCore import QPointF, QRectF, Qt, Signal
 from PySide6.QtGui import QColor, QMouseEvent, QPainter, QPen, QWheelEvent
-from PySide6.QtWidgets import QGraphicsPixmapItem, QGraphicsScene, QGraphicsView, QWidget
+from PySide6.QtWidgets import (
+    QGraphicsPixmapItem,
+    QGraphicsScene,
+    QGraphicsView,
+    QWidget,
+)
 
 from ...i18n.catalog import t
 from .compare_conversions import numpy_to_qpixmap
+
 
 class CompareGraphicsView(QGraphicsView):
     """Graphics view with synchronized zoom/pan for comparison."""

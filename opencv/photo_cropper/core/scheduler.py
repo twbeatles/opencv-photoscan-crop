@@ -9,12 +9,13 @@ Provides scheduled batch processing functionality.
 from __future__ import annotations
 
 import logging
-from datetime import datetime, time as dtime
-from typing import Optional, Callable, List
 from dataclasses import dataclass
+from datetime import datetime
+from datetime import time as dtime
 from enum import Enum
+from typing import Callable, List, Optional
 
-from PySide6.QtCore import QObject, Signal, QTimer, QTime
+from PySide6.QtCore import QObject, QTime, QTimer, Signal
 
 logger = logging.getLogger(__name__)
 

@@ -8,6 +8,7 @@ from ....core.settings_model import CLASSIFICATION_CATEGORY_KEYS
 from ....i18n.catalog import t
 from ....utils.path_validation import validate_single_path_segment
 
+
 def validate_form_inputs(panel):
     self = panel
     naming_invalid = False

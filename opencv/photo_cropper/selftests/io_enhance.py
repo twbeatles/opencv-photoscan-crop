@@ -9,7 +9,7 @@ from __future__ import annotations
 def _test_unicode_text_watermark() -> None:
     import numpy as np
 
-    from ..core.watermark_processor import WatermarkProcessor, TextWatermarkSettings
+    from ..core.watermark_processor import TextWatermarkSettings, WatermarkProcessor
 
     img = np.full((240, 360, 3), 255, dtype=np.uint8)  # white background
     wm = WatermarkProcessor()
@@ -38,7 +38,7 @@ def _test_grayscale_image_watermark_regression() -> None:
     import cv2
     import numpy as np
 
-    from ..core.watermark_processor import WatermarkProcessor, ImageWatermarkSettings
+    from ..core.watermark_processor import ImageWatermarkSettings, WatermarkProcessor
 
     img = np.full((180, 260), 170, dtype=np.uint8)  # 2D grayscale
     wm_rgba = np.zeros((40, 40, 4), dtype=np.uint8)
@@ -71,9 +71,9 @@ def _test_perspective_toggle_warp_vs_axis_crop() -> None:
 
     from ..core.image import ImageProcessor
     from ..core.settings_model import (
+        AdvancedProcessingSettings,
         AlgorithmSettings,
         ProcessingSettings,
-        AdvancedProcessingSettings,
     )
 
     image = np.full((220, 260, 3), 240, dtype=np.uint8)
@@ -192,7 +192,7 @@ def _test_save_image_fallback_and_metadata_best_effort() -> None:
 def _test_resize_fill_no_upscale_boundary() -> None:
     import numpy as np
 
-    from ..core.resize_processor import ResizeProcessor, ResizeSettings, ResizeMode
+    from ..core.resize_processor import ResizeMode, ResizeProcessor, ResizeSettings
 
     image = np.full((80, 100, 3), 120, dtype=np.uint8)
     processor = ResizeProcessor()

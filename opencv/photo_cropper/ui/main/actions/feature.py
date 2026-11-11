@@ -11,8 +11,8 @@ from PySide6.QtWidgets import QDialog
 from ....core.history_manager import CallableCommand, CommandType
 from ....i18n.catalog import t
 from ...widgets.toast_notification import ToastManager
-from ..services import UiMessageFactory
 from ..models import WindowRefs, WindowServices, WindowState
+from ..services import UiMessageFactory
 
 
 class FeatureActions:

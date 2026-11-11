@@ -10,16 +10,15 @@ from typing import Callable, Optional
 import numpy as np
 
 from ....core.image import PreviewProcessResult
-from ....i18n.catalog import t
 from ....core.manual_extract import (
     crop_manual_contour,
     denormalize_contour_points,
     normalize_contour_points,
     scale_contour_to_preview,
 )
+from ....i18n.catalog import t
 from ....utils.file_helpers import get_image_files
 from ..models import WindowRefs, WindowServices, WindowSignals, WindowState
-
 
 # Below this detection confidence the scan is queued for a manual check.
 LOW_CONFIDENCE_THRESHOLD = 0.55

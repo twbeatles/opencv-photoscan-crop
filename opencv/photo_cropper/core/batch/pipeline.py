@@ -1,21 +1,24 @@
 from __future__ import annotations
 
-import os
 import logging
+import os
 import threading
+from typing import Any, Optional, Tuple
+
 import cv2
 import numpy as np
-from typing import Optional, Any, Tuple
 
-from ..smart_enhancer import EnhancementPreset
-from ..watermark_processor import (
-    TextWatermarkSettings,
-    ImageWatermarkSettings,
-    WatermarkPosition,
+from ..resize_processor import (
+    ResizeMode,
 )
 from ..resize_processor import (
     ResizeSettings as ResizeProcessorSettings,
-    ResizeMode,
+)
+from ..smart_enhancer import EnhancementPreset
+from ..watermark_processor import (
+    ImageWatermarkSettings,
+    TextWatermarkSettings,
+    WatermarkPosition,
 )
 
 logger = logging.getLogger(__name__)

@@ -9,16 +9,16 @@ Provides tabbed settings interface for all application settings.
 
 from typing import Optional
 
-from PySide6.QtWidgets import (
-    QWidget,
-    QLineEdit,
-    QFileDialog,
-)
 from PySide6.QtCore import Signal
+from PySide6.QtWidgets import (
+    QFileDialog,
+    QLineEdit,
+    QWidget,
+)
 
 from ....core.settings_model import (
-    AppSettings,
     CLASSIFICATION_CATEGORY_KEYS,
+    AppSettings,
 )
 from ....i18n.catalog import get_category_folder_defaults, get_translator, t
 from ...design_tokens import INVALID_INPUT_QSS

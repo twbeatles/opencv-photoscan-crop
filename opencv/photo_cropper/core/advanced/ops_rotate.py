@@ -8,6 +8,7 @@ from typing import Tuple
 import cv2
 import numpy as np
 
+
 class RotateOpsMixin:
     """Rotation operations for AdvancedImageProcessor."""
 

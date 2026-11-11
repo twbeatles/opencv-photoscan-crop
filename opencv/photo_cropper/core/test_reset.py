@@ -24,13 +24,17 @@ def reset_face_detector_for_tests() -> None:
 
 
 def reset_smart_enhancer_for_tests() -> None:
-    from photo_cropper.core.smart_enhancer import reset_smart_enhancer_for_tests as _reset
+    from photo_cropper.core.smart_enhancer import (
+        reset_smart_enhancer_for_tests as _reset,
+    )
 
     _reset()
 
 
 def reset_processing_logger_for_tests() -> None:
-    from photo_cropper.utils.processing_log import reset_processing_logger_for_tests as _reset
+    from photo_cropper.utils.processing_log import (
+        reset_processing_logger_for_tests as _reset,
+    )
 
     _reset()
 

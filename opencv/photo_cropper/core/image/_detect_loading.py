@@ -1,9 +1,10 @@
 from __future__ import annotations
 
+import logging
+from typing import Any, Optional
+
 import cv2
 import numpy as np
-import logging
-from typing import Optional, Any
 
 from ...utils.image_io import load_image_unicode
 

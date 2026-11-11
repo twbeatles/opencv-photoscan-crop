@@ -3,8 +3,8 @@ from __future__ import annotations
 import json
 from typing import Any, Optional
 
-from ._repository_shared import now_iso, safe_json_loads
 from ._repository_protocol import LibraryRepositoryProtocol
+from ._repository_shared import now_iso, safe_json_loads
 
 
 class LibraryRepositoryMetadataMixin:

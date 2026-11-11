@@ -1,9 +1,9 @@
 """numpy -> Qt image conversion for the compare views."""
 
 import cv2
-
 import numpy as np
 from PySide6.QtGui import QImage, QPixmap
+
 
 def numpy_to_qpixmap(image: np.ndarray) -> QPixmap:
     """Convert numpy array to QPixmap."""

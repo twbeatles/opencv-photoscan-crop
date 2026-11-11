@@ -1,10 +1,26 @@
 from __future__ import annotations
 
 from PySide6.QtCore import Qt
-from PySide6.QtWidgets import QCheckBox, QFormLayout, QGroupBox, QHBoxLayout, QLabel, QLineEdit, QPushButton, QVBoxLayout, QWidget
+from PySide6.QtWidgets import (
+        QCheckBox,
+        QFormLayout,
+        QGroupBox,
+        QHBoxLayout,
+        QLabel,
+        QLineEdit,
+        QPushButton,
+        QVBoxLayout,
+        QWidget,
+)
 
 from ....i18n.catalog import t
-from .controls import NoScrollComboBox, NoScrollDoubleSpinBox, NoScrollSlider, NoScrollSpinBox
+from .controls import (
+        NoScrollComboBox,
+        NoScrollDoubleSpinBox,
+        NoScrollSlider,
+        NoScrollSpinBox,
+)
+
 
 def create_algorithm_tab(self):
         """Create algorithm settings tab."""

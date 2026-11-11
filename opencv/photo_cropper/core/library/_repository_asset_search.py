@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from typing import Any
 
-from ._repository_shared import now_iso
 from ._repository_protocol import LibraryRepositoryProtocol
+from ._repository_shared import now_iso
 
 
 class LibraryRepositoryAssetSearchMixin:

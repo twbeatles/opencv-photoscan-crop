@@ -1,7 +1,14 @@
 from __future__ import annotations
 
 from PySide6.QtCore import Qt
-from PySide6.QtWidgets import QCheckBox, QFormLayout, QHBoxLayout, QLabel, QVBoxLayout, QWidget
+from PySide6.QtWidgets import (
+    QCheckBox,
+    QFormLayout,
+    QHBoxLayout,
+    QLabel,
+    QVBoxLayout,
+    QWidget,
+)
 
 from ...design_tokens import SPACE_LG, SPACE_XS
 from ..collapsible_section import CollapsibleSection
@@ -12,6 +19,7 @@ from .controls import (
     NoScrollSpinBox,
     populate_theme_choices,
 )
+
 
 def create_basic_tab(self):
     """Create consolidated basic settings tab (post-processing + UI + output + filter)."""

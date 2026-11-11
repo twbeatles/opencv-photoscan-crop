@@ -11,12 +11,13 @@ Provides intelligent image enhancement presets using OpenCV:
 - Portrait enhancement
 """
 
-import cv2
-import numpy as np
 import logging
 from dataclasses import dataclass, field
-from typing import Optional, Tuple, List, Dict
 from enum import Enum
+from typing import Dict, List, Optional, Tuple
+
+import cv2
+import numpy as np
 
 logger = logging.getLogger(__name__)
 

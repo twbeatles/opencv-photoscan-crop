@@ -4,6 +4,7 @@ from PySide6.QtCore import QPointF, Qt, Signal
 from PySide6.QtGui import QMouseEvent, QPainter, QWheelEvent
 from PySide6.QtWidgets import QGraphicsView
 
+
 class ZoomableGraphicsView(QGraphicsView):
     """
     QGraphicsView with zoom and pan capabilities.

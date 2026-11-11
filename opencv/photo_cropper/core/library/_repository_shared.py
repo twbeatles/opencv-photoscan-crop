@@ -22,6 +22,7 @@ def safe_json_loads(value: Any, default: Any) -> Any:
 def compute_perceptual_hash(file_path: str) -> str:
     try:
         import cv2
+
         from ...utils.image_io import load_image_unicode
 
         image = load_image_unicode(file_path, cv2.IMREAD_GRAYSCALE)

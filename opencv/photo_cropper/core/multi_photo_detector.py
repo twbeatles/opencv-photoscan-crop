@@ -6,12 +6,13 @@ Multi-Photo Detector for Photo Cropper v9.0.
 Detects and separates multiple photos from a single scanned image.
 """
 
-import cv2
-import numpy as np
 import logging
 import math
-from typing import List, Tuple, Optional
 from dataclasses import dataclass
+from typing import List, Optional, Tuple
+
+import cv2
+import numpy as np
 
 logger = logging.getLogger(__name__)
 

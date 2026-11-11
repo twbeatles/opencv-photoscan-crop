@@ -17,6 +17,7 @@ from ....core.history_manager import CallableCommand, CommandType, HistoryManage
 from ....i18n.catalog import t
 from .shared import _selected_row_payload, _stretch_table
 
+
 class CollectionsPage(QWidget):
     open_requested = Signal(str)
 

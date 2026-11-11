@@ -3,6 +3,7 @@ from __future__ import annotations
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QLabel, QVBoxLayout, QWidget
 
+
 class UnavailablePage(QWidget):
     def __init__(self, title: str, body: str, parent=None):
         super().__init__(parent)

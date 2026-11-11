@@ -23,6 +23,7 @@ from .shared import (
     _translated_duplicate_role,
 )
 
+
 class DuplicatesPage(QWidget):
     open_requested = Signal(str)
     maintenance_requested = Signal(str)
