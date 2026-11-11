@@ -82,7 +82,7 @@ class DuplicateService:
     def _hamming(left: str, right: str) -> int:
         if len(left) != len(right):
             return 9999
-        return sum(1 for a, b in zip(left, right) if a != b)
+        return sum(1 for a, b in zip(left, right, strict=True) if a != b)
 
     def refresh_perceptual_hashes(
         self,

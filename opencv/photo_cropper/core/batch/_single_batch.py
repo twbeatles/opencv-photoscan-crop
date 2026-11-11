@@ -267,7 +267,7 @@ class BatchProcessorBatchLoopMixin:
                                 pending_future.cancel()
 
                     if self._is_stop_requested():
-                        for item_index, (filename, _output_path_override) in work_iter:
+                        for _item_index, (filename, _output_path_override) in work_iter:
                             processed += 1
                             cancelled = FileResult(
                                 filename=os.path.basename(filename),

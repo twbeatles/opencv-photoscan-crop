@@ -241,7 +241,7 @@ class AutoProcessor(QObject):
                 return WatchProcessResult(success=success, status=normalized, message=message)
 
         if hasattr(result, "success"):
-            success = bool(getattr(result, "success"))
+            success = bool(getattr(result, "success"))  # noqa: B009 -- capability probe on heterogeneous callback return; direct access would raise AttributeError instead of the TypeError below
             status = str(getattr(result, "status", "") or ("success" if success else "failed"))
             return WatchProcessResult(success=success, status=status, message=message)
 

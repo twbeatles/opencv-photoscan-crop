@@ -10,7 +10,7 @@ def _test_crop_editor_import_smoke() -> None:
     try:
         from ..ui.widgets.crop_editor_widget import CropEditorWidget
     except Exception as e:
-        raise AssertionError(f"Crop editor import failed: {e}")
+        raise AssertionError(f"Crop editor import failed: {e}") from e
 
     assert CropEditorWidget is not None
 
@@ -18,7 +18,7 @@ def _test_preview_worker_import_smoke() -> None:
     try:
         from ..ui.main.preview_worker import PreviewWorker
     except Exception as e:
-        raise AssertionError(f"Preview worker import failed: {e}")
+        raise AssertionError(f"Preview worker import failed: {e}") from e
 
     assert PreviewWorker is not None
 
@@ -33,7 +33,7 @@ def _test_ui_action_modules_import_smoke() -> None:
         from ..ui.main.settings_actions import SettingsActions
         from ..ui.main.watch_actions import WatchActions
     except Exception as e:
-        raise AssertionError(f"UI action modules import failed: {e}")
+        raise AssertionError(f"UI action modules import failed: {e}") from e
 
     assert BatchActions is not None
     assert PreviewActions is not None
@@ -72,7 +72,7 @@ def _test_ui_canonical_package_import_smoke() -> None:
             WindowState,
         )
     except Exception as e:
-        raise AssertionError(f"UI canonical package import failed: {e}")
+        raise AssertionError(f"UI canonical package import failed: {e}") from e
 
     assert BatchActions is not None
     assert DialogActions is not None
@@ -98,7 +98,7 @@ def _test_main_window_import_smoke() -> None:
     try:
         from ..ui.main import MainWindow
     except Exception as e:
-        raise AssertionError(f"MainWindow import failed: {e}")
+        raise AssertionError(f"MainWindow import failed: {e}") from e
 
     assert MainWindow is not None
 
@@ -106,7 +106,7 @@ def _test_manual_extract_service_import_smoke() -> None:
     try:
         from ..core.manual_extract import ManualExtractOutcome, ManualExtractProcessor
     except Exception as e:
-        raise AssertionError(f"Manual extract service import failed: {e}")
+        raise AssertionError(f"Manual extract service import failed: {e}") from e
 
     assert ManualExtractProcessor is not None
     assert ManualExtractOutcome is not None
@@ -115,7 +115,7 @@ def _test_image_save_io_module_smoke() -> None:
     try:
         from ..core.image.save_io import resolve_save_codec, save_image_unicode
     except Exception as e:
-        raise AssertionError(f"Image save IO module import failed: {e}")
+        raise AssertionError(f"Image save IO module import failed: {e}") from e
 
     ext, fmt = resolve_save_codec("out", "PNG")
     assert ext == ".png"
@@ -126,7 +126,7 @@ def _test_watch_mode_coordinator_import_smoke() -> None:
     try:
         from ..core.watch_mode import WatchModeCoordinator, WatchStartResult
     except Exception as e:
-        raise AssertionError(f"Watch mode coordinator import failed: {e}")
+        raise AssertionError(f"Watch mode coordinator import failed: {e}") from e
 
     assert WatchModeCoordinator is not None
     assert WatchStartResult is not None

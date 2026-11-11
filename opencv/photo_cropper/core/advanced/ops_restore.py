@@ -48,7 +48,7 @@ class RestorationOpsMixin:
             l_ch, a, b = cv2.split(lab)
 
             # Use cached CLAHE from the composed processor.
-            l_ch = getattr(self, "_clahe_strong").apply(l_ch)
+            l_ch = getattr(self, "_clahe_strong").apply(l_ch)  # noqa: B009 -- mixin: attr set in composed processor (processor.py), undeclared here; direct access trips pyright
 
             lab = cv2.merge([l_ch, a, b])
             result = cv2.cvtColor(lab, cv2.COLOR_LAB2BGR)
@@ -56,7 +56,7 @@ class RestorationOpsMixin:
         # Step 3: Color restoration
         if restore_colors:
             # Reduce color cast
-            result = getattr(self, "auto_color_correct")(result, method="gray_world")
+            result = getattr(self, "auto_color_correct")(result, method="gray_world")  # noqa: B009 -- mixin: method lives on sibling mixin (ops_color.py), undeclared here; direct access trips pyright
 
             # Boost saturation slightly
             hsv = cv2.cvtColor(result, cv2.COLOR_BGR2HSV).astype(np.float32)

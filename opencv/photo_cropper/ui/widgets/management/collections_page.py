@@ -144,10 +144,11 @@ class CollectionsPage(QWidget):
         assets = self.query_service.list_assets(collection_id=collection_id, limit=5000)
         asset_ids = [int(asset.get("id", 0) or 0) for asset in assets if int(asset.get("id", 0) or 0) > 0]
         self.repository.delete_collection(collection_id)
+        redo_name = str(collection_snapshot.get("name", ""))
         self._record_history(
             t("history.collections.delete"),
             undo=lambda snapshot=collection_snapshot, asset_ids=asset_ids: self._restore_collection(snapshot, asset_ids),
-            redo=lambda name=str(collection_snapshot.get("name", "")): self._delete_collection_by_name(name),
+            redo=lambda name=redo_name: self._delete_collection_by_name(name),
         )
         self.refresh()
 
