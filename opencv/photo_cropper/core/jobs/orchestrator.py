@@ -66,7 +66,11 @@ class JobOrchestrator(
     def prepare_review_reprocess(self, payload: dict) -> Optional[int]:
         review = dict(payload.get("review") or {})
         origin_job = dict(payload.get("origin_job") or {})
-        source_path = str(payload.get("source_path", "") or review.get("primary_source_path", "") or "")
+        source_path = str(
+            payload.get("source_path", "")
+            or review.get("primary_source_path", "")
+            or ""
+        )
         if not source_path:
             return None
         return self.create_job(
@@ -77,12 +81,16 @@ class JobOrchestrator(
             status="queued",
         )
 
-    def prepare_job_rerun(self, job_id: int, *, failed_only: bool = False) -> Optional[dict]:
+    def prepare_job_rerun(
+        self, job_id: int, *, failed_only: bool = False
+    ) -> Optional[dict]:
         origin_job = self.repository.get_job(job_id)
         if origin_job is None:
             return None
         statuses = ("failed", "partial_success") if failed_only else None
-        items = self.repository.list_job_items(job_id, statuses=list(statuses) if statuses else None)
+        items = self.repository.list_job_items(
+            job_id, statuses=list(statuses) if statuses else None
+        )
         source_paths: list[str] = []
         seen_sources: set[str] = set()
         for item in items:

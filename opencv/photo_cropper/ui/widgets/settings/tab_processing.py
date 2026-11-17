@@ -67,11 +67,19 @@ def create_processing_tab(self):
     text_form.addRow("투명도 (%):", self.watermark_opacity_spin)
 
     self.watermark_position_combo = NoScrollComboBox()
-    self.watermark_position_combo.addItems([
-        "bottom_right", "bottom_left", "bottom_center",
-        "top_right", "top_left", "top_center",
-        "center", "middle_left", "middle_right",
-    ])
+    self.watermark_position_combo.addItems(
+        [
+            "bottom_right",
+            "bottom_left",
+            "bottom_center",
+            "top_right",
+            "top_left",
+            "top_center",
+            "center",
+            "middle_left",
+            "middle_right",
+        ]
+    )
     self.watermark_position_combo.currentTextChanged.connect(self._on_setting_changed)
     text_form.addRow("위치:", self.watermark_position_combo)
     wm_layout.addLayout(text_form)
@@ -109,10 +117,18 @@ def create_processing_tab(self):
 
     rs_form = QFormLayout()
     self.resize_mode_combo = NoScrollComboBox()
-    self.resize_mode_combo.addItems([
-        "none", "fit", "fill", "stretch",
-        "width", "height", "percentage", "max_dimension",
-    ])
+    self.resize_mode_combo.addItems(
+        [
+            "none",
+            "fit",
+            "fill",
+            "stretch",
+            "width",
+            "height",
+            "percentage",
+            "max_dimension",
+        ]
+    )
     self.resize_mode_combo.currentTextChanged.connect(self._on_setting_changed)
     rs_form.addRow("모드:", self.resize_mode_combo)
 

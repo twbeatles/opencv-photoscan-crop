@@ -98,7 +98,9 @@ def build_menu(
         action = QAction(t(f"menu.view.theme.{theme_name}"), window)
         action.setCheckable(True)
         action.triggered.connect(
-            lambda _checked=False, theme=theme_name: settings_actions.choose_theme(theme)
+            lambda _checked=False, theme=theme_name: settings_actions.choose_theme(
+                theme
+            )
         )
         view_menu.addAction(action)
         refs.theme_actions[theme_name] = action

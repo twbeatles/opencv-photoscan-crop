@@ -53,7 +53,9 @@ def populate_scene_presets(combo: QComboBox) -> None:
             for sid in ids:
                 combo.addItem("", sid)
         for index, sid in enumerate(ids):
-            combo.setItemText(index, t(f"scene.{sid}", default=SCENE_PRESET_META[sid][0]))
+            combo.setItemText(
+                index, t(f"scene.{sid}", default=SCENE_PRESET_META[sid][0])
+            )
     finally:
         combo.blockSignals(was_blocked)
 

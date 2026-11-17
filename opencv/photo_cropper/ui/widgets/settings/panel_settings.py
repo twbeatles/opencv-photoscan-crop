@@ -147,9 +147,7 @@ def build_settings(panel):
             else "interval"
         ),
         schedule_time=(
-            schedule_time_edit.text()
-            if schedule_time_edit is not None
-            else "00:00"
+            schedule_time_edit.text() if schedule_time_edit is not None else "00:00"
         ),
         schedule_interval_minutes=(
             int(schedule_interval_spin.value())
@@ -245,9 +243,7 @@ def build_settings(panel):
             if hasattr(self, "classification_model_combo")
             else "basic",
             auto_folder=self.classification_subfolders_check.isChecked(),
-            categories_enabled=dict(
-                getattr(prev_cls, "categories_enabled", {}) or {}
-            ),
+            categories_enabled=dict(getattr(prev_cls, "categories_enabled", {}) or {}),
             category_folders=category_folders,
             min_confidence=float(getattr(prev_cls, "min_confidence", 0.5)),
         )
@@ -359,22 +355,24 @@ def load_settings(panel, settings: AppSettings):
         )
 
     if hasattr(self, "detect_mode_combo"):
-        idx = self.detect_mode_combo.findText(getattr(settings.algorithm, "detection_mode", "balanced"))
+        idx = self.detect_mode_combo.findText(
+            getattr(settings.algorithm, "detection_mode", "balanced")
+        )
         if idx >= 0:
             self.detect_mode_combo.setCurrentIndex(idx)
 
     if hasattr(self, "debug_detect_check") and hasattr(settings, "debug"):
         self.debug_detect_check.setChecked(bool(settings.debug.enabled))
     if hasattr(self, "debug_output_dir_edit") and hasattr(settings, "debug"):
-        self.debug_output_dir_edit.setText(getattr(settings.debug, "output_dir", "") or "")
+        self.debug_output_dir_edit.setText(
+            getattr(settings.debug, "output_dir", "") or ""
+        )
 
     # Processing
     self.auto_contrast_check.setChecked(settings.processing.auto_contrast)
     self.grayscale_check.setChecked(settings.processing.to_grayscale)
     self.sharpening_check.setChecked(settings.processing.apply_sharpening)
-    self.sharpening_slider.setValue(
-        int(settings.processing.sharpening_strength * 10)
-    )
+    self.sharpening_slider.setValue(int(settings.processing.sharpening_strength * 10))
     self.sharpening_value.setText(f"{settings.processing.sharpening_strength:.1f}")
     self.denoise_check.setChecked(settings.processing.denoise)
 
@@ -528,9 +526,7 @@ def load_settings(panel, settings: AppSettings):
         self.face_auto_orient_check.setChecked(fd.auto_rotate)
         self.face_enhance_check.setChecked(fd.auto_center_crop)
         if hasattr(self, "face_min_size_spin"):
-            self.face_min_size_spin.setValue(
-                int(getattr(fd, "min_face_size", 30))
-            )
+            self.face_min_size_spin.setValue(int(getattr(fd, "min_face_size", 30)))
 
     if hasattr(settings, "smart_enhancement"):
         se = settings.smart_enhancement

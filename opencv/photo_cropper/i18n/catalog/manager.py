@@ -154,7 +154,9 @@ class TranslationManager:
         default: Optional[str] = None,
         **kwargs,
     ) -> str:
-        lang = str(language or self._current_language or self._fallback_language).lower()
+        lang = str(
+            language or self._current_language or self._fallback_language
+        ).lower()
         text = self._translations.get(lang, {}).get(key)
         if text is None:
             text = self._translations.get(self._fallback_language, {}).get(key)
@@ -191,13 +193,14 @@ class TranslationManager:
         self,
         language: Optional[str] = None,
     ) -> Dict[str, str]:
-        lang = str(language or self._current_language or self._fallback_language).lower()
+        lang = str(
+            language or self._current_language or self._fallback_language
+        ).lower()
         defaults = self._category_defaults.get(lang)
         if defaults is None:
             defaults = self._category_defaults.get(self._fallback_language, {})
         return {
-            key: str(defaults.get(key, key)).strip() or key
-            for key in DEFAULT_CATEGORY
+            key: str(defaults.get(key, key)).strip() or key for key in DEFAULT_CATEGORY
         }
 
 

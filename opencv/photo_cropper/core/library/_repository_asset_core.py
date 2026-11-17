@@ -7,7 +7,9 @@ from ._repository_shared import compute_perceptual_hash, now_iso
 
 
 class LibraryRepositoryAssetCoreMixin:
-    def _refresh_asset_primary_source(self: LibraryRepositoryProtocol, conn: Any, asset_id: int) -> None:
+    def _refresh_asset_primary_source(
+        self: LibraryRepositoryProtocol, conn: Any, asset_id: int
+    ) -> None:
         primary = conn.execute(
             """
             SELECT source_path, source_hash
@@ -39,6 +41,7 @@ class LibraryRepositoryAssetCoreMixin:
             """,
             (primary_path, exact_hash, now_iso(), int(asset_id)),
         )
+
     def _source_candidates_by_hash(
         self: LibraryRepositoryProtocol,
         conn,
@@ -68,7 +71,10 @@ class LibraryRepositoryAssetCoreMixin:
         query.append("ORDER BY s.is_missing DESC, s.last_seen_at DESC, s.id DESC")
         rows = conn.execute("\n".join(query), params).fetchall()
         return [dict(row) for row in rows]
-    def set_asset_perceptual_hash(self: LibraryRepositoryProtocol, asset_id: int, value: str) -> None:
+
+    def set_asset_perceptual_hash(
+        self: LibraryRepositoryProtocol, asset_id: int, value: str
+    ) -> None:
         with self.store.write_connect() as conn:
             conn.execute(
                 """
@@ -79,7 +85,10 @@ class LibraryRepositoryAssetCoreMixin:
                 (str(value or ""), now_iso(), now_iso(), int(asset_id)),
             )
             conn.commit()
-    def refresh_asset_perceptual_hash(self: LibraryRepositoryProtocol, asset_id: int, file_path: str) -> str:
+
+    def refresh_asset_perceptual_hash(
+        self: LibraryRepositoryProtocol, asset_id: int, file_path: str
+    ) -> str:
         perceptual_hash = compute_perceptual_hash(file_path)
         self.set_asset_perceptual_hash(asset_id, perceptual_hash)
         return perceptual_hash

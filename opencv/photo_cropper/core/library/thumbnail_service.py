@@ -20,7 +20,9 @@ class ThumbnailService:
             mtime_ns = int(getattr(stat, "st_mtime_ns", int(stat.st_mtime * 1e9)))
         except Exception:
             mtime_ns = 0
-        token = f"{os.path.abspath(file_path)}::{mtime_ns}".encode("utf-8", errors="ignore")
+        token = f"{os.path.abspath(file_path)}::{mtime_ns}".encode(
+            "utf-8", errors="ignore"
+        )
         digest = hashlib.sha256(token).hexdigest()
         return os.path.join(self.thumbnails_dir, f"{digest}.png")
 

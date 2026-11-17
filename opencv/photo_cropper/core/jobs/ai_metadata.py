@@ -31,7 +31,9 @@ class JobAIMetadataMixin:
                     self._classifier = ImageClassifier()
                 image = self._load_image_for_ai(image_path)
                 if image is not None:
-                    result = self._classifier.classify(image, model=settings.classification.model)
+                    result = self._classifier.classify(
+                        image, model=settings.classification.model
+                    )
                     self.repository.clear_asset_tags(asset_id, source="classification")
                     self.repository.add_asset_tag(
                         asset_id,
@@ -91,7 +93,9 @@ class JobAIMetadataMixin:
                                 "y": int(face.y),
                                 "w": int(face.width),
                                 "h": int(face.height),
-                                "confidence": float(getattr(face, "confidence", 0.0) or 0.0),
+                                "confidence": float(
+                                    getattr(face, "confidence", 0.0) or 0.0
+                                ),
                             }
                         )
                     person_provider = get_person_provider()
@@ -115,7 +119,9 @@ class JobAIMetadataMixin:
                                 self.repository.link_person_face(
                                     face_id=face_id,
                                     person_id=person_id,
-                                    confidence=float(assignment.get("confidence", 1.0) or 1.0),
+                                    confidence=float(
+                                        assignment.get("confidence", 1.0) or 1.0
+                                    ),
                                 )
                         except Exception:
                             self._ai_errors.append("person_provider_failed")

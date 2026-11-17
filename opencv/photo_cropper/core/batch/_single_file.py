@@ -73,7 +73,9 @@ class BatchProcessorSingleFileMixin:
                         )
 
         # File-size filtering (performance guard)
-        max_size_mb = int(getattr(self.settings.performance, "max_image_size_mb", 0) or 0)
+        max_size_mb = int(
+            getattr(self.settings.performance, "max_image_size_mb", 0) or 0
+        )
         if max_size_mb > 0:
             try:
                 size_mb = os.path.getsize(input_path) / (1024 * 1024)
@@ -92,9 +94,11 @@ class BatchProcessorSingleFileMixin:
 
         # Skip already processed files
         if self.settings.filter.skip_processed:
-            index_outputs, index_usable, index_status = self.lookup_processed_outputs_from_index(
-                input_path,
-                output_dir,
+            index_outputs, index_usable, index_status = (
+                self.lookup_processed_outputs_from_index(
+                    input_path,
+                    output_dir,
+                )
             )
             if index_outputs:
                 if index_status == RECORD_STATUS_PARTIAL:
@@ -117,8 +121,10 @@ class BatchProcessorSingleFileMixin:
                 self.settings.file_management.use_naming_rules
                 or self.settings.output.add_timestamp
             )
-            if naming_or_timestamp and (not index_usable) and (
-                not self._skip_processed_notice_shown
+            if (
+                naming_or_timestamp
+                and (not index_usable)
+                and (not self._skip_processed_notice_shown)
             ):
                 self._log(
                     "현재 파일명 규칙/타임스탬프 설정으로는 정확한 중복 여부 판별이 어렵습니다.",
@@ -126,7 +132,10 @@ class BatchProcessorSingleFileMixin:
                 )
                 self._skip_processed_notice_shown = True
 
-            if output_path_override is not None and index_status != RECORD_STATUS_PARTIAL:
+            if (
+                output_path_override is not None
+                and index_status != RECORD_STATUS_PARTIAL
+            ):
                 if os.path.exists(output_path_override):
                     self._log(
                         f"  건너뜀: 이미 처리됨 - {os.path.basename(output_path_override)}",
@@ -166,7 +175,9 @@ class BatchProcessorSingleFileMixin:
                     os.path.join(backup_dir, rel_parent) if rel_parent else backup_dir
                 )
                 os.makedirs(backup_target_dir, exist_ok=True)
-                backup_path = os.path.join(backup_target_dir, os.path.basename(input_path))
+                backup_path = os.path.join(
+                    backup_target_dir, os.path.basename(input_path)
+                )
                 shutil.copy2(input_path, backup_path)
             except Exception as e:
                 self._log(f"  백업 실패: {e}", "warning")

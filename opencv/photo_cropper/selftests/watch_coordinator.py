@@ -119,7 +119,9 @@ def _test_watch_mode_processing_disables_failed_file_move() -> None:
     assert len(fake_batch.updated_settings) == 1
     assert fake_batch.updated_settings[0] is not settings
     assert fake_batch.updated_settings[0].file_management.move_failed_files is False
-    assert fake_batch.process_calls == [("input.jpg", "output", False, "watch-root", False)]
+    assert fake_batch.process_calls == [
+        ("input.jpg", "output", False, "watch-root", False)
+    ]
 
     coordinator.deleteLater()
 
@@ -438,7 +440,9 @@ def _test_folder_watcher_recursive_excluded_roots() -> None:
         watcher = FolderWatcher(root, recursive=True, excluded_roots=[output])
         try:
             assert watcher.start(root)
-            watched = {normalize_path(path) for path in watcher.get_watched_directories()}
+            watched = {
+                normalize_path(path) for path in watcher.get_watched_directories()
+            }
             assert normalize_path(output) not in watched
             assert all(
                 not is_path_within(output, path)

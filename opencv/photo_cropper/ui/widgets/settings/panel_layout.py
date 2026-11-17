@@ -30,11 +30,11 @@ def setup_ui(panel):
     layout.addWidget(self.tab_widget)
 
     # 5 consolidated tabs (was 11)
-    self._create_basic_tab()          # 📷 기본 (후처리 + UI + 출력 + 필터)
-    self._create_algorithm_tab()      # 🔬 알고리즘
-    self._create_processing_tab()     # 🔧 처리 (워터마크 + 리사이즈 + 고급)
-    self._create_management_tab()     # 📂 관리 (자동화 + 파일관리 + 성능)
-    self._create_ai_settings_tab()    # 🤖 AI
+    self._create_basic_tab()  # 📷 기본 (후처리 + UI + 출력 + 필터)
+    self._create_algorithm_tab()  # 🔬 알고리즘
+    self._create_processing_tab()  # 🔧 처리 (워터마크 + 리사이즈 + 고급)
+    self._create_management_tab()  # 📂 관리 (자동화 + 파일관리 + 성능)
+    self._create_ai_settings_tab()  # 🤖 AI
 
 
 def make_scrollable_tab(panel, content_widget: QWidget) -> QWidget:

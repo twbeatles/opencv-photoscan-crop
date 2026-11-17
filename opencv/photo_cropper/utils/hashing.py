@@ -17,8 +17,9 @@ from .image_io import load_image_unicode
 logger = logging.getLogger(__name__)
 
 
-def compute_file_hash(filepath: str, algorithm: str = 'md5',
-                     chunk_size: int = 8192) -> Optional[str]:
+def compute_file_hash(
+    filepath: str, algorithm: str = "md5", chunk_size: int = 8192
+) -> Optional[str]:
     """
     Compute hash of a file.
 
@@ -33,17 +34,17 @@ def compute_file_hash(filepath: str, algorithm: str = 'md5',
     import hashlib
 
     try:
-        if algorithm == 'md5':
+        if algorithm == "md5":
             hasher = hashlib.md5()
-        elif algorithm == 'sha1':
+        elif algorithm == "sha1":
             hasher = hashlib.sha1()
-        elif algorithm == 'sha256':
+        elif algorithm == "sha256":
             hasher = hashlib.sha256()
         else:
             hasher = hashlib.md5()
 
-        with open(filepath, 'rb') as f:
-            for chunk in iter(lambda: f.read(chunk_size), b''):
+        with open(filepath, "rb") as f:
+            for chunk in iter(lambda: f.read(chunk_size), b""):
                 hasher.update(chunk)
 
         return hasher.hexdigest()
@@ -52,8 +53,7 @@ def compute_file_hash(filepath: str, algorithm: str = 'md5',
         return None
 
 
-def detect_duplicates(file_list: List[str],
-                     method: str = 'hash') -> dict:
+def detect_duplicates(file_list: List[str], method: str = "hash") -> dict:
     """
     Detect duplicate files.
 
@@ -68,7 +68,7 @@ def detect_duplicates(file_list: List[str],
 
     duplicates = defaultdict(list)
 
-    if method == 'size':
+    if method == "size":
         # Group by file size only (fast but less accurate)
         for filepath in file_list:
             try:
@@ -77,7 +77,7 @@ def detect_duplicates(file_list: List[str],
             except Exception:
                 pass
 
-    elif method == 'size+hash':
+    elif method == "size+hash":
         # First group by size, then hash only potential duplicates
         size_groups = defaultdict(list)
         for filepath in file_list:
@@ -121,6 +121,7 @@ def get_image_dimensions(filepath: str) -> Optional[Tuple[int, int]]:
     try:
         # Try PIL first (faster for reading headers)
         from PIL import Image
+
         with Image.open(filepath) as img:
             return img.size
     except ImportError:

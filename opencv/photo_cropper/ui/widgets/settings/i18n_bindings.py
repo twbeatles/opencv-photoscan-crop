@@ -170,16 +170,14 @@ TOOLTIP_BINDINGS = {
     "CLAHE 알고리즘으로 이미지 대비를 자동 향상합니다": "settings.auto_contrast.tooltip",
     "이미지 노이즈를 줄입니다 (처리 시간 증가)": "settings.denoise.tooltip",
     (
-        "EXIF/ICC 메타데이터를 best-effort로 복사합니다. "
-        "실패해도 저장은 계속됩니다."
+        "EXIF/ICC 메타데이터를 best-effort로 복사합니다. 실패해도 저장은 계속됩니다."
     ): "settings.preserve_metadata.tooltip",
     "처리 전 원본 파일을 backup 폴더에 복사합니다": "settings.backup_original.tooltip",
     "파일명에 '_cropped'가 포함된 파일 제외": "settings.skip_processed.tooltip",
     "여러 스케일에서 엣지를 검출하여 정확도 향상": "settings.multi_scale.tooltip",
     "다른 방법 실패 시 코너 검출로 시도": "settings.corner_detection.tooltip",
     (
-        "엣지/마스크/후보 오버레이 등 중간 결과를 저장해서 "
-        "실패 원인 분석에 사용합니다."
+        "엣지/마스크/후보 오버레이 등 중간 결과를 저장해서 실패 원인 분석에 사용합니다."
     ): "settings.debug_detect.tooltip",
     "Hough 변환으로 기울기를 감지하고 자동 교정": "settings.auto_deskew.tooltip",
     "Gray World 알고리즘으로 화이트밸런스 보정": "settings.auto_color.tooltip",
@@ -193,8 +191,7 @@ TOOLTIP_BINDINGS = {
     "예약된 시간에 자동으로 배치 처리": "settings.scheduler_enable.tooltip",
     "once는 날짜 지정 없이 다음 도래 HH:MM에 한 번만 실행됩니다.": "settings.schedule_type.tooltip",
     (
-        "daily/once에서 사용합니다. "
-        "once는 날짜 없는 다음 도래 시각 1회 실행입니다."
+        "daily/once에서 사용합니다. once는 날짜 없는 다음 도래 시각 1회 실행입니다."
     ): "settings.schedule_time.tooltip",
     "한 장의 스캔 이미지에서 여러 사진을 분리 저장합니다.": "settings.multi_photo_enable.tooltip",
     "값이 클수록 가까운 검출 결과를 같은 사진으로 병합합니다.": "settings.multi_photo_merge_distance.tooltip",
@@ -306,7 +303,9 @@ def apply_settings_i18n_bindings(root: QWidget) -> None:
             button.setText(t(key))
 
     for group in root.findChildren(QGroupBox):
-        key = _resolve_binding(group, _TITLE_KEY_PROPERTY, group.title(), TITLE_BINDINGS)
+        key = _resolve_binding(
+            group, _TITLE_KEY_PROPERTY, group.title(), TITLE_BINDINGS
+        )
         if key:
             group.setTitle(t(key))
 

@@ -15,6 +15,7 @@ def _test_classification_settings_custom_alias_normalizes_to_advanced() -> None:
     loaded = AppSettings.from_dict({"classification": {"model": "custom"}})
     assert loaded.classification.model == "advanced"
 
+
 def _test_settings_forward_compat() -> None:
     from ..core.settings_model import AppSettings
 
@@ -28,6 +29,7 @@ def _test_settings_forward_compat() -> None:
     assert s.algorithm.canny_max == 200
     assert s.watermark.enabled is True
     assert s.watermark.text == "짤 2026"
+
 
 def _test_settings_panel_performance_roundtrip() -> None:
     import os
@@ -76,6 +78,7 @@ def _test_settings_panel_performance_roundtrip() -> None:
     if owned_app:
         app.quit()
 
+
 def _test_settings_panel_ai_roundtrip() -> None:
     import os
 
@@ -121,6 +124,7 @@ def _test_settings_panel_ai_roundtrip() -> None:
     if owned_app:
         app.quit()
 
+
 def _test_settings_panel_classification_folder_roundtrip() -> None:
     import os
 
@@ -128,7 +132,9 @@ def _test_settings_panel_classification_folder_roundtrip() -> None:
     try:
         from PySide6.QtWidgets import QApplication
     except Exception as e:
-        print(f"WARN: PySide6 unavailable for classification folder roundtrip test: {e}")
+        print(
+            f"WARN: PySide6 unavailable for classification folder roundtrip test: {e}"
+        )
         return
 
     from ..core.settings_model import AppSettings
@@ -159,6 +165,7 @@ def _test_settings_panel_classification_folder_roundtrip() -> None:
     if owned_app:
         app.quit()
 
+
 def _test_classification_folder_default_sentinel_migration() -> None:
     from ..core.settings_model import AppSettings
     from ..utils.path_validation import resolve_category_folder_map
@@ -186,6 +193,7 @@ def _test_classification_folder_default_sentinel_migration() -> None:
     assert resolved["portrait"] == "Portrait"
     assert resolved["other"] == "Other"
 
+
 def _test_settings_path_validation_blocks_invalid_segments() -> None:
     from ..core.settings_model import AppSettings
     from ..utils.path_validation import validate_settings_path_segments
@@ -200,6 +208,7 @@ def _test_settings_path_validation_blocks_invalid_segments() -> None:
     assert "file_management.naming_prefix" in fields
     assert "file_management.failed_folder_name" in fields
     assert "classification.category_folders.portrait" in fields
+
 
 def _test_settings_panel_legacy_custom_alias_and_schedule_once_hint() -> None:
     import os
@@ -242,6 +251,7 @@ def _test_settings_panel_legacy_custom_alias_and_schedule_once_hint() -> None:
     if owned_app:
         app.quit()
 
+
 def _test_i18n_catalog_placeholder_consistency() -> None:
     import string
 
@@ -262,7 +272,11 @@ def _test_i18n_catalog_placeholder_consistency() -> None:
     for language, mapping in translations.items():
         assert set(mapping.keys()) == base_keys, language
         for key in base_keys:
-            assert fields(mapping[key]) == fields(translations["en"][key]), (language, key)
+            assert fields(mapping[key]) == fields(translations["en"][key]), (
+                language,
+                key,
+            )
+
 
 def _test_settings_i18n_literal_binding_coverage() -> None:
     import ast
@@ -294,8 +308,11 @@ def _test_settings_i18n_literal_binding_coverage() -> None:
             if not korean_literal_re.search(value):
                 continue
             if value not in bound_literals:
-                uncovered.append((source_path.name, int(getattr(node, "lineno", 0)), value))
+                uncovered.append(
+                    (source_path.name, int(getattr(node, "lineno", 0)), value)
+                )
     assert not uncovered, uncovered
+
 
 def _test_settings_panel_algorithm_tuning_roundtrip() -> None:
     import os
@@ -336,6 +353,7 @@ def _test_settings_panel_algorithm_tuning_roundtrip() -> None:
     panel.deleteLater()
     if owned_app:
         app.quit()
+
 
 __all__ = [
     "_test_classification_settings_custom_alias_normalizes_to_advanced",

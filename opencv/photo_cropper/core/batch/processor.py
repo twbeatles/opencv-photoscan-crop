@@ -125,13 +125,3 @@ class BatchProcessor(
         self._on_complete: Optional[
             Callable[[BatchProgress, List[FileResult]], None]
         ] = None
-
-
-
-
-
-
-
-
-
-

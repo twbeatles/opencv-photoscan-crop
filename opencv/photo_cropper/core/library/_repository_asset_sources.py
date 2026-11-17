@@ -29,7 +29,13 @@ class LibraryRepositoryAssetSourceMixin:
             "ingest_state": "invalid_source",
             "error": error,
         }
-    def upsert_source(self: LibraryRepositoryProtocol, source_path: str, *, metadata: Optional[dict[str, Any]] = None) -> dict[str, Any]:
+
+    def upsert_source(
+        self: LibraryRepositoryProtocol,
+        source_path: str,
+        *,
+        metadata: Optional[dict[str, Any]] = None,
+    ) -> dict[str, Any]:
         raw_path = str(source_path or "").strip()
         if not raw_path:
             return self._invalid_source_record(source_path, "empty_path")
@@ -189,7 +195,16 @@ class LibraryRepositoryAssetSourceMixin:
                         metadata_json = ?, last_seen_at = ?, is_missing = 0
                     WHERE id = ?
                     """,
-                    (source_hash, size, mtime_ns, width, height, payload, now, source_id),
+                    (
+                        source_hash,
+                        size,
+                        mtime_ns,
+                        width,
+                        height,
+                        payload,
+                        now,
+                        source_id,
+                    ),
                 )
                 conn.execute(
                     """
@@ -221,7 +236,10 @@ class LibraryRepositoryAssetSourceMixin:
             "perceptual_hash": perceptual_hash,
             "ingest_state": ingest_state,
         }
-    def relink_source(self: LibraryRepositoryProtocol, source_id: int, new_path: str) -> Optional[dict[str, Any]]:
+
+    def relink_source(
+        self: LibraryRepositoryProtocol, source_id: int, new_path: str
+    ) -> Optional[dict[str, Any]]:
         normalized = os.path.abspath(str(new_path or ""))
         if (
             not normalized
@@ -292,7 +310,10 @@ class LibraryRepositoryAssetSourceMixin:
             "source_path": normalized,
             "source_hash": source_hash,
         }
-    def list_sources_by_ids(self: LibraryRepositoryProtocol, source_ids: list[int]) -> list[dict[str, Any]]:
+
+    def list_sources_by_ids(
+        self: LibraryRepositoryProtocol, source_ids: list[int]
+    ) -> list[dict[str, Any]]:
         unique_ids = sorted({int(item) for item in source_ids if int(item) > 0})
         if not unique_ids:
             return []
@@ -315,6 +336,7 @@ class LibraryRepositoryAssetSourceMixin:
                 unique_ids,
             ).fetchall()
             return [dict(row) for row in rows]
+
     def scan_missing_sources(self: LibraryRepositoryProtocol) -> dict[str, Any]:
         updated = 0
         missing = 0

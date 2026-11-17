@@ -31,6 +31,7 @@ class ImageGeometryMixin:
         elif angle == 270 or angle == -90:
             return cv2.rotate(image, cv2.ROTATE_90_COUNTERCLOCKWISE)
         return image
+
     @staticmethod
     def order_points(pts: np.ndarray) -> np.ndarray:
         """
@@ -75,17 +76,20 @@ class ImageGeometryMixin:
             return ordered.astype(np.float32)
         except Exception:
             return _classic_order(pts_arr)
+
     def _quad_is_convex(self: Any, quad: np.ndarray) -> bool:
         try:
             cnt = quad.reshape((-1, 1, 2)).astype(np.int32)
             return bool(cv2.isContourConvex(cnt))
         except Exception:
             return False
+
     def _quad_area(self: Any, quad: np.ndarray) -> float:
         try:
             return float(cv2.contourArea(quad.reshape((-1, 1, 2)).astype(np.float32)))
         except Exception:
             return 0.0
+
     def _quad_min_side(self: Any, quad: np.ndarray) -> float:
         q = quad.reshape((4, 2)).astype(np.float32)
         d = []
@@ -94,6 +98,7 @@ class ImageGeometryMixin:
             p2 = q[(i + 1) % 4]
             d.append(float(np.linalg.norm(p1 - p2)))
         return min(d) if d else 0.0
+
     def _quad_aspect_ratio(self: Any, quad: np.ndarray) -> float:
         """Estimate aspect ratio from quad side lengths (orientation invariant)."""
         q = self.order_points(quad.reshape((4, 2)).astype(np.float32))
@@ -104,12 +109,16 @@ class ImageGeometryMixin:
         width = max(1e-6, (w_top + w_bottom) * 0.5)
         height = max(1e-6, (h_left + h_right) * 0.5)
         return float(width / height)
+
     @staticmethod
     def _angle_diff_deg(a: float, b: float) -> float:
         """Smallest difference between two undirected angles in degrees (0..90)."""
         d = abs((a - b) % 180.0)
         return float(d if d <= 90.0 else 180.0 - d)
-    def _area_score(self: Any, area_ratio: float, min_ratio: float, max_ratio: float) -> float:
+
+    def _area_score(
+        self: Any, area_ratio: float, min_ratio: float, max_ratio: float
+    ) -> float:
         """
         Area prior with a central plateau and smooth edge falloff.
         Returns 0..1.
@@ -141,6 +150,7 @@ class ImageGeometryMixin:
         linear = max(0.0, 1.0 - dist / denom)
         # Gentle decay near bounds.
         return float(linear**0.6)
+
     def _angle_score(self: Any, quad: np.ndarray) -> float:
         """
         Score how close the quad's corner angles are to 90 degrees.
@@ -165,7 +175,10 @@ class ImageGeometryMixin:
             # 90deg -> 1.0, 45/135deg -> 0.0
             scores.append(max(0.0, 1.0 - min(abs(ang - 90.0) / 45.0, 1.0)))
         return float(sum(scores) / len(scores)) if scores else 0.0
-    def _edge_support_score(self: Any, quad: np.ndarray, edge_image: Optional[np.ndarray]) -> float:
+
+    def _edge_support_score(
+        self: Any, quad: np.ndarray, edge_image: Optional[np.ndarray]
+    ) -> float:
         """
         Sample points along quad edges and measure how often they land on an edge pixel.
         Returns 0..1.
@@ -212,7 +225,10 @@ class ImageGeometryMixin:
         if total == 0:
             return 0.0
         return float(hits / total)
-    def _border_penalty(self: Any, quad: np.ndarray, image_shape: Tuple[int, int]) -> float:
+
+    def _border_penalty(
+        self: Any, quad: np.ndarray, image_shape: Tuple[int, int]
+    ) -> float:
         """
         Penalize quads that sit too close to the outer border (common false positive: scanner frame).
         Returns 0..1 (higher = worse).
@@ -221,13 +237,16 @@ class ImageGeometryMixin:
         q = quad.reshape((4, 2)).astype(np.float32)
         min_dist = float("inf")
         for x, y in q:
-            min_dist = min(min_dist, float(x), float(y), float(w - 1 - x), float(h - 1 - y))
+            min_dist = min(
+                min_dist, float(x), float(y), float(w - 1 - x), float(h - 1 - y)
+            )
         if not math.isfinite(min_dist):
             return 0.0
         margin = max(4.0, min(h, w) * 0.02)  # 2% of min dim
         if min_dist >= margin:
             return 0.0
         return float(min(1.0, (margin - min_dist) / margin))
+
     def _content_contrast_score(
         self: Any,
         gray: Optional[np.ndarray],
@@ -303,9 +322,9 @@ class ImageGeometryMixin:
         # Aspect score from ordered side lengths (less sensitive to perspective tilt).
         aspect = self._quad_aspect_ratio(quad)
         if 0.45 <= aspect <= 2.2:
-            aspect_score = 1.0 - min(
-                1.0, abs(math.log(max(aspect, 1e-6))) / math.log(2.2)
-            ) * 0.45
+            aspect_score = (
+                1.0 - min(1.0, abs(math.log(max(aspect, 1e-6))) / math.log(2.2)) * 0.45
+            )
         elif 0.30 <= aspect <= 3.2:
             aspect_score = 0.55
         else:
@@ -380,15 +399,21 @@ class ImageGeometryMixin:
             base *= 0.35
 
         return float(max(0.0, min(1.0, base)))
+
     @staticmethod
-    def _line_abc(x1: float, y1: float, x2: float, y2: float) -> Tuple[float, float, float]:
+    def _line_abc(
+        x1: float, y1: float, x2: float, y2: float
+    ) -> Tuple[float, float, float]:
         # Ax + By = C
         a = y2 - y1
         b = x1 - x2
         c = a * x1 + b * y1
         return a, b, c
+
     @staticmethod
-    def _intersect(l1: Tuple[float, float, float], l2: Tuple[float, float, float]) -> Optional[Tuple[float, float]]:
+    def _intersect(
+        l1: Tuple[float, float, float], l2: Tuple[float, float, float]
+    ) -> Optional[Tuple[float, float]]:
         a1, b1, c1 = l1
         a2, b2, c2 = l2
         det = a1 * b2 - a2 * b1

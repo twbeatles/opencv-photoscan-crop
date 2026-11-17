@@ -173,7 +173,9 @@ def _test_benchmark_harness_report_contract() -> None:
         def process_image(self, _image_path: str) -> CropResult:
             self._calls += 1
             if self._calls == 1:
-                quad = np.array([[20, 20], [180, 20], [180, 180], [20, 180]], dtype=np.float32)
+                quad = np.array(
+                    [[20, 20], [180, 20], [180, 180], [20, 180]], dtype=np.float32
+                )
                 return CropResult(
                     success=True,
                     contour_points=quad,
@@ -199,7 +201,11 @@ def _test_benchmark_harness_report_contract() -> None:
         labels = {
             "version": 1,
             "items": [
-                {"file": "a.jpg", "has_photo": True, "quad": [[20, 20], [180, 20], [180, 180], [20, 180]]},
+                {
+                    "file": "a.jpg",
+                    "has_photo": True,
+                    "quad": [[20, 20], [180, 20], [180, 180], [20, 180]],
+                },
                 {"file": "b.jpg", "has_photo": False},
             ],
         }

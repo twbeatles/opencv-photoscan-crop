@@ -37,4 +37,3 @@ class AssetTimelineEvent:
     job_id: Optional[int] = None
     label: str = ""
     metadata: dict[str, Any] = field(default_factory=dict)
-

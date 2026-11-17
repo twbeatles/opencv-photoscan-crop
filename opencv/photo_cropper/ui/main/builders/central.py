@@ -131,7 +131,9 @@ def build_central_widget(
         recipes_page.recipe_applied.connect(window.apply_recipe_from_management)
         review_page.reprocess_requested.connect(window.run_review_reprocess)
         jobs_page.rerun_requested.connect(
-            lambda job_id, failed_only: window.run_job_rerun(job_id, failed_only=failed_only)
+            lambda job_id, failed_only: window.run_job_rerun(
+                job_id, failed_only=failed_only
+            )
         )
         jobs_page.open_review_requested.connect(window.show_review_page_for_job)
         settings_page.maintenance_requested.connect(window.run_maintenance_job)

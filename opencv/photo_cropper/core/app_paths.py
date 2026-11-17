@@ -75,7 +75,9 @@ def ensure_library_dirs() -> dict[str, str]:
 
 
 def get_legacy_presets_file() -> str:
-    return os.path.join(os.path.expanduser("~/.photo_cropper"), "photo_cropper_presets.json")
+    return os.path.join(
+        os.path.expanduser("~/.photo_cropper"), "photo_cropper_presets.json"
+    )
 
 
 def get_legacy_profiles_dir() -> str:

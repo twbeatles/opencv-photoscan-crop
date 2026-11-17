@@ -44,11 +44,7 @@ class ReviewService:
         row = self.repository.get_review_item(review_id)
         if row is None:
             return False
-        resolved_variant_id = int(
-            variant_id
-            or row.get("variant_id", 0)
-            or 0
-        )
+        resolved_variant_id = int(variant_id or row.get("variant_id", 0) or 0)
         if resolved_variant_id <= 0:
             source_path = str(row.get("primary_source_path", "") or "")
             latest_variant = (
@@ -72,7 +68,9 @@ class ReviewService:
         self.repository.update_review_status(review_id, "rejected", notes=notes)
         return True
 
-    def enqueue_reprocess(self, review_id: int, *, notes: Optional[str] = None) -> Optional[int]:
+    def enqueue_reprocess(
+        self, review_id: int, *, notes: Optional[str] = None
+    ) -> Optional[int]:
         row = self.repository.get_review_item(review_id)
         if row is None:
             return None
@@ -102,8 +100,12 @@ class ReviewService:
             job_id = self.repository.create_job(
                 job_kind="review_reprocess",
                 input_path=source_path,
-                output_path=str(origin_job.get("output_path", "") or "") if origin_job else "",
-                recipe_name=str(origin_job.get("recipe_name", "") or "") if origin_job else "",
+                output_path=str(origin_job.get("output_path", "") or "")
+                if origin_job
+                else "",
+                recipe_name=str(origin_job.get("recipe_name", "") or "")
+                if origin_job
+                else "",
                 status="queued",
             )
         action_context["reprocess_job_id"] = int(job_id) if job_id else None
@@ -115,7 +117,9 @@ class ReviewService:
         )
         return int(job_id) if job_id else None
 
-    def request_reprocess(self, review_id: int, *, notes: Optional[str] = None) -> Optional[int]:
+    def request_reprocess(
+        self, review_id: int, *, notes: Optional[str] = None
+    ) -> Optional[int]:
         return self.enqueue_reprocess(review_id, notes=notes)
 
     def resolve_relink(

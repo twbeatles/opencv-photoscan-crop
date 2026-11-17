@@ -20,7 +20,9 @@ except ImportError:  # Support direct execution: python photo_cropper/cli.py
     import os
     import sys
 
-    sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+    sys.path.append(
+        os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    )
     from photo_cropper.core.settings_model import AppSettings
 
 from .settings_sources import (
@@ -34,7 +36,9 @@ from .settings_sources import (
 logger = logging.getLogger(__name__)
 
 
-def _apply_cli_overrides(settings_data: Dict[str, Any], args: argparse.Namespace) -> None:
+def _apply_cli_overrides(
+    settings_data: Dict[str, Any], args: argparse.Namespace
+) -> None:
     if args.recursive:
         _set_nested(settings_data, "file_management.recursive_search", True)
 
@@ -44,7 +48,9 @@ def _apply_cli_overrides(settings_data: Dict[str, Any], args: argparse.Namespace
     if args.jobs is not None:
         thread_count = max(1, int(args.jobs))
         _set_nested(settings_data, "performance.thread_count", thread_count)
-        _set_nested(settings_data, "performance.enable_multithreading", thread_count > 1)
+        _set_nested(
+            settings_data, "performance.enable_multithreading", thread_count > 1
+        )
 
     if args.detect_mode is not None:
         _set_nested(settings_data, "algorithm.detection_mode", args.detect_mode)
@@ -56,10 +62,14 @@ def _apply_cli_overrides(settings_data: Dict[str, Any], args: argparse.Namespace
         _set_nested(settings_data, "algorithm.canny_max", int(args.canny_max))
 
     if args.min_area_ratio is not None:
-        _set_nested(settings_data, "algorithm.min_area_ratio", float(args.min_area_ratio))
+        _set_nested(
+            settings_data, "algorithm.min_area_ratio", float(args.min_area_ratio)
+        )
 
     if args.max_area_ratio is not None:
-        _set_nested(settings_data, "algorithm.max_area_ratio", float(args.max_area_ratio))
+        _set_nested(
+            settings_data, "algorithm.max_area_ratio", float(args.max_area_ratio)
+        )
 
     if args.bg_mask_delta is not None:
         _set_nested(settings_data, "algorithm.bg_mask_delta", float(args.bg_mask_delta))
@@ -189,7 +199,9 @@ def _apply_cli_overrides(settings_data: Dict[str, Any], args: argparse.Namespace
         _set_nested(settings_data, "face_detection.use_dnn", True)
 
     if args.face_min_size is not None:
-        _set_nested(settings_data, "face_detection.min_face_size", int(args.face_min_size))
+        _set_nested(
+            settings_data, "face_detection.min_face_size", int(args.face_min_size)
+        )
 
     if args.face_auto_center_crop:
         _set_nested(settings_data, "face_detection.auto_center_crop", True)
@@ -201,7 +213,9 @@ def _apply_cli_overrides(settings_data: Dict[str, Any], args: argparse.Namespace
         _set_nested(settings_data, "smart_enhancement.enabled", True)
 
     if args.smart_strength is not None:
-        _set_nested(settings_data, "smart_enhancement.strength", int(args.smart_strength))
+        _set_nested(
+            settings_data, "smart_enhancement.strength", int(args.smart_strength)
+        )
 
     if args.smart_no_exposure:
         _set_nested(settings_data, "smart_enhancement.adjust_exposure", False)

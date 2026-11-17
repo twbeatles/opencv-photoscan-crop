@@ -32,6 +32,7 @@ class LibraryRepositoryJobMixin:
             )
             conn.commit()
             return int(cur.lastrowid or 0)
+
     def finalize_job(
         self: LibraryRepositoryProtocol,
         job_id: int,
@@ -68,6 +69,7 @@ class LibraryRepositoryJobMixin:
                 ),
             )
             conn.commit()
+
     def add_job_item(
         self: LibraryRepositoryProtocol,
         *,
@@ -103,6 +105,7 @@ class LibraryRepositoryJobMixin:
             )
             conn.commit()
             return int(cur.lastrowid or 0)
+
     def upsert_variant(
         self: LibraryRepositoryProtocol,
         *,
@@ -171,6 +174,7 @@ class LibraryRepositoryJobMixin:
                 )
             conn.commit()
         return variant_id
+
     def create_review_item(
         self: LibraryRepositoryProtocol,
         *,
@@ -201,13 +205,16 @@ class LibraryRepositoryJobMixin:
                     int(job_item_id) if job_item_id is not None else None,
                     status,
                     reason,
-                    json.dumps(action_context or {}, ensure_ascii=False, sort_keys=True),
+                    json.dumps(
+                        action_context or {}, ensure_ascii=False, sort_keys=True
+                    ),
                     now,
                     now,
                 ),
             )
             conn.commit()
             return int(cur.lastrowid or 0)
+
     def update_review_status(
         self: LibraryRepositoryProtocol,
         review_id: int,
@@ -222,7 +229,9 @@ class LibraryRepositoryJobMixin:
                 "SELECT notes, action_context_json FROM review_items WHERE id = ?",
                 (int(review_id),),
             ).fetchone()
-            existing_notes = str(existing["notes"] or "") if existing is not None else ""
+            existing_notes = (
+                str(existing["notes"] or "") if existing is not None else ""
+            )
             existing_context = (
                 safe_json_loads(existing["action_context_json"], {})
                 if existing is not None
@@ -248,13 +257,19 @@ class LibraryRepositoryJobMixin:
                 ),
             )
             conn.commit()
-    def get_review_item(self: LibraryRepositoryProtocol, review_id: int) -> Optional[dict[str, Any]]:
+
+    def get_review_item(
+        self: LibraryRepositoryProtocol, review_id: int
+    ) -> Optional[dict[str, Any]]:
         rows = self.list_review_items(limit=2000)
         for row in rows:
             if int(row.get("id", 0) or 0) == int(review_id):
                 return row
         return None
-    def get_latest_variant_for_source(self: LibraryRepositoryProtocol, source_path: str) -> Optional[dict[str, Any]]:
+
+    def get_latest_variant_for_source(
+        self: LibraryRepositoryProtocol, source_path: str
+    ) -> Optional[dict[str, Any]]:
         normalized = os.path.abspath(str(source_path or ""))
         with self.store.connect() as conn:
             row = conn.execute(
@@ -276,7 +291,13 @@ class LibraryRepositoryJobMixin:
                 (normalized,),
             ).fetchone()
             return dict(row) if row is not None else None
-    def approve_reviews_for_source(self: LibraryRepositoryProtocol, source_path: str, *, variant_id: Optional[int] = None) -> None:
+
+    def approve_reviews_for_source(
+        self: LibraryRepositoryProtocol,
+        source_path: str,
+        *,
+        variant_id: Optional[int] = None,
+    ) -> None:
         normalized = os.path.abspath(str(source_path or ""))
         with self.store.write_connect() as conn:
             row = conn.execute(
@@ -305,7 +326,10 @@ class LibraryRepositoryJobMixin:
                     (int(variant_id), now_iso(), source_id),
                 )
             conn.commit()
-    def list_jobs(self: LibraryRepositoryProtocol, *, limit: int = 200) -> list[dict[str, Any]]:
+
+    def list_jobs(
+        self: LibraryRepositoryProtocol, *, limit: int = 200
+    ) -> list[dict[str, Any]]:
         with self.store.connect() as conn:
             rows = conn.execute(
                 """
@@ -322,7 +346,10 @@ class LibraryRepositoryJobMixin:
                 payload["summary"] = safe_json_loads(payload.get("summary_json"), {})
                 result.append(payload)
             return result
-    def get_job(self: LibraryRepositoryProtocol, job_id: int) -> Optional[dict[str, Any]]:
+
+    def get_job(
+        self: LibraryRepositoryProtocol, job_id: int
+    ) -> Optional[dict[str, Any]]:
         with self.store.connect() as conn:
             row = conn.execute(
                 "SELECT * FROM process_jobs WHERE id = ?",
@@ -333,6 +360,7 @@ class LibraryRepositoryJobMixin:
             payload = dict(row)
             payload["summary"] = safe_json_loads(payload.get("summary_json"), {})
             return payload
+
     def list_job_items(
         self: LibraryRepositoryProtocol,
         job_id: int,
@@ -366,7 +394,10 @@ class LibraryRepositoryJobMixin:
                 )
                 result.append(payload)
             return result
-    def list_review_items(self: LibraryRepositoryProtocol, *, limit: int = 500) -> list[dict[str, Any]]:
+
+    def list_review_items(
+        self: LibraryRepositoryProtocol, *, limit: int = 500
+    ) -> list[dict[str, Any]]:
         with self.store.connect() as conn:
             rows = conn.execute(
                 """
@@ -407,7 +438,10 @@ class LibraryRepositoryJobMixin:
                 )
                 result.append(payload)
             return result
-    def list_review_items_for_asset(self: LibraryRepositoryProtocol, asset_id: int) -> list[dict[str, Any]]:
+
+    def list_review_items_for_asset(
+        self: LibraryRepositoryProtocol, asset_id: int
+    ) -> list[dict[str, Any]]:
         with self.store.connect() as conn:
             rows = conn.execute(
                 """
@@ -444,7 +478,10 @@ class LibraryRepositoryJobMixin:
                 )
                 result.append(payload)
             return result
-    def list_job_items_for_asset(self: LibraryRepositoryProtocol, asset_id: int) -> list[dict[str, Any]]:
+
+    def list_job_items_for_asset(
+        self: LibraryRepositoryProtocol, asset_id: int
+    ) -> list[dict[str, Any]]:
         with self.store.connect() as conn:
             rows = conn.execute(
                 """

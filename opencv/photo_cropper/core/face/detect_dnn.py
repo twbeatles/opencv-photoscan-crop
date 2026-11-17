@@ -103,4 +103,4 @@ def detect_faces_dnn(
     return kept
 
 
-__all__ = ['detect_faces_dnn']
+__all__ = ["detect_faces_dnn"]

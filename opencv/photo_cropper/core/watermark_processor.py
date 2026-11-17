@@ -258,7 +258,9 @@ class WatermarkProcessor:
             out = cv2.cvtColor(np.array(combined), cv2.COLOR_RGB2BGR)
             return out
         except Exception as e:
-            logger.warning(f"Unicode watermark render failed, falling back to OpenCV: {e}")
+            logger.warning(
+                f"Unicode watermark render failed, falling back to OpenCV: {e}"
+            )
             return None
 
     def _get_cached_font(self, ImageFont, font_path: str, font_size: int):
@@ -571,7 +573,9 @@ class WatermarkProcessor:
             out = cv2.cvtColor(np.array(combined), cv2.COLOR_RGB2BGR)
             return out
         except Exception as e:
-            logger.warning(f"Unicode tiled watermark failed, falling back to OpenCV: {e}")
+            logger.warning(
+                f"Unicode tiled watermark failed, falling back to OpenCV: {e}"
+            )
             return None
 
     def preview_watermark(

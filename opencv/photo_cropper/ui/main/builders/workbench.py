@@ -43,7 +43,9 @@ from ...widgets.toggle_switch import ModernToggleSwitch
 from ..models import WindowRefs, WindowState
 
 
-def _action_button(refs: WindowRefs, key: str, text_key: str, slot, *, primary: bool = False):
+def _action_button(
+    refs: WindowRefs, key: str, text_key: str, slot, *, primary: bool = False
+):
     button = new_primary_button(t(text_key)) if primary else new_button(t(text_key))
     button.setMinimumHeight(CONTROL_HEIGHT_LG if primary else CONTROL_HEIGHT_MD)
     button.clicked.connect(slot)
@@ -88,7 +90,10 @@ def _build_setup_card(
     grid.addWidget(refs.input_path_edit, 0, 1)
     grid.addWidget(
         _action_button(
-            refs, "central.input_browse", "central.browse", input_actions.select_input_folder
+            refs,
+            "central.input_browse",
+            "central.browse",
+            input_actions.select_input_folder,
         ),
         0,
         2,
@@ -105,7 +110,10 @@ def _build_setup_card(
     grid.addWidget(refs.output_path_edit, 1, 1)
     grid.addWidget(
         _action_button(
-            refs, "central.output_browse", "central.change", input_actions.select_output_folder
+            refs,
+            "central.output_browse",
+            "central.change",
+            input_actions.select_output_folder,
         ),
         1,
         2,
@@ -145,7 +153,9 @@ def _build_setup_card(
     refs.multi_photo_quick_toggle = ModernToggleSwitch(t("central.multi_photo"))
     refs.multi_photo_quick_toggle.setToolTip(t("central.multi_photo.tooltip"))
     refs.multi_photo_quick_toggle.setChecked(bool(state.settings.multi_photo.enabled))
-    refs.multi_photo_quick_toggle.toggled.connect(settings_actions.set_multi_photo_enabled)
+    refs.multi_photo_quick_toggle.toggled.connect(
+        settings_actions.set_multi_photo_enabled
+    )
     options_row.addWidget(refs.multi_photo_quick_toggle)
     options_row.addStretch(1)
 
@@ -198,20 +208,30 @@ def _build_action_bar(
     layout.addWidget(refs.redetect_btn)
 
     refs.batch_failed_btn = _action_button(
-        refs, "central.batch_failed", "central.load_failed", batch_actions.toggle_review_list
+        refs,
+        "central.batch_failed",
+        "central.load_failed",
+        batch_actions.toggle_review_list,
     )
     refs.batch_failed_btn.setVisible(False)
     layout.addWidget(refs.batch_failed_btn)
 
     refs.batch_save_edits_btn = _action_button(
-        refs, "central.batch_save", "central.save_edits", batch_actions.save_batch_edited_crops
+        refs,
+        "central.batch_save",
+        "central.save_edits",
+        batch_actions.save_batch_edited_crops,
     )
     refs.batch_save_edits_btn.setToolTip(t("central.save_edits.tooltip"))
     refs.batch_save_edits_btn.setVisible(False)
     layout.addWidget(refs.batch_save_edits_btn)
 
     refs.process_btn = _action_button(
-        refs, "toolbar.start", "toolbar.start", batch_actions.start_from_ui, primary=True
+        refs,
+        "toolbar.start",
+        "toolbar.start",
+        batch_actions.start_from_ui,
+        primary=True,
     )
     refs.process_btn.setMinimumWidth(140)
     refs.process_btn.setToolTip(t("toolbar.start.tooltip"))
@@ -249,7 +269,9 @@ def build_workbench_page(
 
     preview_column = themed_splitter(Qt.Orientation.Vertical)
     refs.preview_widget = ImagePreviewWidget()
-    refs.preview_widget.contour_edited.connect(preview_actions.on_preview_contour_edited)
+    refs.preview_widget.contour_edited.connect(
+        preview_actions.on_preview_contour_edited
+    )
     preview_column.addWidget(refs.preview_widget)
 
     # Histogram is an expert aid; hidden until enabled from the View menu.

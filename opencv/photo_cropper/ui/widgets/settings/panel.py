@@ -97,11 +97,9 @@ class SettingsPanel(QWidget):
         """Create consolidated basic settings tab (post-processing + UI + output + filter)."""
         return create_basic_tab(self)
 
-
     def _create_algorithm_tab(self):
         """Create algorithm settings tab."""
         return create_algorithm_tab(self)
-
 
     # NOTE: _create_output_tab and _create_filter_tab removed.
     # Content moved into _create_basic_tab as CollapsibleSections.
@@ -110,11 +108,9 @@ class SettingsPanel(QWidget):
         """Create consolidated processing tab (watermark + resize + advanced)."""
         return create_processing_tab(self)
 
-
     def _create_management_tab(self):
         """Create consolidated management tab (automation + file management + performance)."""
         return create_management_tab(self)
-
 
     def _remove_language_listener(self, *_args):
         try:
@@ -188,57 +184,37 @@ class SettingsPanel(QWidget):
     def _load_settings(self, settings: AppSettings):
         return load_settings(self, settings)
 
-
     def _browse_watermark_font(self):
-
         """Browse for a font file (.ttf/.otf) for Unicode watermark rendering."""
 
         try:
-
             path, _ = QFileDialog.getOpenFileName(
-
                 self,
-
                 t("settings.watermark_font.dialog_title"),
-
                 "",
-
                 "Font Files (*.ttf *.otf);;All Files (*)",
-
             )
 
             if path:
-
                 self.watermark_font_path_edit.setText(path)
 
         except Exception:
-
             pass
 
-
-
     def _browse_debug_output_dir(self):
-
         """Browse for a directory to store detection debug artifacts."""
 
         try:
-
             path = QFileDialog.getExistingDirectory(
-
                 self,
-
                 t("settings.debug_output_dir.dialog_title"),
-
                 "",
-
             )
 
             if path:
-
                 self.debug_output_dir_edit.setText(path)
 
         except Exception:
-
             pass
 
     def _refresh_category_folder_defaults(self):
@@ -263,35 +239,28 @@ class SettingsPanel(QWidget):
         return retranslate_panel(self)
 
     def _on_language_changed(self, index: int):
-
         """Handle language selection change."""
 
         lang_code = self.language_combo.itemData(index)
 
         if lang_code:
-
             from ....i18n.catalog import set_language
 
             set_language(lang_code)
             self.retranslate_ui()
             self._on_setting_changed()
 
-
-
     def _create_ai_settings_tab(self):
         """Create v9.0 AI settings tab."""
         return create_ai_settings_tab(self)
-
 
     @staticmethod
     def _schedule_hint_text(schedule_type: str) -> str:
         return schedule_hint_text(schedule_type)
 
-
     def _on_schedule_type_changed(self, schedule_type: str):
         """Handle schedule type change to show/hide relevant controls."""
         return on_schedule_type_changed(self, schedule_type)
-
 
     # ========================================
     # Updated _build_settings for v8.0

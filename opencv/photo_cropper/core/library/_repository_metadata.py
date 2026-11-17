@@ -8,7 +8,9 @@ from ._repository_shared import now_iso, safe_json_loads
 
 
 class LibraryRepositoryMetadataMixin:
-    def create_collection(self: LibraryRepositoryProtocol, name: str, description: str = "") -> Optional[int]:
+    def create_collection(
+        self: LibraryRepositoryProtocol, name: str, description: str = ""
+    ) -> Optional[int]:
         text = str(name or "").strip()
         if not text:
             return None
@@ -29,11 +31,16 @@ class LibraryRepositoryMetadataMixin:
             )
             conn.commit()
             return int(cur.lastrowid or 0)
+
     def delete_collection(self: LibraryRepositoryProtocol, collection_id: int) -> None:
         with self.store.write_connect() as conn:
-            conn.execute("DELETE FROM collection_assets WHERE collection_id = ?", (int(collection_id),))
+            conn.execute(
+                "DELETE FROM collection_assets WHERE collection_id = ?",
+                (int(collection_id),),
+            )
             conn.execute("DELETE FROM collections WHERE id = ?", (int(collection_id),))
             conn.commit()
+
     def list_collections(self: LibraryRepositoryProtocol) -> list[dict[str, Any]]:
         with self.store.connect() as conn:
             rows = conn.execute(
@@ -50,7 +57,10 @@ class LibraryRepositoryMetadataMixin:
                 """
             ).fetchall()
             return [dict(row) for row in rows]
-    def list_collections_for_asset(self: LibraryRepositoryProtocol, asset_id: int) -> list[dict[str, Any]]:
+
+    def list_collections_for_asset(
+        self: LibraryRepositoryProtocol, asset_id: int
+    ) -> list[dict[str, Any]]:
         with self.store.connect() as conn:
             rows = conn.execute(
                 """
@@ -63,7 +73,10 @@ class LibraryRepositoryMetadataMixin:
                 (int(asset_id),),
             ).fetchall()
             return [dict(row) for row in rows]
-    def add_asset_to_collection(self: LibraryRepositoryProtocol, asset_id: int, collection_id: int) -> None:
+
+    def add_asset_to_collection(
+        self: LibraryRepositoryProtocol, asset_id: int, collection_id: int
+    ) -> None:
         with self.store.write_connect() as conn:
             conn.execute(
                 """
@@ -78,7 +91,10 @@ class LibraryRepositoryMetadataMixin:
             )
             conn.commit()
         self.refresh_search_index(asset_id)
-    def add_assets_to_collection(self: LibraryRepositoryProtocol, asset_ids: list[int], collection_id: int) -> int:
+
+    def add_assets_to_collection(
+        self: LibraryRepositoryProtocol, asset_ids: list[int], collection_id: int
+    ) -> int:
         unique_ids = sorted({int(item) for item in asset_ids if int(item) > 0})
         if not unique_ids:
             return 0
@@ -99,7 +115,10 @@ class LibraryRepositoryMetadataMixin:
         for asset_id in unique_ids:
             self.refresh_search_index(asset_id)
         return len(unique_ids)
-    def remove_asset_from_collection(self: LibraryRepositoryProtocol, asset_id: int, collection_id: int) -> None:
+
+    def remove_asset_from_collection(
+        self: LibraryRepositoryProtocol, asset_id: int, collection_id: int
+    ) -> None:
         with self.store.write_connect() as conn:
             conn.execute(
                 "DELETE FROM collection_assets WHERE collection_id = ? AND asset_id = ?",
@@ -111,12 +130,17 @@ class LibraryRepositoryMetadataMixin:
             )
             conn.commit()
         self.refresh_search_index(asset_id)
-    def ensure_tag(self: LibraryRepositoryProtocol, name: str, *, kind: str = "user") -> Optional[int]:
+
+    def ensure_tag(
+        self: LibraryRepositoryProtocol, name: str, *, kind: str = "user"
+    ) -> Optional[int]:
         text = str(name or "").strip()
         if not text:
             return None
         with self.store.write_connect() as conn:
-            existing = conn.execute("SELECT id FROM tags WHERE name = ?", (text,)).fetchone()
+            existing = conn.execute(
+                "SELECT id FROM tags WHERE name = ?", (text,)
+            ).fetchone()
             if existing is not None:
                 return int(existing["id"])
             cur = conn.execute(
@@ -125,7 +149,10 @@ class LibraryRepositoryMetadataMixin:
             )
             conn.commit()
             return int(cur.lastrowid or 0)
-    def list_tags_for_asset(self: LibraryRepositoryProtocol, asset_id: int) -> list[dict[str, Any]]:
+
+    def list_tags_for_asset(
+        self: LibraryRepositoryProtocol, asset_id: int
+    ) -> list[dict[str, Any]]:
         with self.store.connect() as conn:
             rows = conn.execute(
                 """
@@ -138,6 +165,7 @@ class LibraryRepositoryMetadataMixin:
                 (int(asset_id),),
             ).fetchall()
             return [dict(row) for row in rows]
+
     def list_tags(self: LibraryRepositoryProtocol) -> list[dict[str, Any]]:
         with self.store.connect() as conn:
             rows = conn.execute(
@@ -156,10 +184,15 @@ class LibraryRepositoryMetadataMixin:
                 """
             ).fetchall()
             return [dict(row) for row in rows]
-    def clear_asset_tags(self: LibraryRepositoryProtocol, asset_id: int, *, source: Optional[str] = None) -> None:
+
+    def clear_asset_tags(
+        self: LibraryRepositoryProtocol, asset_id: int, *, source: Optional[str] = None
+    ) -> None:
         with self.store.write_connect() as conn:
             if source is None:
-                conn.execute("DELETE FROM asset_tags WHERE asset_id = ?", (int(asset_id),))
+                conn.execute(
+                    "DELETE FROM asset_tags WHERE asset_id = ?", (int(asset_id),)
+                )
             else:
                 conn.execute(
                     "DELETE FROM asset_tags WHERE asset_id = ? AND source = ?",
@@ -167,6 +200,7 @@ class LibraryRepositoryMetadataMixin:
                 )
             conn.commit()
         self.refresh_search_index(asset_id)
+
     def add_asset_tag(
         self: LibraryRepositoryProtocol,
         asset_id: int,
@@ -189,7 +223,10 @@ class LibraryRepositoryMetadataMixin:
             )
             conn.commit()
         self.refresh_search_index(asset_id)
-    def remove_asset_tag(self: LibraryRepositoryProtocol, asset_id: int, tag_name: str) -> None:
+
+    def remove_asset_tag(
+        self: LibraryRepositoryProtocol, asset_id: int, tag_name: str
+    ) -> None:
         text = str(tag_name or "").strip()
         if not text:
             return
@@ -205,7 +242,13 @@ class LibraryRepositoryMetadataMixin:
             )
             conn.commit()
         self.refresh_search_index(asset_id)
-    def clear_faces(self: LibraryRepositoryProtocol, asset_id: int, *, variant_id: Optional[int] = None) -> None:
+
+    def clear_faces(
+        self: LibraryRepositoryProtocol,
+        asset_id: int,
+        *,
+        variant_id: Optional[int] = None,
+    ) -> None:
         with self.store.write_connect() as conn:
             if variant_id is None:
                 conn.execute("DELETE FROM faces WHERE asset_id = ?", (int(asset_id),))
@@ -215,7 +258,13 @@ class LibraryRepositoryMetadataMixin:
                     (int(asset_id), int(variant_id)),
                 )
             conn.commit()
-    def clear_person_links(self: LibraryRepositoryProtocol, asset_id: int, *, variant_id: Optional[int] = None) -> None:
+
+    def clear_person_links(
+        self: LibraryRepositoryProtocol,
+        asset_id: int,
+        *,
+        variant_id: Optional[int] = None,
+    ) -> None:
         with self.store.write_connect() as conn:
             if variant_id is None:
                 conn.execute(
@@ -238,6 +287,7 @@ class LibraryRepositoryMetadataMixin:
                     (int(asset_id), int(variant_id)),
                 )
             conn.commit()
+
     def add_face(
         self: LibraryRepositoryProtocol,
         *,
@@ -274,6 +324,7 @@ class LibraryRepositoryMetadataMixin:
             )
             conn.commit()
             return int(cur.lastrowid or 0)
+
     def upsert_person(
         self: LibraryRepositoryProtocol,
         *,
@@ -315,6 +366,7 @@ class LibraryRepositoryMetadataMixin:
                 person_id = int(cur.lastrowid or 0)
             conn.commit()
             return person_id
+
     def link_person_face(
         self: LibraryRepositoryProtocol,
         *,
@@ -331,6 +383,7 @@ class LibraryRepositoryMetadataMixin:
                 (int(face_id), int(person_id), float(confidence), now_iso()),
             )
             conn.commit()
+
     def add_ocr_document(
         self: LibraryRepositoryProtocol,
         *,
@@ -361,6 +414,7 @@ class LibraryRepositoryMetadataMixin:
             document_id = int(cur.lastrowid or 0)
         self.refresh_search_index(asset_id)
         return document_id
+
     def clear_ocr_documents(self: LibraryRepositoryProtocol, asset_id: int) -> None:
         with self.store.write_connect() as conn:
             conn.execute(
@@ -369,7 +423,10 @@ class LibraryRepositoryMetadataMixin:
             )
             conn.commit()
         self.refresh_search_index(asset_id)
-    def list_ocr_documents(self: LibraryRepositoryProtocol, asset_id: int) -> list[dict[str, Any]]:
+
+    def list_ocr_documents(
+        self: LibraryRepositoryProtocol, asset_id: int
+    ) -> list[dict[str, Any]]:
         with self.store.connect() as conn:
             rows = conn.execute(
                 """
@@ -386,7 +443,10 @@ class LibraryRepositoryMetadataMixin:
                 payload["metadata"] = safe_json_loads(payload.get("metadata_json"), {})
                 result.append(payload)
             return result
-    def list_faces_for_asset(self: LibraryRepositoryProtocol, asset_id: int) -> list[dict[str, Any]]:
+
+    def list_faces_for_asset(
+        self: LibraryRepositoryProtocol, asset_id: int
+    ) -> list[dict[str, Any]]:
         with self.store.connect() as conn:
             rows = conn.execute(
                 """
@@ -413,7 +473,10 @@ class LibraryRepositoryMetadataMixin:
                 payload["metadata"] = safe_json_loads(payload.get("metadata_json"), {})
                 result.append(payload)
             return result
-    def list_people_for_asset(self: LibraryRepositoryProtocol, asset_id: int) -> list[dict[str, Any]]:
+
+    def list_people_for_asset(
+        self: LibraryRepositoryProtocol, asset_id: int
+    ) -> list[dict[str, Any]]:
         with self.store.connect() as conn:
             rows = conn.execute(
                 """

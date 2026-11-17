@@ -79,10 +79,13 @@ class ManagementRuntimeMixin:
             ToastManager.warning(t("management.window.review_reprocess.start_failed"))
             return
         self.refresh_management_views()
+
     def run_job_rerun(self, job_id: int, *, failed_only: bool = False) -> None:
         if self.services.job_orchestrator is None:
             return
-        spec = self.services.job_orchestrator.prepare_job_rerun(job_id, failed_only=failed_only)
+        spec = self.services.job_orchestrator.prepare_job_rerun(
+            job_id, failed_only=failed_only
+        )
         if spec is None:
             ToastManager.warning(t("management.window.rerun.job_missing"))
             return
@@ -129,7 +132,9 @@ class ManagementRuntimeMixin:
             try:
                 set_busy(bool(busy))
             except Exception:
-                logger.debug("Failed to update management page busy state", exc_info=True)
+                logger.debug(
+                    "Failed to update management page busy state", exc_info=True
+                )
 
     def run_library_import_job(self, folder: str, recursive: bool) -> None:
         if self.services.job_orchestrator is None:
@@ -154,7 +159,10 @@ class ManagementRuntimeMixin:
 
         threading.Thread(target=worker, daemon=True).start()
         ToastManager.info(
-            t("management.window.maintenance.started", task=_management_job_label("maintenance_library_import"))
+            t(
+                "management.window.maintenance.started",
+                task=_management_job_label("maintenance_library_import"),
+            )
         )
 
     def run_maintenance_job(self, job_kind: str) -> None:
@@ -177,10 +185,15 @@ class ManagementRuntimeMixin:
 
         threading.Thread(target=worker, daemon=True).start()
         ToastManager.info(
-            t("management.window.maintenance.started", task=_management_job_label(job_kind))
+            t(
+                "management.window.maintenance.started",
+                task=_management_job_label(job_kind),
+            )
         )
 
-    def _on_watch_result(self, source_path: str, output_path: str, result: object) -> None:
+    def _on_watch_result(
+        self, source_path: str, output_path: str, result: object
+    ) -> None:
         if self.services.job_orchestrator is None:
             return
         try:
@@ -198,7 +211,9 @@ class ManagementRuntimeMixin:
     def _on_management_task_finished(self, job_kind: str) -> None:
         if str(job_kind or "").startswith("maintenance_library_import"):
             self._set_management_page_busy("library", False)
-        if str(job_kind or "").startswith(("maintenance_exact_duplicates", "maintenance_near_duplicates")):
+        if str(job_kind or "").startswith(
+            ("maintenance_exact_duplicates", "maintenance_near_duplicates")
+        ):
             self._set_management_page_busy("duplicates", False)
         self.refresh_management_views()
         failed = str(job_kind or "").endswith(":failed")

@@ -124,7 +124,9 @@ def build_library_page_ui(page) -> None:
     self.name_label = QLabel("-")
     self.path_label = QLabel("-")
     self.path_label.setWordWrap(True)
-    self.path_label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+    self.path_label.setTextInteractionFlags(
+        Qt.TextInteractionFlag.TextSelectableByMouse
+    )
     self.size_label = QLabel("-")
     self.tag_label = QLabel("-")
     self.collections_label = QLabel("-")

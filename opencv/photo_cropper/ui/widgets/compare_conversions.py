@@ -9,7 +9,7 @@ def numpy_to_qpixmap(image: np.ndarray) -> QPixmap:
     """Convert numpy array to QPixmap."""
     if image is None:
         return QPixmap()
-    
+
     if len(image.shape) == 2:
         gray = np.ascontiguousarray(image)
         height, width = gray.shape
@@ -43,5 +43,5 @@ def numpy_to_qpixmap(image: np.ndarray) -> QPixmap:
                 bytes_per_line,
                 QImage.Format.Format_RGB888,
             )
-    
+
     return QPixmap.fromImage(qimage.copy())

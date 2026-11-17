@@ -214,4 +214,3 @@ class WatchModeCoordinator(QObject):
                 "status": "process_exception",
                 "message": str(exc),
             }
-

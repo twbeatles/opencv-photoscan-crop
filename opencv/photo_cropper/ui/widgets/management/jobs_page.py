@@ -103,7 +103,9 @@ class JobsPage(QWidget):
         output_path = str(row.get("output_path", "") or "")
         if not output_path:
             return
-        target = output_path if os.path.isdir(output_path) else os.path.dirname(output_path)
+        target = (
+            output_path if os.path.isdir(output_path) else os.path.dirname(output_path)
+        )
         if target and os.path.exists(target):
             open_file_explorer(target)
 

@@ -40,7 +40,9 @@ class RecipeManagerMigrationMixin:
                 return self._repository.get_app_state("recipes_legacy_migrated", "")
             except Exception:
                 logger.debug("Failed to read recipe migration flag", exc_info=True)
-        return self._fallback_cache.get("__meta__", {}).get("recipes_legacy_migrated", "")
+        return self._fallback_cache.get("__meta__", {}).get(
+            "recipes_legacy_migrated", ""
+        )
 
     def _set_migration_flag(self, value: str) -> None:
         if self._repository is not None:

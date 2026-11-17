@@ -261,7 +261,7 @@ TRANSLATIONS.update(
         "settings.notification_enable.tooltip": "자르기가 끝나면 시스템 알림으로 알려 줍니다.",
         "settings.notification_sound": "알림 소리 재생",
         "settings.notification_error_only": "오류 시에만 알림",
-        "settings.validation.naming": "파일명 접두사/접미사는 안전한 파일명 조각이어야 합니다. 폴더 구분자, 예약어, 드라이브/UNC 경로, 제어문자, 끝 공백/점, <>:\"/\\|?* 는 사용할 수 없습니다.",
+        "settings.validation.naming": '파일명 접두사/접미사는 안전한 파일명 조각이어야 합니다. 폴더 구분자, 예약어, 드라이브/UNC 경로, 제어문자, 끝 공백/점, <>:"/\\|?* 는 사용할 수 없습니다.',
         "settings.validation.classification": "분류 폴더명은 안전한 단일 폴더명이어야 합니다. 폴더 구분자, '..', 드라이브/UNC 경로, 예약어, 제어문자, 끝 공백/점, <>:\"/\\|?* 는 사용할 수 없습니다.",
         "progress.window.running": "처리 중...",
         "progress.window.cancelled": "처리 중단됨",

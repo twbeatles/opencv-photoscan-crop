@@ -15,6 +15,7 @@ from .types import SUPPORTED_EXTENSIONS
 
 logger = logging.getLogger(__name__)
 
+
 class FolderWatcher(QObject):
     """Watch a directory tree and emit new image events with debounce."""
 
@@ -161,7 +162,9 @@ class FolderWatcher(QObject):
                     continue
                 for filename in files:
                     filepath = os.path.join(root, filename)
-                    if self._is_image_file(filepath) and not self._is_excluded_path(filepath):
+                    if self._is_image_file(filepath) and not self._is_excluded_path(
+                        filepath
+                    ):
                         self._track_known_file(filepath)
         else:
             for filename in os.listdir(self._watch_path):

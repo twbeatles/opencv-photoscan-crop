@@ -260,7 +260,7 @@ TRANSLATIONS = {
     "settings.notification_enable.tooltip": "Show a system notification when batch work completes.",
     "settings.notification_sound": "Play notification sound",
     "settings.notification_error_only": "Notify only on errors",
-    "settings.validation.naming": "Naming prefix/suffix must be a safe filename fragment. Folder separators, reserved names, drive/UNC paths, control characters, trailing spaces/dots, and <>:\"/\\|?* are not allowed.",
+    "settings.validation.naming": 'Naming prefix/suffix must be a safe filename fragment. Folder separators, reserved names, drive/UNC paths, control characters, trailing spaces/dots, and <>:"/\\|?* are not allowed.',
     "settings.validation.classification": "Category folders must be a single safe folder name. Folder separators, '..', drive/UNC paths, reserved names, control characters, trailing spaces/dots, and <>:\"/\\|?* are not allowed.",
     "progress.window.running": "Processing...",
     "progress.window.cancelled": "Cancelled",

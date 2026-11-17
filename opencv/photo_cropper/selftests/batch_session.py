@@ -37,7 +37,9 @@ def _test_batch_session_service_reentry_guard() -> None:
     except RuntimeError as exc:
         assert "already running" in str(exc)
     else:
-        raise AssertionError("Expected batch session reentry guard to raise RuntimeError")
+        raise AssertionError(
+            "Expected batch session reentry guard to raise RuntimeError"
+        )
 
     assert service.processor is dummy
     assert dummy.cleaned is False
@@ -75,7 +77,9 @@ def _test_batch_thread_local_reuse() -> None:
                 )
             )
         first = samples[0]
-        assert all(item == first for item in samples), "Thread-local object churn detected"
+        assert all(item == first for item in samples), (
+            "Thread-local object churn detected"
+        )
         return threading.get_ident(), first
 
     with ThreadPoolExecutor(max_workers=4) as executor:
@@ -152,7 +156,11 @@ def _test_output_reservation_is_thread_safe() -> None:
     with tempfile.TemporaryDirectory(prefix="photocropper_reserve_") as td:
         target = os.path.join(td, "same.jpg")
         with ThreadPoolExecutor(max_workers=8) as executor:
-            paths = list(executor.map(lambda _idx: processor._ensure_unique_output_path(target), range(8)))
+            paths = list(
+                executor.map(
+                    lambda _idx: processor._ensure_unique_output_path(target), range(8)
+                )
+            )
         assert len(set(paths)) == 8
         assert paths[0] == target
 

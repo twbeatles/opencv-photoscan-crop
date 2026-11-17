@@ -5,6 +5,7 @@ from enum import Enum
 
 class EditMode(Enum):
     """Editing mode enumeration."""
+
     NONE = "none"
     RECTANGLE = "rectangle"
     PERSPECTIVE = "perspective"
@@ -13,6 +14,7 @@ class EditMode(Enum):
 
 class HandlePosition(Enum):
     """Corner handle position."""
+
     TOP_LEFT = 0
     TOP_RIGHT = 1
     BOTTOM_RIGHT = 2

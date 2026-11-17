@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """Free-angle rotation operations."""
+
 from __future__ import annotations
 
 from typing import Tuple
@@ -13,9 +14,12 @@ class RotateOpsMixin:
     """Rotation operations for AdvancedImageProcessor."""
 
     @staticmethod
-    def rotate_free(image: np.ndarray, angle: float,
-                    background_color: Tuple[int, int, int] = (255, 255, 255),
-                    expand: bool = True) -> np.ndarray:
+    def rotate_free(
+        image: np.ndarray,
+        angle: float,
+        background_color: Tuple[int, int, int] = (255, 255, 255),
+        expand: bool = True,
+    ) -> np.ndarray:
         """
         Rotate image by arbitrary angle.
 
@@ -54,10 +58,12 @@ class RotateOpsMixin:
 
         # Perform rotation
         rotated = cv2.warpAffine(
-            image, rotation_matrix, output_size,
+            image,
+            rotation_matrix,
+            output_size,
             flags=cv2.INTER_LINEAR,
             borderMode=cv2.BORDER_CONSTANT,
-            borderValue=background_color
+            borderValue=background_color,
         )
 
         return rotated

@@ -7,7 +7,9 @@ from ._repository_shared import now_iso
 
 
 class LibraryRepositoryAssetSearchMixin:
-    def _asset_search_fields(self: LibraryRepositoryProtocol, conn: Any, asset_id: int) -> dict[str, str]:
+    def _asset_search_fields(
+        self: LibraryRepositoryProtocol, conn: Any, asset_id: int
+    ) -> dict[str, str]:
         row = conn.execute(
             """
             SELECT
@@ -63,6 +65,7 @@ class LibraryRepositoryAssetSearchMixin:
             "collections": " ".join(collections),
             "ocr_text": ocr_text,
         }
+
     def refresh_search_index(self: LibraryRepositoryProtocol, asset_id: int) -> None:
         if not self.fts_enabled:
             self.mark_search_index_dirty()
@@ -88,6 +91,7 @@ class LibraryRepositoryAssetSearchMixin:
                 conn.commit()
         except Exception:
             self.mark_search_index_dirty()
+
     def mark_search_index_dirty(self: LibraryRepositoryProtocol) -> None:
         with self.store.write_connect() as conn:
             conn.execute(
@@ -99,6 +103,7 @@ class LibraryRepositoryAssetSearchMixin:
                 (now_iso(),),
             )
             conn.commit()
+
     def clear_search_index_dirty(self: LibraryRepositoryProtocol) -> None:
         with self.store.write_connect() as conn:
             conn.execute(
@@ -110,12 +115,14 @@ class LibraryRepositoryAssetSearchMixin:
                 (now_iso(),),
             )
             conn.commit()
+
     def get_search_index_dirty(self: LibraryRepositoryProtocol) -> bool:
         with self.store.connect() as conn:
             row = conn.execute(
                 "SELECT value FROM app_state WHERE key = 'search_index_dirty'"
             ).fetchone()
             return str(row["value"] or "") == "1" if row is not None else False
+
     def rebuild_search_index(self: LibraryRepositoryProtocol) -> int:
         if not self.fts_enabled:
             self.mark_search_index_dirty()
@@ -152,6 +159,7 @@ class LibraryRepositoryAssetSearchMixin:
             )
             conn.commit()
             return len(asset_ids)
+
     def search_asset_ids(self: LibraryRepositoryProtocol, text: str) -> list[int]:
         query = str(text or "").strip()
         if not query:
@@ -187,7 +195,10 @@ class LibraryRepositoryAssetSearchMixin:
                 (like, like, like, like, like, like),
             ).fetchall()
             return [int(row["asset_id"]) for row in rows]
-    def set_asset_note(self: LibraryRepositoryProtocol, asset_id: int, note: str) -> None:
+
+    def set_asset_note(
+        self: LibraryRepositoryProtocol, asset_id: int, note: str
+    ) -> None:
         with self.store.write_connect() as conn:
             conn.execute(
                 "UPDATE assets SET note = ?, updated_at = ? WHERE id = ?",

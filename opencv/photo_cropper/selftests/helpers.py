@@ -13,6 +13,7 @@ class _SignalRecorder:
     def emit(self, *args, **kwargs) -> None:
         self.calls.append((args, kwargs))
 
+
 def _ensure_qt_app(context: str):
     import os
 

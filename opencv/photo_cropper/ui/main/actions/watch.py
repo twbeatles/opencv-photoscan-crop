@@ -67,15 +67,22 @@ class WatchActions:
         self._scheduler_task_id = None
 
         watch_settings = getattr(self.state.settings, "watch_mode", None)
-        if not watch_settings or not bool(getattr(watch_settings, "scheduler_enabled", False)):
+        if not watch_settings or not bool(
+            getattr(watch_settings, "scheduler_enabled", False)
+        ):
             return
 
         schedule_type = self.resolve_schedule_type(
             str(getattr(watch_settings, "schedule_type", "interval"))
         )
-        schedule_time_text = str(getattr(watch_settings, "schedule_time", "00:00") or "00:00")
+        schedule_time_text = str(
+            getattr(watch_settings, "schedule_time", "00:00") or "00:00"
+        )
         schedule_time = QTime.fromString(schedule_time_text, "HH:mm")
-        if schedule_type in (ScheduleType.DAILY, ScheduleType.ONCE) and not schedule_time.isValid():
+        if (
+            schedule_type in (ScheduleType.DAILY, ScheduleType.ONCE)
+            and not schedule_time.isValid()
+        ):
             logger.warning("Scheduler time is invalid: %s", schedule_time_text)
             if self.refs.status_label is not None:
                 self.refs.status_label.setText(
@@ -83,10 +90,16 @@ class WatchActions:
                 )
             return
 
-        interval_minutes = int(getattr(watch_settings, "schedule_interval_minutes", 60) or 60)
+        interval_minutes = int(
+            getattr(watch_settings, "schedule_interval_minutes", 60) or 60
+        )
         interval_minutes = max(5, min(1440, interval_minutes))
-        input_path = self.refs.input_path_edit.text() if self.refs.input_path_edit else ""
-        output_path = self.refs.output_path_edit.text() if self.refs.output_path_edit else ""
+        input_path = (
+            self.refs.input_path_edit.text() if self.refs.input_path_edit else ""
+        )
+        output_path = (
+            self.refs.output_path_edit.text() if self.refs.output_path_edit else ""
+        )
 
         task = ScheduleTask(
             task_id="",
@@ -154,7 +167,9 @@ class WatchActions:
         resolved = self.batch_runtime.resolve_io_paths(
             input_path=input_path,
             output_path=output_path,
-            recursive=bool(getattr(self.state.settings.file_management, "recursive_search", False)),
+            recursive=bool(
+                getattr(self.state.settings.file_management, "recursive_search", False)
+            ),
             failed_folder_name=self.state.settings.file_management.failed_folder_name,
         )
         if not resolved.ok:
@@ -167,7 +182,9 @@ class WatchActions:
         input_path = resolved.input_path
         output_path = resolved.output_path
 
-        recursive = bool(getattr(self.state.settings.file_management, "recursive_search", False))
+        recursive = bool(
+            getattr(self.state.settings.file_management, "recursive_search", False)
+        )
 
         excluded_roots = (
             build_recursive_excluded_roots(
@@ -260,8 +277,12 @@ class WatchActions:
             )
             return
 
-        input_path = self.refs.input_path_edit.text() if self.refs.input_path_edit else ""
-        output_path = self.refs.output_path_edit.text() if self.refs.output_path_edit else ""
+        input_path = (
+            self.refs.input_path_edit.text() if self.refs.input_path_edit else ""
+        )
+        output_path = (
+            self.refs.output_path_edit.text() if self.refs.output_path_edit else ""
+        )
         watch_settings = getattr(self.state.settings, "watch_mode", None)
 
         start_result = self.services.watch_mode_coordinator.start(
@@ -293,8 +314,7 @@ class WatchActions:
                 QMessageBox.warning(
                     self.services.host_window,
                     self.messages.warning_title,
-                    start_result.message
-                    or t("watch.start.unsafe_output"),
+                    start_result.message or t("watch.start.unsafe_output"),
                 )
                 if start_result.message and self.refs.status_label is not None:
                     self.refs.status_label.setText(
@@ -391,9 +411,7 @@ class WatchActions:
                     wait=wait_text,
                 )
             )
-        ToastManager.warning(
-            t("watch.toast.failed", filename=filename, detail=detail)
-        )
+        ToastManager.warning(t("watch.toast.failed", filename=filename, detail=detail))
 
     def on_watch_queue_metrics(self, queue_size: int, avg_wait_ms: int) -> None:
         if not self.services.watch_mode_coordinator.is_active:

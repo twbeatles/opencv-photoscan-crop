@@ -13,12 +13,13 @@ from typing import List, Optional, Tuple
 @dataclass
 class FaceRect:
     """Face detection result."""
+
     x: int
     y: int
     width: int
     height: int
     confidence: float = 1.0
-    eyes: List['EyeRect'] = field(default_factory=list)
+    eyes: List["EyeRect"] = field(default_factory=list)
 
     @property
     def center(self) -> Tuple[int, int]:
@@ -38,6 +39,7 @@ class FaceRect:
 @dataclass
 class EyeRect:
     """Eye detection result."""
+
     x: int
     y: int
     width: int
@@ -52,6 +54,7 @@ class EyeRect:
 @dataclass
 class FaceDetectionResult:
     """Complete face detection result."""
+
     faces: List[FaceRect]
     image_size: Tuple[int, int]
     suggested_crop: Optional[Tuple[int, int, int, int]] = None  # x, y, w, h
@@ -70,4 +73,4 @@ class FaceDetectionResult:
         return max(self.faces, key=lambda f: f.area)
 
 
-__all__ = ['FaceRect', 'EyeRect', 'FaceDetectionResult']
+__all__ = ["FaceRect", "EyeRect", "FaceDetectionResult"]

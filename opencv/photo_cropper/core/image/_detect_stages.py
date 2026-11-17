@@ -111,6 +111,7 @@ class ImageDetectionStageMixin:
             )
         edge_map = cv2.dilate(edge_map, self._kernel_3x3, iterations=1)
         return self._detect_rectangle_by_hough(edge_map)
+
     def _build_hough_quad_from_groups(
         self: Any,
         group_a: List[Dict[str, Any]],
@@ -164,7 +165,10 @@ class ImageDetectionStageMixin:
         if np.any(np.isnan(quad)):
             return None
         return quad
-    def _detect_rectangle_by_hough(self: Any, edges: np.ndarray) -> Optional[np.ndarray]:
+
+    def _detect_rectangle_by_hough(
+        self: Any, edges: np.ndarray
+    ) -> Optional[np.ndarray]:
         """
         Detect a rectangle using Hough lines as a fallback when contours are broken.
         Returns quad points (4x2) or None.
@@ -224,10 +228,14 @@ class ImageDetectionStageMixin:
             theta_a = (idx + 0.5) * bin_size
             theta_b = (theta_a + 90.0) % 180.0
             group_a = [
-                ln for ln in parsed if self._angle_diff_deg(float(ln["angle"]), theta_a) <= 18.0
+                ln
+                for ln in parsed
+                if self._angle_diff_deg(float(ln["angle"]), theta_a) <= 18.0
             ]
             group_b = [
-                ln for ln in parsed if self._angle_diff_deg(float(ln["angle"]), theta_b) <= 18.0
+                ln
+                for ln in parsed
+                if self._angle_diff_deg(float(ln["angle"]), theta_b) <= 18.0
             ]
 
             quad = self._build_hough_quad_from_groups(
@@ -237,6 +245,7 @@ class ImageDetectionStageMixin:
                 return quad
 
         return None
+
     def detect_edges_multiscale(self: Any, gray: np.ndarray) -> np.ndarray:
         """
         Multi-scale Canny edge detection.
@@ -279,6 +288,7 @@ class ImageDetectionStageMixin:
         edges = cv2.dilate(edges, self._kernel_3x3, iterations=1)
 
         return edges
+
     def _prepare_detection_image(
         self: Any, image: np.ndarray
     ) -> Tuple[np.ndarray, float]:

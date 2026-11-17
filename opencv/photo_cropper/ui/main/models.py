@@ -70,9 +70,7 @@ class WindowState:
     # True while the list shows only scans that need a manual check.
     review_list_active: bool = False
     manual_extract_thread: Optional[threading.Thread] = None
-    manual_extract_stop_event: threading.Event = field(
-        default_factory=threading.Event
-    )
+    manual_extract_stop_event: threading.Event = field(default_factory=threading.Event)
     manual_extract_running: bool = False
     multi_compare_window: Optional[Any] = None
     active_recipe_name: str = ""

@@ -135,8 +135,7 @@ def _test_recursive_scan_excludes_internal_generated_dirs() -> None:
             excluded_roots=excluded,
         )
         rel_paths = {
-            os.path.relpath(path, input_dir).replace("\\", "/")
-            for path in scanned
+            os.path.relpath(path, input_dir).replace("\\", "/") for path in scanned
         }
         assert rel_paths == {"root.jpg", "keep/nested/keep.jpg"}
 
@@ -266,7 +265,9 @@ def _test_retry_failed_files_normalizes_empty_output_path() -> None:
     )
     actions = BatchActions(state=state, refs=refs, services=services, signals=signals)
     progress_paths = []
-    actions._create_progress_dialog = lambda output_path: progress_paths.append(output_path)
+    actions._create_progress_dialog = lambda output_path: progress_paths.append(
+        output_path
+    )
 
     original_question = QMessageBox.question
     original_warning = QMessageBox.warning
@@ -380,9 +381,17 @@ def _test_skip_processed_with_classification_subfolder() -> None:
             source_path=None,
             preserve_metadata=False,
         ):
-            del output_format, png_compression, webp_quality, source_path, preserve_metadata
+            del (
+                output_format,
+                png_compression,
+                webp_quality,
+                source_path,
+                preserve_metadata,
+            )
             os.makedirs(os.path.dirname(output_path), exist_ok=True)
-            ok, buf = cv2.imencode(".jpg", image, [cv2.IMWRITE_JPEG_QUALITY, int(jpg_quality)])
+            ok, buf = cv2.imencode(
+                ".jpg", image, [cv2.IMWRITE_JPEG_QUALITY, int(jpg_quality)]
+            )
             if not ok:
                 return False, "encode failed", 0.0
             buf.tofile(output_path)

@@ -13,6 +13,7 @@ logger = logging.getLogger(__name__)
 class ImageDebugMixin:
     def _debug_enabled(self: Any, debug_dir: Optional[str]) -> bool:
         return bool(self.debug.enabled and debug_dir is not None)
+
     def _resolve_debug_root(self: Any, base_output_dir: Optional[str]) -> str:
         """
         Resolve debug root directory.
@@ -26,10 +27,15 @@ class ImageDebugMixin:
         elif base_output_dir:
             root = os.path.join(base_output_dir, "_debug")
         else:
-            temp = os.environ.get("TEMP") or os.environ.get("TMP") or os.path.expanduser("~")
+            temp = (
+                os.environ.get("TEMP")
+                or os.environ.get("TMP")
+                or os.path.expanduser("~")
+            )
             root = os.path.join(temp, "PhotoCropper", "_debug")
         os.makedirs(root, exist_ok=True)
         return root
+
     def _prune_debug_root(self: Any, root: str):
         """Best-effort pruning of debug folders under root based on mtime."""
         try:
@@ -68,6 +74,7 @@ class ImageDebugMixin:
                     pass
         except Exception:
             pass
+
     @staticmethod
     def _save_debug_image(path: str, image: np.ndarray) -> bool:
         """Save image to path with Unicode support (PNG)."""
@@ -83,6 +90,7 @@ class ImageDebugMixin:
             return True
         except Exception:
             return False
+
     def _draw_candidates_overlay(
         self: Any,
         base_bgr: np.ndarray,
@@ -102,12 +110,16 @@ class ImageDebugMixin:
             quad = c.get("quad")
             if quad is None:
                 continue
-            pts = self.order_points(np.array(quad, dtype=np.float32)).astype(np.int32).reshape((-1, 1, 2))
+            pts = (
+                self.order_points(np.array(quad, dtype=np.float32))
+                .astype(np.int32)
+                .reshape((-1, 1, 2))
+            )
             color = colors[i % len(colors)]
             cv2.polylines(overlay, [pts], True, color, 2)
             cv2.putText(
                 overlay,
-                f"{i+1}:{c.get('score', 0.0):.2f}",
+                f"{i + 1}:{c.get('score', 0.0):.2f}",
                 tuple(pts[0][0]),
                 cv2.FONT_HERSHEY_SIMPLEX,
                 0.6,
@@ -116,6 +128,10 @@ class ImageDebugMixin:
                 cv2.LINE_AA,
             )
         if final_quad is not None:
-            pts = self.order_points(np.array(final_quad, dtype=np.float32)).astype(np.int32).reshape((-1, 1, 2))
+            pts = (
+                self.order_points(np.array(final_quad, dtype=np.float32))
+                .astype(np.int32)
+                .reshape((-1, 1, 2))
+            )
             cv2.polylines(overlay, [pts], True, (0, 180, 255), 3)
         return overlay

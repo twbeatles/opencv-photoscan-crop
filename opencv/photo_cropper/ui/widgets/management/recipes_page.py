@@ -67,7 +67,9 @@ class RecipesPage(QWidget):
 
         self.description_label = QLabel("-")
         self.description_label.setWordWrap(True)
-        self.description_label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+        self.description_label.setTextInteractionFlags(
+            Qt.TextInteractionFlag.TextSelectableByMouse
+        )
         layout.addWidget(self.description_label)
         self.retranslate_ui()
 
@@ -98,7 +100,10 @@ class RecipesPage(QWidget):
             index = 0
             for row in range(self.recipe_list.count()):
                 item = self.recipe_list.item(row)
-                if item is not None and item.data(Qt.ItemDataRole.UserRole) == current_name:
+                if (
+                    item is not None
+                    and item.data(Qt.ItemDataRole.UserRole) == current_name
+                ):
                     index = row
                     break
             self.recipe_list.setCurrentRow(index)
@@ -140,15 +145,21 @@ class RecipesPage(QWidget):
         )
         recipe_name = name.strip()
         previous = self.recipe_manager.get_recipe(recipe_name)
-        if self.recipe_manager.save_preset(recipe_name, self.get_settings(), description):
+        if self.recipe_manager.save_preset(
+            recipe_name, self.get_settings(), description
+        ):
             current = self.recipe_manager.get_recipe(recipe_name)
             if current is not None:
                 current_snapshot = current.to_dict()
                 previous_snapshot = previous.to_dict() if previous is not None else None
                 self._record_history(
                     t("history.recipes.save"),
-                    undo=lambda previous_snapshot=previous_snapshot, recipe_name=recipe_name: self._restore_recipe_snapshot(previous_snapshot, recipe_name),
-                    redo=lambda current_snapshot=current_snapshot: self._save_recipe_snapshot(current_snapshot),
+                    undo=lambda previous_snapshot=previous_snapshot, recipe_name=recipe_name: (
+                        self._restore_recipe_snapshot(previous_snapshot, recipe_name)
+                    ),
+                    redo=lambda current_snapshot=current_snapshot: (
+                        self._save_recipe_snapshot(current_snapshot)
+                    ),
                 )
             self.refresh()
 

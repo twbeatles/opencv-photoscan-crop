@@ -177,10 +177,7 @@ class SettingsActions:
     def on_settings_changed(self, settings) -> None:
         previous = AppSettings.from_dict(self.state.settings.to_dict())
         next_settings = AppSettings.from_dict(settings.to_dict())
-        if (
-            not self._applying_history
-            and previous.to_dict() != next_settings.to_dict()
-        ):
+        if not self._applying_history and previous.to_dict() != next_settings.to_dict():
             self.services.history_manager.record_applied(
                 CallableCommand(
                     do=lambda: self._apply_settings_from_history(next_settings),

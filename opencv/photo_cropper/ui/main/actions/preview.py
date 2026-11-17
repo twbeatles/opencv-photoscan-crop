@@ -48,7 +48,9 @@ class PreviewActions:
             self.services.preview_timer.start(200)
 
     def resolve_preview_path(self) -> Optional[str]:
-        if self.state.current_image_path and os.path.exists(self.state.current_image_path):
+        if self.state.current_image_path and os.path.exists(
+            self.state.current_image_path
+        ):
             return self.state.current_image_path
 
         input_edit = self.refs.input_path_edit

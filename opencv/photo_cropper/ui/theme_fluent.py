@@ -87,7 +87,9 @@ def _install_theme_watcher(app) -> None:
         hints = QGuiApplication.styleHints()
         color_changed = getattr(hints, "colorSchemeChanged", None)
         if callable(color_changed) and hasattr(color_changed, "connect"):
-            color_changed.connect(lambda _scheme: QTimer.singleShot(0, sync_system_theme))
+            color_changed.connect(
+                lambda _scheme: QTimer.singleShot(0, sync_system_theme)
+            )
             color_changed.connect(
                 lambda _scheme: QTimer.singleShot(0, refresh_styled_widgets)
             )

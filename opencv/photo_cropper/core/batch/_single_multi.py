@@ -212,6 +212,7 @@ class BatchProcessorMultiPhotoMixin:
             message="멀티포토 저장 실패",
             processing_time_ms=processing_time,
         )
+
     def _save_single_result(
         self: Any,
         result: CropResult,

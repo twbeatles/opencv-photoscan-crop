@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """Perspective correction operations."""
+
 from __future__ import annotations
 
 from typing import Optional, Tuple
@@ -31,12 +32,13 @@ class PerspectiveOpsMixin:
         s = pts.sum(axis=1)
         diff = np.diff(pts, axis=1)
 
-        rect[0] = pts[np.argmin(s)]      # Top-left
-        rect[2] = pts[np.argmax(s)]      # Bottom-right
-        rect[1] = pts[np.argmin(diff)]   # Top-right
-        rect[3] = pts[np.argmax(diff)]   # Bottom-left
+        rect[0] = pts[np.argmin(s)]  # Top-left
+        rect[2] = pts[np.argmax(s)]  # Bottom-right
+        rect[1] = pts[np.argmin(diff)]  # Top-right
+        rect[3] = pts[np.argmax(diff)]  # Bottom-left
 
         return rect
+
     @staticmethod
     def _validate_perspective_points(
         points: np.ndarray,
@@ -86,9 +88,13 @@ class PerspectiveOpsMixin:
             return False, "원근 교정 영역의 변 길이가 너무 짧습니다"
 
         return True, ""
-    def correct_perspective(self, image: np.ndarray,
-                           src_points: Optional[np.ndarray] = None,
-                           auto_detect: bool = True) -> PerspectiveResult:
+
+    def correct_perspective(
+        self,
+        image: np.ndarray,
+        src_points: Optional[np.ndarray] = None,
+        auto_detect: bool = True,
+    ) -> PerspectiveResult:
         """
         Correct perspective distortion.
 
@@ -112,7 +118,7 @@ class PerspectiveOpsMixin:
                     src_points=np.array([]),
                     dst_points=np.array([]),
                     success=False,
-                    message="문서 코너를 감지할 수 없습니다"
+                    message="문서 코너를 감지할 수 없습니다",
                 )
 
         if src_points is None:
@@ -121,7 +127,7 @@ class PerspectiveOpsMixin:
                 src_points=np.array([]),
                 dst_points=np.array([]),
                 success=False,
-                message="원근 교정할 포인트가 지정되지 않았습니다"
+                message="원근 교정할 포인트가 지정되지 않았습니다",
             )
 
         # Order points
@@ -136,7 +142,7 @@ class PerspectiveOpsMixin:
                 src_points=np.array([]),
                 dst_points=np.array([]),
                 success=False,
-                message=invalid_reason
+                message=invalid_reason,
             )
 
         # Calculate output dimensions
@@ -153,26 +159,31 @@ class PerspectiveOpsMixin:
                 src_points=np.array([]),
                 dst_points=np.array([]),
                 success=False,
-                message="원근 교정 결과 크기가 올바르지 않습니다"
+                message="원근 교정 결과 크기가 올바르지 않습니다",
             )
 
         # Destination points
-        dst_points = np.array([
-            [0, 0],
-            [max_width - 1, 0],
-            [max_width - 1, max_height - 1],
-            [0, max_height - 1]
-        ], dtype=np.float32)
+        dst_points = np.array(
+            [
+                [0, 0],
+                [max_width - 1, 0],
+                [max_width - 1, max_height - 1],
+                [0, max_height - 1],
+            ],
+            dtype=np.float32,
+        )
 
         # Get perspective transform matrix
         matrix = cv2.getPerspectiveTransform(src_points, dst_points)
 
         # Apply transform
         warped = cv2.warpPerspective(
-            image, matrix, (max_width, max_height),
+            image,
+            matrix,
+            (max_width, max_height),
             flags=cv2.INTER_LINEAR,
             borderMode=cv2.BORDER_CONSTANT,
-            borderValue=(255, 255, 255)
+            borderValue=(255, 255, 255),
         )
 
         return PerspectiveResult(
@@ -180,8 +191,9 @@ class PerspectiveOpsMixin:
             src_points=src_points,
             dst_points=dst_points,
             success=True,
-            message="원근 교정 완료"
+            message="원근 교정 완료",
         )
+
     def _detect_document_corners(self, image: np.ndarray) -> Optional[np.ndarray]:
         """
         Auto-detect document corners for perspective correction.
@@ -234,6 +246,7 @@ class PerspectiveOpsMixin:
                 return approx.reshape(4, 2)
 
         return None
+
 
 order_points = PerspectiveOpsMixin.order_points
 correct_perspective = PerspectiveOpsMixin.correct_perspective

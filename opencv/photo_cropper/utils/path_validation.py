@@ -34,7 +34,9 @@ class SettingsPathIssue:
     message: str
 
 
-def validate_single_path_segment(value: str, *, allow_empty: bool = False) -> tuple[bool, str]:
+def validate_single_path_segment(
+    value: str, *, allow_empty: bool = False
+) -> tuple[bool, str]:
     """Validate that a value is a safe single path segment or filename fragment."""
     text = str(value or "")
     if not text:
@@ -79,7 +81,9 @@ def resolve_category_folder_map(
     """Resolve category folder map with locale defaults for empty sentinel values."""
     folder_map = dict(category_folders or {})
     return {
-        key: resolve_category_folder_name(key, str(folder_map.get(key, "")), language=language)
+        key: resolve_category_folder_name(
+            key, str(folder_map.get(key, "")), language=language
+        )
         for key in CLASSIFICATION_CATEGORY_KEYS
     }
 
@@ -114,7 +118,9 @@ def validate_settings_path_segments(
             )
         )
 
-    failed_folder = str(getattr(settings.file_management, "failed_folder_name", "") or "")
+    failed_folder = str(
+        getattr(settings.file_management, "failed_folder_name", "") or ""
+    )
     valid, _ = validate_single_path_segment(failed_folder, allow_empty=False)
     if not valid:
         issues.append(

@@ -40,13 +40,19 @@ class JobFinalizationMixin:
                 thumb_path = self.thumbnail_service.ensure_thumbnail(result.source_path)
                 if not thumb_path:
                     self._thumbnail_failed_count += 1
-                    self._metadata_warnings.append(f"thumbnail_failed:{result.source_path}")
+                    self._metadata_warnings.append(
+                        f"thumbnail_failed:{result.source_path}"
+                    )
                 if ingest_state == "invalid_source":
                     asset_id = None
                     source_id = None
                     source_action_context = {
-                        "source_path": str(ingest_record.get("source_path", "") or result.source_path),
-                        "error": str(ingest_record.get("error", "") or "invalid_source"),
+                        "source_path": str(
+                            ingest_record.get("source_path", "") or result.source_path
+                        ),
+                        "error": str(
+                            ingest_record.get("error", "") or "invalid_source"
+                        ),
                     }
                 elif ingest_state == "ambiguous_relink":
                     asset_id = None
@@ -89,7 +95,9 @@ class JobFinalizationMixin:
 
             last_variant_id = None
             if asset_id is not None and output_paths:
-                variant_kind = self._variant_kind_for_result(result, settings, job_kind=job_kind)
+                variant_kind = self._variant_kind_for_result(
+                    result, settings, job_kind=job_kind
+                )
                 for path in output_paths:
                     last_variant_id = self.repository.upsert_variant(
                         asset_id=asset_id,
@@ -152,7 +160,11 @@ class JobFinalizationMixin:
                         "process_status": result.status.value,
                     },
                 )
-            elif job_kind == "manual_extract" and result.status == ProcessStatus.SUCCESS and result.source_path:
+            elif (
+                job_kind == "manual_extract"
+                and result.status == ProcessStatus.SUCCESS
+                and result.source_path
+            ):
                 self.repository.approve_reviews_for_source(
                     result.source_path,
                     variant_id=last_variant_id,
@@ -160,11 +172,18 @@ class JobFinalizationMixin:
 
         partial_count = int(getattr(progress, "partial_success", 0) or 0)
         fatal_error = bool(getattr(progress, "fatal_error", False))
-        final_status = "failed" if fatal_error else (
-            "cancelled" if progress.is_cancelled else
-            "failed" if progress.failed > 0 and progress.success == 0 and partial_count == 0 else
-            "partial_success" if partial_count > 0 or (progress.failed > 0 and progress.success > 0) else
-            "success"
+        final_status = (
+            "failed"
+            if fatal_error
+            else (
+                "cancelled"
+                if progress.is_cancelled
+                else "failed"
+                if progress.failed > 0 and progress.success == 0 and partial_count == 0
+                else "partial_success"
+                if partial_count > 0 or (progress.failed > 0 and progress.success > 0)
+                else "success"
+            )
         )
         self.repository.finalize_job(
             job_id,

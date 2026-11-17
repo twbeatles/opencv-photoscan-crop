@@ -18,7 +18,9 @@ class LibraryRepositoryRecipeMixin:
         origin: str = "user",
     ) -> None:
         now = now_iso()
-        payload = json.dumps(settings_snapshot or {}, ensure_ascii=False, sort_keys=True)
+        payload = json.dumps(
+            settings_snapshot or {}, ensure_ascii=False, sort_keys=True
+        )
         rules = json.dumps(category_rules or {}, ensure_ascii=False, sort_keys=True)
         with self.store.write_connect() as conn:
             existing = conn.execute(
@@ -43,6 +45,7 @@ class LibraryRepositoryRecipeMixin:
                     (description, payload, rules, origin, now, name),
                 )
             conn.commit()
+
     def list_recipes(self: LibraryRepositoryProtocol) -> list[dict[str, Any]]:
         with self.store.connect() as conn:
             rows = conn.execute(
@@ -53,7 +56,10 @@ class LibraryRepositoryRecipeMixin:
                 """
             ).fetchall()
             return [dict(row) for row in rows]
-    def get_recipe(self: LibraryRepositoryProtocol, name: str) -> Optional[dict[str, Any]]:
+
+    def get_recipe(
+        self: LibraryRepositoryProtocol, name: str
+    ) -> Optional[dict[str, Any]]:
         with self.store.connect() as conn:
             row = conn.execute(
                 """
@@ -64,13 +70,19 @@ class LibraryRepositoryRecipeMixin:
                 (name,),
             ).fetchone()
             return dict(row) if row is not None else None
+
     def delete_recipe(self: LibraryRepositoryProtocol, name: str) -> None:
         with self.store.write_connect() as conn:
             conn.execute("DELETE FROM recipes WHERE name = ?", (name,))
             conn.commit()
-    def rename_recipe(self: LibraryRepositoryProtocol, old_name: str, new_name: str) -> bool:
+
+    def rename_recipe(
+        self: LibraryRepositoryProtocol, old_name: str, new_name: str
+    ) -> bool:
         with self.store.write_connect() as conn:
-            existing = conn.execute("SELECT 1 FROM recipes WHERE name = ?", (new_name,)).fetchone()
+            existing = conn.execute(
+                "SELECT 1 FROM recipes WHERE name = ?", (new_name,)
+            ).fetchone()
             if existing is not None:
                 return False
             conn.execute(
@@ -79,6 +91,7 @@ class LibraryRepositoryRecipeMixin:
             )
             conn.commit()
             return True
+
     def set_app_state(self: LibraryRepositoryProtocol, key: str, value: str) -> None:
         with self.store.write_connect() as conn:
             conn.execute(
@@ -90,7 +103,10 @@ class LibraryRepositoryRecipeMixin:
                 (str(key), str(value), now_iso()),
             )
             conn.commit()
-    def get_app_state(self: LibraryRepositoryProtocol, key: str, default: str = "") -> str:
+
+    def get_app_state(
+        self: LibraryRepositoryProtocol, key: str, default: str = ""
+    ) -> str:
         with self.store.connect() as conn:
             row = conn.execute(
                 "SELECT value FROM app_state WHERE key = ?",

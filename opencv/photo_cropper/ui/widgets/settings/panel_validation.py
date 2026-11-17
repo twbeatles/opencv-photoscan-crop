@@ -36,7 +36,9 @@ def validate_form_inputs(panel):
 def apply_validation_state(panel):
     self = panel
     self.naming_validation_label.setText(t("settings.validation.naming"))
-    self.classification_validation_label.setText(t("settings.validation.classification"))
+    self.classification_validation_label.setText(
+        t("settings.validation.classification")
+    )
     self._validate_form_inputs()
 
 

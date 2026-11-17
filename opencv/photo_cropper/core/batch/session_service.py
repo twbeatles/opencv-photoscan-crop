@@ -73,4 +73,3 @@ class BatchSessionService:
         if self._processor is not None:
             self._processor.cleanup()
             self._processor = None
-

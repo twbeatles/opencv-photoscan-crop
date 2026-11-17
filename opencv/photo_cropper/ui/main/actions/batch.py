@@ -158,7 +158,11 @@ class BatchActions:
                 resolved.message,
             )
             return None
-        if update_output_edit and output_edit is not None and resolved.output_path != output_path:
+        if (
+            update_output_edit
+            and output_edit is not None
+            and resolved.output_path != output_path
+        ):
             output_edit.setText(resolved.output_path)
         return resolved.input_path, resolved.output_path
 
@@ -244,12 +248,16 @@ class BatchActions:
             dialog.open_output_requested.connect(self._open_output_folder)
         dialog.set_output_path(output_path)
         dialog.finished.connect(
-            lambda _result, dialog_obj=dialog: self.on_progress_dialog_finished(dialog_obj)
+            lambda _result, dialog_obj=dialog: self.on_progress_dialog_finished(
+                dialog_obj
+            )
         )
         dialog.show()
         self.refs.progress_dialog = dialog
 
-    def _start_job_tracking(self, job_kind: str, input_path: str, output_path: str) -> None:
+    def _start_job_tracking(
+        self, job_kind: str, input_path: str, output_path: str
+    ) -> None:
         self.state.active_job_id = None
         self.state.active_job_kind = job_kind
         job_orchestrator = getattr(self.services, "job_orchestrator", None)
@@ -326,10 +334,15 @@ class BatchActions:
                             partial_count=0,
                             failed_count=len(files),
                             skipped_count=0,
-                            summary={"error": resolved.message, "preflight_failed": True},
+                            summary={
+                                "error": resolved.message,
+                                "preflight_failed": True,
+                            },
                         )
                     except Exception:
-                        logger.debug("Failed to finalize preflight-failed job", exc_info=True)
+                        logger.debug(
+                            "Failed to finalize preflight-failed job", exc_info=True
+                        )
             return False
         input_path = resolved.input_path
         output_path = resolved.output_path
@@ -343,11 +356,15 @@ class BatchActions:
                 on_complete=self.signals.batch_complete_received.emit,
             )
         except RuntimeError as exc:
-            QMessageBox.warning(self.services.host_window, self.messages.warning_title, str(exc))
+            QMessageBox.warning(
+                self.services.host_window, self.messages.warning_title, str(exc)
+            )
             return False
 
         self.state.active_job_kind = job_kind
-        self.state.active_job_id = int(tracked_job_id) if tracked_job_id is not None else None
+        self.state.active_job_id = (
+            int(tracked_job_id) if tracked_job_id is not None else None
+        )
         if tracked_job_id is None:
             self._start_job_tracking(job_kind, input_path, output_path)
         self._create_progress_dialog(output_path)
@@ -389,7 +406,8 @@ class BatchActions:
         paths = self._resolve_batch_io_paths(
             input_path_override=input_path_override,
             output_path_override=output_path_override,
-            update_output_edit=input_path_override is None and output_path_override is None,
+            update_output_edit=input_path_override is None
+            and output_path_override is None,
         )
         if paths is None:
             return False
@@ -481,11 +499,17 @@ class BatchActions:
         self.services.batch_session.request_stop()
 
     def on_batch_progress(self, progress: BatchProgress) -> None:
-        if self.refs.progress_dialog is not None and self.refs.progress_dialog.isVisible():
+        if (
+            self.refs.progress_dialog is not None
+            and self.refs.progress_dialog.isVisible()
+        ):
             self.refs.progress_dialog.update_progress(progress)
 
     def on_batch_log(self, message: str, level: str) -> None:
-        if self.refs.progress_dialog is not None and self.refs.progress_dialog.isVisible():
+        if (
+            self.refs.progress_dialog is not None
+            and self.refs.progress_dialog.isVisible()
+        ):
             self.refs.progress_dialog.log_message(message, level)
 
     def on_progress_dialog_finished(self, dialog_obj) -> None:
@@ -497,8 +521,16 @@ class BatchActions:
             pass
 
     def collect_boundary_failed_files(self, results: list) -> list[str]:
-        input_root = self.refs.input_path_edit.text().strip() if self.refs.input_path_edit else ""
-        output_path = self.refs.output_path_edit.text().strip() if self.refs.output_path_edit else ""
+        input_root = (
+            self.refs.input_path_edit.text().strip()
+            if self.refs.input_path_edit
+            else ""
+        )
+        output_path = (
+            self.refs.output_path_edit.text().strip()
+            if self.refs.output_path_edit
+            else ""
+        )
         if input_root and not output_path:
             output_path = os.path.join(input_root, "output_cropped")
         recursive = bool(
@@ -540,7 +572,9 @@ class BatchActions:
             progress_snapshot = BatchProgress(**progress.__dict__)
             results_snapshot = list(results or [])
             settings_snapshot = AppSettings.from_dict(self.state.settings.to_dict())
-            finalize_signal = getattr(self.services.host_window, "management_task_finished", None)
+            finalize_signal = getattr(
+                self.services.host_window, "management_task_finished", None
+            )
 
             def finalize_worker() -> None:
                 failed = False
@@ -583,10 +617,17 @@ class BatchActions:
             skipped_count=progress.skipped,
         )
         summary_level = (
-            "warning" if progress.failed > 0 else "partial" if partial_count > 0 else "success"
+            "warning"
+            if progress.failed > 0
+            else "partial"
+            if partial_count > 0
+            else "success"
         )
 
-        if self.refs.progress_dialog is not None and self.refs.progress_dialog.isVisible():
+        if (
+            self.refs.progress_dialog is not None
+            and self.refs.progress_dialog.isVisible()
+        ):
             self.refs.progress_dialog.update_progress(progress)
             self.refs.progress_dialog.log_message(
                 summary_message,
@@ -661,12 +702,16 @@ class BatchActions:
                 logger.warning("System notification error: %s", exc)
 
         if self.state.settings.ui.open_output_on_complete and not progress.is_cancelled:
-            output_path = self.refs.output_path_edit.text() if self.refs.output_path_edit else ""
+            output_path = (
+                self.refs.output_path_edit.text() if self.refs.output_path_edit else ""
+            )
             if output_path and os.path.isdir(output_path):
                 open_file_explorer(output_path)
 
         self.update_batch_edit_controls()
-        refresh_views = getattr(self.services.host_window, "refresh_management_views", None)
+        refresh_views = getattr(
+            self.services.host_window, "refresh_management_views", None
+        )
         if callable(refresh_views):
             refresh_views()
 
@@ -712,7 +757,9 @@ class BatchActions:
         )
 
     def load_batch_images_for_edit(self) -> None:
-        input_path = self.refs.input_path_edit.text() if self.refs.input_path_edit else ""
+        input_path = (
+            self.refs.input_path_edit.text() if self.refs.input_path_edit else ""
+        )
         valid, error = validate_directory(input_path)
         if not valid:
             QMessageBox.warning(
@@ -722,8 +769,13 @@ class BatchActions:
             )
             return
 
-        if self.refs.output_path_edit is not None and not self.refs.output_path_edit.text():
-            self.refs.output_path_edit.setText(os.path.join(input_path, "output_cropped"))
+        if (
+            self.refs.output_path_edit is not None
+            and not self.refs.output_path_edit.text()
+        ):
+            self.refs.output_path_edit.setText(
+                os.path.join(input_path, "output_cropped")
+            )
 
         if self._update_image_list is not None:
             self._update_image_list()
@@ -791,7 +843,9 @@ class BatchActions:
             self._update_navigation_status()
         self.update_batch_edit_controls()
 
-    def save_batch_edited_crops(self, checked: bool = False, *, confirm: bool = True) -> bool:
+    def save_batch_edited_crops(
+        self, checked: bool = False, *, confirm: bool = True
+    ) -> bool:
         if self.state.manual_extract_running:
             QMessageBox.information(
                 self.services.host_window,
@@ -809,7 +863,9 @@ class BatchActions:
         if not self._validate_runtime_settings():
             return False
 
-        input_path = self.refs.input_path_edit.text() if self.refs.input_path_edit else ""
+        input_path = (
+            self.refs.input_path_edit.text() if self.refs.input_path_edit else ""
+        )
         valid, error = validate_directory(input_path)
         if not valid:
             QMessageBox.warning(
@@ -829,7 +885,11 @@ class BatchActions:
             )
             return False
 
-        output_path = self.refs.output_path_edit.text().strip() if self.refs.output_path_edit else ""
+        output_path = (
+            self.refs.output_path_edit.text().strip()
+            if self.refs.output_path_edit
+            else ""
+        )
         if not output_path:
             output_path = os.path.join(input_path, "output_cropped")
             if self.refs.output_path_edit is not None:
@@ -837,7 +897,9 @@ class BatchActions:
         os.makedirs(output_path, exist_ok=True)
 
         edited_count = sum(
-            1 for path in self.state.image_list if path in self.state.batch_contours_edited
+            1
+            for path in self.state.image_list
+            if path in self.state.batch_contours_edited
         )
         if confirm and not confirm_qt(
             self.services.host_window,
@@ -874,7 +936,13 @@ class BatchActions:
 
         self.state.manual_extract_thread = threading.Thread(
             target=self.run_manual_extract_worker,
-            args=(input_path, output_path, files_snapshot, contours_snapshot, settings_snapshot),
+            args=(
+                input_path,
+                output_path,
+                files_snapshot,
+                contours_snapshot,
+                settings_snapshot,
+            ),
             daemon=True,
         )
         self.state.manual_extract_thread.start()

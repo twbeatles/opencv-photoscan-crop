@@ -1,3 +1,3 @@
 from .panel import SettingsPanel
 
-__all__ = ['SettingsPanel']
+__all__ = ["SettingsPanel"]

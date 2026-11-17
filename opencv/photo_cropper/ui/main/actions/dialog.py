@@ -56,9 +56,7 @@ class DialogActions:
     def show_compare_dialog(self) -> None:
         if self.state.last_original is None or self.state.last_processed is None:
             if self.refs.status_label is not None:
-                self.refs.status_label.setText(
-                    t("msg.no_compare_image")
-                )
+                self.refs.status_label.setText(t("msg.no_compare_image"))
             return
 
         dialog = QDialog(self.services.host_window)
@@ -95,12 +93,12 @@ class DialogActions:
             crop_editor.set_rectangle_mode()
 
     def show_crop_editor(self) -> None:
-        source_path = self._resolve_preview_path() if self._resolve_preview_path else None
+        source_path = (
+            self._resolve_preview_path() if self._resolve_preview_path else None
+        )
         if source_path is None and self.state.last_original is None:
             if self.refs.status_label is not None:
-                self.refs.status_label.setText(
-                    t("msg.no_edit_image")
-                )
+                self.refs.status_label.setText(t("msg.no_edit_image"))
             return
 
         if not self.state.image_list and self._update_image_list is not None:
@@ -126,9 +124,11 @@ class DialogActions:
 
         crop_editor = CropEditorWidget()
         crop_editor.crop_applied.connect(
-            lambda img: self._on_crop_applied(img, None)
-            if self._on_crop_applied is not None
-            else None
+            lambda img: (
+                self._on_crop_applied(img, None)
+                if self._on_crop_applied is not None
+                else None
+            )
         )
         crop_editor.crop_cancelled.connect(dialog.close)
         layout.addWidget(crop_editor)
@@ -136,7 +136,11 @@ class DialogActions:
         state = {"index": self.state.current_image_index}
 
         def update_editor_title(path: Optional[str]) -> None:
-            filename = os.path.basename(path) if path else t("dialog.crop_editor.current_image")
+            filename = (
+                os.path.basename(path)
+                if path
+                else t("dialog.crop_editor.current_image")
+            )
             if self.state.image_list and state["index"] >= 0:
                 nav_pos_label.setText(
                     build_editor_position_label(

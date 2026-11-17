@@ -8,10 +8,10 @@ from .app_settings import (
 )
 
 __all__ = [
-    'AlgorithmSettings',
-    'ProcessingSettings',
-    'OutputSettings',
-    'FilterSettings',
-    'UISettings',
-    'DebugSettings',
+    "AlgorithmSettings",
+    "ProcessingSettings",
+    "OutputSettings",
+    "FilterSettings",
+    "UISettings",
+    "DebugSettings",
 ]

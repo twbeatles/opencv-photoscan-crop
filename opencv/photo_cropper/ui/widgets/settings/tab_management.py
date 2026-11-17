@@ -125,9 +125,7 @@ def create_management_tab(self):
     self.multi_photo_merge_distance_spin.setToolTip(
         "값이 클수록 가까운 검출 결과를 같은 사진으로 병합합니다."
     )
-    self.multi_photo_merge_distance_spin.valueChanged.connect(
-        self._on_setting_changed
-    )
+    self.multi_photo_merge_distance_spin.valueChanged.connect(self._on_setting_changed)
     merge_row.addWidget(self.multi_photo_merge_distance_spin)
     mp_layout.addLayout(merge_row)
 
@@ -139,9 +137,7 @@ def create_management_tab(self):
     )
     mp_layout.addWidget(self.multi_photo_separate_folders_check)
 
-    self.multi_photo_refine_check = QCheckBox(
-        "각 사진 ROI를 단일 탐지로 재정제 (권장)"
-    )
+    self.multi_photo_refine_check = QCheckBox("각 사진 ROI를 단일 탐지로 재정제 (권장)")
     self.multi_photo_refine_check.setToolTip(
         "멀티포토로 찾은 영역마다 단일 사진 탐지를 한 번 더 돌려 경계를 다듬습니다."
     )
@@ -153,7 +149,9 @@ def create_management_tab(self):
     layout.addWidget(mp_section)
 
     # === File management section ===
-    self.file_management_section = CollapsibleSection("📂 파일 관리", initially_expanded=False)
+    self.file_management_section = CollapsibleSection(
+        "📂 파일 관리", initially_expanded=False
+    )
     fm_group = QWidget()
     fm_layout = QVBoxLayout(fm_group)
     fm_layout.setContentsMargins(0, 0, 0, 0)
@@ -261,7 +259,9 @@ def create_management_tab(self):
     perf_layout.addLayout(perf_form)
 
     self.low_mem_check = QCheckBox("저사양 모드 (메모리 절약)")
-    self.low_mem_check.setToolTip("처리 속도가 느려질 수 있지만 메모리 사용량을 줄입니다.")
+    self.low_mem_check.setToolTip(
+        "처리 속도가 느려질 수 있지만 메모리 사용량을 줄입니다."
+    )
     self.low_mem_check.stateChanged.connect(self._on_setting_changed)
     perf_layout.addWidget(self.low_mem_check)
 

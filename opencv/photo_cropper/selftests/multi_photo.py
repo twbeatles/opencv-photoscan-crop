@@ -32,6 +32,7 @@ def _test_multi_photo_close_gap_split() -> None:
     assert result.success, result.message
     assert result.total_found >= 2, f"Expected >=2 photos, got {result.total_found}"
 
+
 def _test_multi_photo_merge_distance_and_separate_folders() -> None:
     import os
     import tempfile
@@ -96,6 +97,7 @@ def _test_multi_photo_merge_distance_and_separate_folders() -> None:
         )
         assert found is not None
         assert os.path.abspath(found) == os.path.abspath(output_path)
+
 
 def _test_multi_photo_uses_shared_loader() -> None:
     import os
@@ -162,6 +164,7 @@ def _test_multi_photo_uses_shared_loader() -> None:
         assert result.status == ProcessStatus.SUCCESS, result.message
         assert calls["load_paths"] == [src]
 
+
 def _test_multi_photo_status_variants_and_partial_index_behavior() -> None:
     import os
     import tempfile
@@ -173,7 +176,9 @@ def _test_multi_photo_status_variants_and_partial_index_behavior() -> None:
     from ..core.batch import BatchProcessor, ProcessStatus
     from ..core.settings_model import AppSettings
 
-    def run_case(save_plan, *, stop_on_check: Optional[int] = None, repeat: bool = False):
+    def run_case(
+        save_plan, *, stop_on_check: Optional[int] = None, repeat: bool = False
+    ):
         settings = AppSettings()
         settings.multi_photo.enabled = True
         settings.filter.skip_processed = True
@@ -217,7 +222,9 @@ def _test_multi_photo_status_variants_and_partial_index_behavior() -> None:
         class FakeDetector:
             def detect(self, image):
                 assert image is not None
-                return SimpleNamespace(success=True, total_found=2, photos=[object(), object()])
+                return SimpleNamespace(
+                    success=True, total_found=2, photos=[object(), object()]
+                )
 
             def crop_photos(self, image, photos, padding=10):
                 del padding
@@ -228,6 +235,7 @@ def _test_multi_photo_status_variants_and_partial_index_behavior() -> None:
         batch.set_callbacks(on_log=lambda message, level: logs.append((message, level)))
 
         if stop_on_check is not None:
+
             def fake_stop_requested():
                 state["stop_checks"] += 1
                 return state["stop_checks"] >= stop_on_check
@@ -273,7 +281,9 @@ def _test_multi_photo_status_variants_and_partial_index_behavior() -> None:
         partial_state,
         partial_logs,
     ) = run_case([True, False, True, True], repeat=True)
-    assert partial_result.status == ProcessStatus.PARTIAL_SUCCESS, partial_result.message
+    assert partial_result.status == ProcessStatus.PARTIAL_SUCCESS, (
+        partial_result.message
+    )
     assert partial_usable is True
     assert partial_status == "partial"
     assert partial_outputs is not None and len(partial_outputs) == 1
@@ -311,6 +321,7 @@ def _test_multi_photo_status_variants_and_partial_index_behavior() -> None:
     assert cancelled_status == ""
     assert cancelled_outputs is None
 
+
 def _test_multi_photo_merge_distance_effect() -> None:
     import numpy as np
 
@@ -326,8 +337,13 @@ def _test_multi_photo_merge_distance_effect() -> None:
     kept_low = d_low._merge_overlapping([a, b])
     kept_high = d_high._merge_overlapping([a, b])
 
-    assert len(kept_low) == 2, f"Expected 2 with low merge distance, got {len(kept_low)}"
-    assert len(kept_high) == 1, f"Expected 1 with high merge distance, got {len(kept_high)}"
+    assert len(kept_low) == 2, (
+        f"Expected 2 with low merge distance, got {len(kept_low)}"
+    )
+    assert len(kept_high) == 1, (
+        f"Expected 1 with high merge distance, got {len(kept_high)}"
+    )
+
 
 def _test_multi_photo_perspective_crop_path() -> None:
     import cv2
@@ -362,6 +378,7 @@ def _test_multi_photo_perspective_crop_path() -> None:
     exp_w, exp_h = detector._quad_dimensions(box)
     assert abs(crop.shape[1] - int(round(exp_w))) <= 40
     assert abs(crop.shape[0] - int(round(exp_h))) <= 40
+
 
 __all__ = [
     "_test_multi_photo_close_gap_split",

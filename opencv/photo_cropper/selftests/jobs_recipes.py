@@ -102,6 +102,7 @@ def _test_job_orchestrator_records_variants_and_review_queue() -> None:
         assert len(review_items) == 1
         assert review_items[0]["primary_source_path"] == src_failed
 
+
 def _test_recipe_determinism_and_preserved_global_state() -> None:
     import os
     import tempfile
@@ -156,6 +157,7 @@ def _test_recipe_determinism_and_preserved_global_state() -> None:
             os.environ.pop(key, None)
         else:
             os.environ[key] = value
+
 
 def _test_review_service_guard_and_reprocess_queue() -> None:
     import os
@@ -241,6 +243,7 @@ def _test_review_service_guard_and_reprocess_queue() -> None:
         assert requested is not None
         assert requested["status"] == "reprocess_requested"
 
+
 def _test_prepare_job_rerun_avoids_stale_queued_jobs_and_dedupes_sources() -> None:
     import os
     import tempfile
@@ -303,6 +306,7 @@ def _test_prepare_job_rerun_avoids_stale_queued_jobs_and_dedupes_sources() -> No
         assert spec["job_id"] > 0
         assert spec["source_paths"] == [source]
 
+
 def _test_job_finalization_prioritizes_fatal_error() -> None:
     import os
     import tempfile
@@ -339,6 +343,7 @@ def _test_job_finalization_prioritizes_fatal_error() -> None:
         assert job["summary"]["fatal_error"] is True
         assert job["summary"]["fatal_message"] == "fatal"
 
+
 def _test_job_summary_metadata_warnings_and_near_summary() -> None:
     import os
     import tempfile
@@ -371,7 +376,9 @@ def _test_job_summary_metadata_warnings_and_near_summary() -> None:
         duplicate_service = DuplicateService(repository)
         orchestrator = JobOrchestrator(
             repository,
-            thumbnail_service=FailingThumbnailService(thumbnails_dir=os.path.join(td, "thumbs")),
+            thumbnail_service=FailingThumbnailService(
+                thumbnails_dir=os.path.join(td, "thumbs")
+            ),
             duplicate_service=duplicate_service,
         )
         job_id = orchestrator.create_job(job_kind="selftest_warning", input_path=td)
@@ -397,6 +404,7 @@ def _test_job_summary_metadata_warnings_and_near_summary() -> None:
         duplicate_service.rebuild_near_groups(limit=1)
         assert "scanned_assets" in duplicate_service.last_near_summary
         assert "limited" in duplicate_service.last_near_summary
+
 
 __all__ = [
     "_test_job_orchestrator_records_variants_and_review_queue",

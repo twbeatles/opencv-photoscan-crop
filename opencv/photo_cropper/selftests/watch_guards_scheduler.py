@@ -177,7 +177,9 @@ def _test_scheduler_once_preserves_task_until_started() -> None:
         input_path="in",
         output_path="out",
     )
-    scheduler = Scheduler(process_callback=lambda *_args: ScheduleRunStatus.SKIPPED_BUSY)
+    scheduler = Scheduler(
+        process_callback=lambda *_args: ScheduleRunStatus.SKIPPED_BUSY
+    )
     assert scheduler._execute_task(task) is False
     assert task.enabled is True
     assert task.last_run is None
@@ -208,7 +210,9 @@ def _test_scheduler_once_skip_keeps_next_run_due() -> None:
     )
     due_time = datetime.now() - timedelta(seconds=5)
     task.next_run = due_time
-    scheduler = Scheduler(process_callback=lambda *_args: ScheduleRunStatus.SKIPPED_BUSY)
+    scheduler = Scheduler(
+        process_callback=lambda *_args: ScheduleRunStatus.SKIPPED_BUSY
+    )
     scheduler._tasks[task.task_id] = task
     scheduler._check_schedules()
     assert task.enabled is True

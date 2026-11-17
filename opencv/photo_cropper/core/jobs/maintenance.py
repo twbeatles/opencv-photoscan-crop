@@ -25,7 +25,9 @@ class JobMaintenanceMixin:
         input_path: str = "",
         recursive: bool = True,
     ) -> int:
-        normalized_asset_ids = [int(item) for item in list(asset_ids or []) if int(item) > 0]
+        normalized_asset_ids = [
+            int(item) for item in list(asset_ids or []) if int(item) > 0
+        ]
         job_id = self.create_job(
             job_kind=job_kind,
             input_path=input_path or "library",
@@ -45,14 +47,18 @@ class JobMaintenanceMixin:
                     thumbnail_service=self.thumbnail_service,
                     duplicate_service=self.duplicate_service,
                 )
-                processed_items = ingest.import_directory(input_path, recursive=recursive)
+                processed_items = ingest.import_directory(
+                    input_path, recursive=recursive
+                )
                 summary = {
                     "imported": processed_items,
                     "input_path": input_path,
                     "recursive": bool(recursive),
                 }
             elif job_kind == "maintenance_thumbnails":
-                processed_items = self._run_thumbnail_refresh(asset_ids=normalized_asset_ids)
+                processed_items = self._run_thumbnail_refresh(
+                    asset_ids=normalized_asset_ids
+                )
                 summary = {"updated": processed_items}
             elif job_kind == "maintenance_exact_duplicates":
                 processed_items = self.duplicate_service.rebuild_exact_groups()
@@ -78,7 +84,9 @@ class JobMaintenanceMixin:
                 processed_items = self._run_ocr_refresh(asset_ids=normalized_asset_ids)
                 summary = {"documents": processed_items}
             elif job_kind == "maintenance_people_refresh":
-                processed_items = self._run_people_refresh(asset_ids=normalized_asset_ids)
+                processed_items = self._run_people_refresh(
+                    asset_ids=normalized_asset_ids
+                )
                 summary = {"assignments": processed_items}
             else:
                 status = "failed"
@@ -107,11 +115,7 @@ class JobMaintenanceMixin:
         if asset_ids:
             wanted = {int(item) for item in asset_ids if int(item) > 0}
             assets = self.repository.list_assets(limit=5000)
-            return [
-                asset
-                for asset in assets
-                if int(asset.get("id", 0) or 0) in wanted
-            ]
+            return [asset for asset in assets if int(asset.get("id", 0) or 0) in wanted]
         return self.repository.list_assets(limit=5000)
 
     def _run_thumbnail_refresh(

@@ -4,9 +4,9 @@ from .processor import AdvancedImageProcessor
 from .types import DeskewResult, PerspectiveResult
 
 __all__ = [
-    'GPUAccelerator',
-    'DeskewResult',
-    'PerspectiveResult',
-    'AdvancedImageProcessor',
-    'get_advanced_processor',
+    "GPUAccelerator",
+    "DeskewResult",
+    "PerspectiveResult",
+    "AdvancedImageProcessor",
+    "get_advanced_processor",
 ]

@@ -18,7 +18,11 @@ class LibraryRepositoryQueryMixin:
             "SELECT status FROM review_items r "
             "WHERE r.asset_id = a.id ORDER BY r.updated_at DESC, r.id DESC LIMIT 1"
         )
-        search_ids = self.search_asset_ids(asset_query.search_text) if asset_query.search_text else []
+        search_ids = (
+            self.search_asset_ids(asset_query.search_text)
+            if asset_query.search_text
+            else []
+        )
         clauses: list[str] = []
         params: list[Any] = []
         if asset_query.collection_id is not None:
@@ -26,7 +30,9 @@ class LibraryRepositoryQueryMixin:
                 "a.id IN (SELECT asset_id FROM collection_assets WHERE collection_id = ?)"
             )
             params.append(int(asset_query.collection_id))
-        tag_names = [str(item).strip() for item in asset_query.tag_names if str(item).strip()]
+        tag_names = [
+            str(item).strip() for item in asset_query.tag_names if str(item).strip()
+        ]
         if tag_names:
             placeholders = ", ".join("?" for _ in tag_names)
             clauses.append(
@@ -58,7 +64,9 @@ class LibraryRepositoryQueryMixin:
             "name": "lower(a.display_name) ASC, a.id DESC",
             "created": "a.created_at DESC, a.id DESC",
         }
-        order_sql = sort_map.get(str(asset_query.sort_by or "updated"), sort_map["updated"])
+        order_sql = sort_map.get(
+            str(asset_query.sort_by or "updated"), sort_map["updated"]
+        )
 
         sql = [
             """
@@ -92,8 +100,8 @@ class LibraryRepositoryQueryMixin:
                 ) AS variant_count,
                 COALESCE((
                     """
-            + latest_review_sql +
-            """
+            + latest_review_sql
+            + """
                 ), '') AS review_status
             FROM assets a
             """
@@ -105,13 +113,17 @@ class LibraryRepositoryQueryMixin:
             sql.append("LIMIT ? OFFSET ?")
             params.extend([asset_query.normalized_page_size, asset_query.offset])
         return "\n".join(sql), params
-    def count_assets(self: LibraryRepositoryProtocol, asset_query: Optional[AssetQuery] = None) -> int:
+
+    def count_assets(
+        self: LibraryRepositoryProtocol, asset_query: Optional[AssetQuery] = None
+    ) -> int:
         query = asset_query or AssetQuery()
         sql, params = self._build_asset_query_sql(query, with_limit=False)
         count_sql = f"SELECT COUNT(*) AS total FROM ({sql}) AS asset_rows"
         with self.store.connect() as conn:
             row = conn.execute(count_sql, params).fetchone()
             return int(row["total"] or 0) if row is not None else 0
+
     def list_assets(
         self: LibraryRepositoryProtocol,
         asset_query: Optional[AssetQuery] = None,
@@ -185,7 +197,10 @@ class LibraryRepositoryQueryMixin:
                     }
                 )
             return result
-    def get_asset_detail(self: LibraryRepositoryProtocol, asset_id: int) -> Optional[dict[str, Any]]:
+
+    def get_asset_detail(
+        self: LibraryRepositoryProtocol, asset_id: int
+    ) -> Optional[dict[str, Any]]:
         with self.store.connect() as conn:
             row = conn.execute(
                 "SELECT * FROM assets WHERE id = ?",
@@ -239,6 +254,7 @@ class LibraryRepositoryQueryMixin:
                 "faces": faces,
                 "people": people,
             }
+
     def get_asset_visual_path(self: LibraryRepositoryProtocol, asset_id: int) -> str:
         with self.store.connect() as conn:
             variant = conn.execute(
@@ -258,7 +274,10 @@ class LibraryRepositoryQueryMixin:
                 (int(asset_id),),
             ).fetchone()
             return str(row["primary_source_path"] or "") if row is not None else ""
-    def get_asset_timeline(self: LibraryRepositoryProtocol, asset_id: int) -> list[AssetTimelineEvent]:
+
+    def get_asset_timeline(
+        self: LibraryRepositoryProtocol, asset_id: int
+    ) -> list[AssetTimelineEvent]:
         events: list[AssetTimelineEvent] = []
         detail = self.get_asset_detail(asset_id)
         if detail is None:
@@ -329,4 +348,6 @@ class LibraryRepositoryQueryMixin:
                     },
                 )
             )
-        return sorted(events, key=lambda item: (item.timestamp, item.event_type), reverse=True)
+        return sorted(
+            events, key=lambda item: (item.timestamp, item.event_type), reverse=True
+        )

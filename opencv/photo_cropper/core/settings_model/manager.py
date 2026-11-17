@@ -58,9 +58,7 @@ class SettingsManager:
         appdata = os.environ.get("APPDATA")
         if appdata:
             paths.append(
-                os.path.join(
-                    appdata, self.WINDOWS_CONFIG_DIR, self.LEGACY_CONFIG_FILE
-                )
+                os.path.join(appdata, self.WINDOWS_CONFIG_DIR, self.LEGACY_CONFIG_FILE)
             )
 
         normalized: list[str] = []

@@ -91,7 +91,9 @@ class ReviewPage(QWidget):
         rows = self.review_service.list_items(limit=800)
         if self._job_filter_id is not None:
             rows = [
-                row for row in rows if int(row.get("job_id", 0) or 0) == int(self._job_filter_id)
+                row
+                for row in rows
+                if int(row.get("job_id", 0) or 0) == int(self._job_filter_id)
             ]
         self.table.setRowCount(len(rows))
         for row_index, row in enumerate(rows):
@@ -230,10 +232,14 @@ class ReviewPage(QWidget):
         )
         if not ok or not choice:
             return
-        target = next((item for item in collections if str(item["name"]) == str(choice)), None)
+        target = next(
+            (item for item in collections if str(item["name"]) == str(choice)), None
+        )
         if target is None:
             return
-        self.review_service.repository.add_assets_to_collection(asset_ids, int(target["id"]))
+        self.review_service.repository.add_assets_to_collection(
+            asset_ids, int(target["id"])
+        )
         self.refresh()
 
     def _select_next(self) -> None:

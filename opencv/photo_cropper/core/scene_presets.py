@@ -25,7 +25,9 @@ SCENE_PRESET_META: Dict[str, Tuple[str, str]] = {
 }
 
 
-def build_algorithm_for_scene(scene_id: str, base: Optional[AlgorithmSettings] = None) -> AlgorithmSettings:
+def build_algorithm_for_scene(
+    scene_id: str, base: Optional[AlgorithmSettings] = None
+) -> AlgorithmSettings:
     """Return AlgorithmSettings tuned for a scene preset."""
     algo = deepcopy(base) if base is not None else AlgorithmSettings()
     sid = (scene_id or "custom").strip().lower()
@@ -126,7 +128,11 @@ def apply_scene_preset(settings: AppSettings, scene_id: str) -> AppSettings:
 
     settings.algorithm = build_algorithm_for_scene(sid, settings.algorithm)
 
-    multi = settings.multi_photo if isinstance(settings.multi_photo, MultiPhotoSettings) else MultiPhotoSettings()
+    multi = (
+        settings.multi_photo
+        if isinstance(settings.multi_photo, MultiPhotoSettings)
+        else MultiPhotoSettings()
+    )
     if sid == "album_multi":
         multi.enabled = True
         multi.refine_with_single = True

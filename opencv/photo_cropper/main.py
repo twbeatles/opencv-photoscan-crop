@@ -16,6 +16,7 @@ try:
 except ImportError:
     # If run directly not as a module
     import os
+
     sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     from photo_cropper.ui.main import MainWindow
 
@@ -24,8 +25,8 @@ def setup_logging():
     """Configure application logging."""
     logging.basicConfig(
         level=logging.INFO,
-        format='%(asctime)s - %(levelname)s - %(name)s - %(message)s',
-        datefmt='%Y-%m-%d %H:%M:%S'
+        format="%(asctime)s - %(levelname)s - %(name)s - %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S",
     )
 
 
@@ -40,7 +41,7 @@ def main():
     # Setup
     setup_logging()
     setup_high_dpi()
-    
+
     # Create application
     app = QApplication(sys.argv)
     app.setApplicationName("Photo Cropper")
@@ -50,15 +51,16 @@ def main():
     from PySide6.QtGui import QFont
 
     from .ui.theme_fluent import setup_app_theme as _setup_fluent_theme
+
     font = QFont("Segoe UI", 10)
     font.setFamilies(["Segoe UI", "Malgun Gothic", "Apple SD Gothic Neo"])
     app.setFont(font)
     _setup_fluent_theme(app)
-    
+
     # Create and show main window
     window = MainWindow()
     window.show()
-    
+
     # Run application
     sys.exit(app.exec())
 

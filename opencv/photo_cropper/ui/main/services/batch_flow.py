@@ -114,9 +114,7 @@ class BatchRuntimeFlow:
                 path = os.path.join(normalized_input, path)
             normalized_files.append(os.path.abspath(path))
         missing_files = [
-            path
-            for path in normalized_files
-            if not path or not os.path.isfile(path)
+            path for path in normalized_files if not path or not os.path.isfile(path)
         ]
         if missing_files:
             return ResolvedIoPaths(
@@ -126,9 +124,7 @@ class BatchRuntimeFlow:
             )
 
         valid_files = [
-            path
-            for path in normalized_files
-            if path and os.path.isfile(path)
+            path for path in normalized_files if path and os.path.isfile(path)
         ]
         if not valid_files:
             return ResolvedIoPaths(

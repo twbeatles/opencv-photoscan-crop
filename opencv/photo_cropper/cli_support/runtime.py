@@ -30,7 +30,9 @@ try:
     from ..utils.file_helpers import is_output_inside_input
 except ImportError:
     # Support direct execution: python photo_cropper/cli.py
-    sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+    sys.path.append(
+        os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    )
     from photo_cropper.core.batch_profile_manager import get_batch_profile_manager
     from photo_cropper.core.settings_model import AppSettings
     from photo_cropper.core.settings_model.validation import (

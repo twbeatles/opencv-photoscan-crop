@@ -195,7 +195,9 @@ class BatchProfileManager:
             if description is not None:
                 profile.description = description
             if category_rules is not None:
-                profile.category_rules = self._normalize_settings_dict(category_rules or {})
+                profile.category_rules = self._normalize_settings_dict(
+                    category_rules or {}
+                )
             profile.modified_at = datetime.now().isoformat()
             return True
 
@@ -222,7 +224,10 @@ class BatchProfileManager:
         return ok
 
     def rename_profile(self, old_name: str, new_name: str) -> bool:
-        if old_name in self._profiles and self._recipe_manager.get_profile(old_name) is None:
+        if (
+            old_name in self._profiles
+            and self._recipe_manager.get_profile(old_name) is None
+        ):
             if self.is_default_profile(old_name) or new_name in self._profiles:
                 return False
             profile = self._profiles.pop(old_name)
@@ -267,11 +272,15 @@ class BatchProfileManager:
         profile = self.get_profile(name)
         if profile is None or not profile.category_rules:
             return False
-        rules = dict((profile.category_rules or {}).get(str(category or "").lower(), {}) or {})
+        rules = dict(
+            (profile.category_rules or {}).get(str(category or "").lower(), {}) or {}
+        )
         if not rules:
             return False
         base_data = self._normalize_settings_dict(settings.to_dict())
-        merged = self._deep_merge_settings_dict(base_data, self._normalize_settings_dict(rules))
+        merged = self._deep_merge_settings_dict(
+            base_data, self._normalize_settings_dict(rules)
+        )
         rebuilt = AppSettings.from_dict(merged)
         for field_name in settings.__dataclass_fields__:
             setattr(settings, field_name, getattr(rebuilt, field_name))
@@ -304,7 +313,9 @@ class BatchProfileManager:
                 name=new_name,
                 description=f"{profile.description} (Copy)",
                 settings=self._normalize_settings_dict(profile.settings or {}),
-                category_rules=self._normalize_settings_dict(profile.category_rules or {}),
+                category_rules=self._normalize_settings_dict(
+                    profile.category_rules or {}
+                ),
             )
             return True
         ok = self._recipe_manager.duplicate_profile(name, new_name)

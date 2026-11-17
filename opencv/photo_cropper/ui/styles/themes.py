@@ -13,7 +13,9 @@ Provides dark and light themes with:
 from typing import Dict
 
 # Common style values
-FONT_FAMILY = "'Segoe UI', 'Malgun Gothic', -apple-system, BlinkMacSystemFont, sans-serif"
+FONT_FAMILY = (
+    "'Segoe UI', 'Malgun Gothic', -apple-system, BlinkMacSystemFont, sans-serif"
+)
 BORDER_RADIUS = "8px"
 BORDER_RADIUS_LG = "12px"
 PADDING_SM = "4px"
@@ -669,10 +671,10 @@ THEMES: Dict[str, str] = {
 def get_theme(name: str) -> str:
     """
     Get theme stylesheet by name.
-    
+
     Args:
         name: Theme name ('dark' or 'light')
-        
+
     Returns:
         Theme stylesheet string
     """
@@ -687,11 +689,11 @@ def get_available_themes() -> list:
 def get_color(theme: str, color_key: str) -> str:
     """
     Get a specific color from the theme palette.
-    
+
     Args:
         theme: Theme name ('dark' or 'light')
         color_key: Color key from the palette
-        
+
     Returns:
         Color hex string
     """

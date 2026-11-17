@@ -40,4 +40,4 @@ def reset_face_detector_for_tests() -> None:
     _detector_instance = None
 
 
-__all__ = ['get_face_detector', 'reset_face_detector_for_tests']
+__all__ = ["get_face_detector", "reset_face_detector_for_tests"]

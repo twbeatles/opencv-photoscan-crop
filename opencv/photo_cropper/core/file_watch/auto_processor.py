@@ -18,6 +18,7 @@ from .types import WatchProcessResult
 
 logger = logging.getLogger(__name__)
 
+
 class AutoProcessor(QObject):
     """Auto-process files detected by FolderWatcher."""
 
@@ -238,11 +239,15 @@ class AutoProcessor(QObject):
             normalized = raw_status.lower()
             if normalized:
                 success = normalized in {"success", "skipped", "ok", "partial_success"}
-                return WatchProcessResult(success=success, status=normalized, message=message)
+                return WatchProcessResult(
+                    success=success, status=normalized, message=message
+                )
 
         if hasattr(result, "success"):
             success = bool(getattr(result, "success"))  # noqa: B009 -- capability probe on heterogeneous callback return; direct access would raise AttributeError instead of the TypeError below
-            status = str(getattr(result, "status", "") or ("success" if success else "failed"))
+            status = str(
+                getattr(result, "status", "") or ("success" if success else "failed")
+            )
             return WatchProcessResult(success=success, status=status, message=message)
 
         raise TypeError(f"Unsupported callback return type: {type(result)}")
@@ -317,7 +322,11 @@ class AutoProcessor(QObject):
         self.processing_started.emit(filepath)
 
         self._ensure_executor()
-        if self._executor is None or self._process_callback is None or not self._output_path:
+        if (
+            self._executor is None
+            or self._process_callback is None
+            or not self._output_path
+        ):
             self.worker_result_ready.emit(
                 filepath,
                 False,

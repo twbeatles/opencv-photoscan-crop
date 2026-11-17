@@ -114,7 +114,9 @@ def _test_crop_accuracy_synthetic() -> None:
             res = ip.process_image(path)
             if res.success and res.contour_points is not None:
                 successes += 1
-                ious.append(quad_iou(quad, res.contour_points.astype(np.float32), (h, w)))
+                ious.append(
+                    quad_iou(quad, res.contour_points.astype(np.float32), (h, w))
+                )
             else:
                 ious.append(0.0)
 
@@ -242,9 +244,7 @@ def _test_crop_accuracy_hard_scenarios() -> None:
             fill = int(np.random.randint(40, 90))
             cv2.fillPoly(img, [quad.astype(np.int32)], (fill, fill + 10, fill + 5))
             border_w = 2 if i % 3 == 1 else 5
-            cv2.polylines(
-                img, [quad.astype(np.int32)], True, (30, 30, 30), border_w
-            )
+            cv2.polylines(img, [quad.astype(np.int32)], True, (30, 30, 30), border_w)
 
             path = os.path.join(td, f"hard_{i:02d}.png")
             save_png(path, img)

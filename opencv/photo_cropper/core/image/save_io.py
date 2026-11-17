@@ -38,7 +38,11 @@ def resolve_save_codec(output_path: str, output_format: str) -> Tuple[str, str]:
     }
 
     requested_fmt = str(output_format or "JPG").upper()
-    resolved_fmt = requested_fmt if requested_fmt in fmt_to_ext else ext_to_fmt.get(extension, "JPG")
+    resolved_fmt = (
+        requested_fmt
+        if requested_fmt in fmt_to_ext
+        else ext_to_fmt.get(extension, "JPG")
+    )
     encode_ext = extension if extension in ext_to_fmt else fmt_to_ext[resolved_fmt]
     return encode_ext, resolved_fmt
 
@@ -157,10 +161,12 @@ class ImageSaveMixin:
     ) -> Tuple[str, str]:
         """Resolve encoder extension and format with extension fallback."""
         return resolve_save_codec(output_path, output_format)
+
     @staticmethod
     def _copy_metadata_best_effort(source_path: str, output_path: str) -> None:
         """Best-effort EXIF/ICC metadata copy via Pillow."""
         copy_metadata_best_effort(source_path, output_path)
+
     @staticmethod
     def save_image(
         image: np.ndarray,
@@ -198,6 +204,7 @@ class ImageSaveMixin:
             source_path=source_path,
             preserve_metadata=preserve_metadata,
         )
+
     @staticmethod
     def get_image_info(image_path: str) -> Optional[Tuple[int, int, int]]:
         """
@@ -244,4 +251,3 @@ class ImageSaveMixin:
         except Exception:
             pass
         return None
-

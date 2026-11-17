@@ -37,11 +37,17 @@ def _load_provider(module_name: str, attr_name: str):
 
 
 def get_ocr_provider() -> Optional[OcrProvider]:
-    return cast(Optional[OcrProvider], _load_provider("photo_cropper_plugins.ocr_provider", "get_provider"))
+    return cast(
+        Optional[OcrProvider],
+        _load_provider("photo_cropper_plugins.ocr_provider", "get_provider"),
+    )
 
 
 def get_person_provider() -> Optional[PersonProvider]:
-    return cast(Optional[PersonProvider], _load_provider("photo_cropper_plugins.person_provider", "get_provider"))
+    return cast(
+        Optional[PersonProvider],
+        _load_provider("photo_cropper_plugins.person_provider", "get_provider"),
+    )
 
 
 def get_provider_status() -> ProviderStatus:

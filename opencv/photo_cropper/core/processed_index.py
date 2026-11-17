@@ -1,4 +1,4 @@
-﻿#!/usr/bin/env python3
+#!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """Processed-output index for reliable skip-processed checks."""
 
@@ -92,9 +92,7 @@ def build_pipeline_signature(settings_obj: Any) -> str:
         ui_payload = source_payload.get("ui", {})
         if isinstance(classification_payload, dict):
             language = (
-                ui_payload.get("language")
-                if isinstance(ui_payload, dict)
-                else None
+                ui_payload.get("language") if isinstance(ui_payload, dict) else None
             )
             payload["_resolved_category_folders"] = resolve_category_folder_map(
                 classification_payload.get("category_folders", {}) or {},
@@ -103,7 +101,9 @@ def build_pipeline_signature(settings_obj: Any) -> str:
     except Exception as exc:
         logger.debug("Could not add resolved category folders to signature: %s", exc)
 
-    encoded = json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    encoded = json.dumps(
+        payload, ensure_ascii=False, sort_keys=True, separators=(",", ":")
+    )
     return hashlib.sha256(encoded.encode("utf-8")).hexdigest()
 
 
@@ -194,7 +194,9 @@ class ProcessedIndexStore:
             with open(self._index_path, "r", encoding="utf-8") as handle:
                 payload = json.load(handle)
         except Exception as exc:
-            logger.warning("Failed to read processed index (%s): %s", self._index_path, exc)
+            logger.warning(
+                "Failed to read processed index (%s): %s", self._index_path, exc
+            )
             self._mark_unusable(f"read_error: {exc}")
             return
 
@@ -241,7 +243,9 @@ class ProcessedIndexStore:
             os.replace(tmp_path, self._index_path)
             return True
         except Exception as exc:
-            logger.warning("Failed to write processed index (%s): %s", self._index_path, exc)
+            logger.warning(
+                "Failed to write processed index (%s): %s", self._index_path, exc
+            )
             self._mark_unusable(f"write_error: {exc}")
             return False
 
@@ -258,12 +262,19 @@ class ProcessedIndexStore:
             if not self._usable:
                 return None, False, ""
 
-            key = (_abs_norm(source_path), int(size), int(mtime_ns), str(pipeline_signature))
+            key = (
+                _abs_norm(source_path),
+                int(size),
+                int(mtime_ns),
+                str(pipeline_signature),
+            )
             record = self._records.get(key)
             if record is None:
                 return None, True, ""
 
-            outputs = [p for p in list(record.get("outputs") or []) if os.path.exists(p)]
+            outputs = [
+                p for p in list(record.get("outputs") or []) if os.path.exists(p)
+            ]
             status = _normalize_record_status(record.get("status"))
             if outputs:
                 return outputs, True, status

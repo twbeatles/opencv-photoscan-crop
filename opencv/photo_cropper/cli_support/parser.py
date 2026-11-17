@@ -32,15 +32,23 @@ def create_parser() -> argparse.ArgumentParser:
     # Core I/O
     parser.add_argument("-i", "--input", help="Input directory")
     parser.add_argument("-o", "--output", help="Output directory")
-    parser.add_argument("--list-presets", action="store_true", help="List available preset names")
+    parser.add_argument(
+        "--list-presets", action="store_true", help="List available preset names"
+    )
 
     # Merge sources
-    parser.add_argument("--preset", help="Preset profile name (applied before --config)")
+    parser.add_argument(
+        "--preset", help="Preset profile name (applied before --config)"
+    )
     parser.add_argument("--config", help="JSON settings file path")
 
     # General processing
-    parser.add_argument("--recursive", action="store_true", help="Enable recursive input search")
-    parser.add_argument("--skip-processed", action="store_true", help="Skip already processed files")
+    parser.add_argument(
+        "--recursive", action="store_true", help="Enable recursive input search"
+    )
+    parser.add_argument(
+        "--skip-processed", action="store_true", help="Skip already processed files"
+    )
     parser.add_argument(
         "--strict-partial",
         action="store_true",
@@ -52,8 +60,12 @@ def create_parser() -> argparse.ArgumentParser:
         choices=["fast", "balanced", "accurate"],
         help="Detection mode",
     )
-    parser.add_argument("--canny-min", type=_int_in_range(0, 255), help="Canny minimum threshold")
-    parser.add_argument("--canny-max", type=_int_in_range(1, 255), help="Canny maximum threshold")
+    parser.add_argument(
+        "--canny-min", type=_int_in_range(0, 255), help="Canny minimum threshold"
+    )
+    parser.add_argument(
+        "--canny-max", type=_int_in_range(1, 255), help="Canny maximum threshold"
+    )
     parser.add_argument(
         "--min-area-ratio",
         type=_float_in_range(0.01, 0.9),
@@ -79,11 +91,17 @@ def create_parser() -> argparse.ArgumentParser:
         type=_float_in_range(-20.0, 20.0),
         help="Adaptive threshold C offset",
     )
-    parser.add_argument("--debug-detect", action="store_true", help="Enable detection debug outputs")
+    parser.add_argument(
+        "--debug-detect", action="store_true", help="Enable detection debug outputs"
+    )
 
     # Output / post
-    parser.add_argument("--format", choices=["JPG", "PNG", "WEBP"], help="Output format")
-    parser.add_argument("--quality", type=_int_in_range(1, 100), help="JPG/WEBP quality")
+    parser.add_argument(
+        "--format", choices=["JPG", "PNG", "WEBP"], help="Output format"
+    )
+    parser.add_argument(
+        "--quality", type=_int_in_range(1, 100), help="JPG/WEBP quality"
+    )
     parser.add_argument(
         "--png-compression",
         type=_int_in_range(0, 9),
@@ -111,8 +129,12 @@ def create_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--watermark", help="Text watermark")
     parser.add_argument("--watermark-image", help="Image watermark path")
-    parser.add_argument("--resize", help="Resize spec (50%%, 1200x900, 1920, instagram_square)")
-    parser.add_argument("--max-size", type=_int_in_range(1, 20000), help="Resize max dimension")
+    parser.add_argument(
+        "--resize", help="Resize spec (50%%, 1200x900, 1920, instagram_square)"
+    )
+    parser.add_argument(
+        "--max-size", type=_int_in_range(1, 20000), help="Resize max dimension"
+    )
     parser.add_argument(
         "--scene-preset",
         choices=[
@@ -124,7 +146,9 @@ def create_parser() -> argparse.ArgumentParser:
         ],
         help="Apply scene-tuned algorithm defaults (before other CLI overrides)",
     )
-    parser.add_argument("--multi-photo", action="store_true", help="Enable multi-photo split mode")
+    parser.add_argument(
+        "--multi-photo", action="store_true", help="Enable multi-photo split mode"
+    )
     parser.add_argument(
         "--multi-photo-merge-distance",
         type=_int_in_range(0, 1000),
@@ -152,7 +176,9 @@ def create_parser() -> argparse.ArgumentParser:
     parser.add_argument("--backup", action="store_true", help="Create backups")
 
     # AI core toggles
-    parser.add_argument("--classify", action="store_true", help="Enable image classification")
+    parser.add_argument(
+        "--classify", action="store_true", help="Enable image classification"
+    )
     parser.add_argument(
         "--classify-model",
         choices=["basic", "advanced", "custom"],
@@ -179,7 +205,9 @@ def create_parser() -> argparse.ArgumentParser:
         help="Disable auto-folder routing for classification",
     )
 
-    parser.add_argument("--face-detect", action="store_true", help="Enable face detection")
+    parser.add_argument(
+        "--face-detect", action="store_true", help="Enable face detection"
+    )
     parser.add_argument("--face-dnn", action="store_true", help="Use DNN face detector")
     parser.add_argument(
         "--face-min-size",
@@ -197,7 +225,9 @@ def create_parser() -> argparse.ArgumentParser:
         help="Auto-rotate using eye alignment",
     )
 
-    parser.add_argument("--smart-enhance", action="store_true", help="Enable smart enhancement")
+    parser.add_argument(
+        "--smart-enhance", action="store_true", help="Enable smart enhancement"
+    )
     parser.add_argument(
         "--smart-strength",
         type=_int_in_range(0, 100),

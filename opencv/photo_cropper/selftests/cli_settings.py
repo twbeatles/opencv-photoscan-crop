@@ -289,9 +289,7 @@ def _test_cli_rejects_invalid_settings_segments() -> None:
                         "naming_prefix": "../bad",
                         "failed_folder_name": "CON",
                     },
-                    "classification": {
-                        "category_folders": {"portrait": "bad/folder"}
-                    },
+                    "classification": {"category_folders": {"portrait": "bad/folder"}},
                 },
                 handle,
             )
@@ -320,5 +318,9 @@ def _test_processed_signature_includes_routing_and_backup() -> None:
     backup_settings = AppSettings.from_dict(ko_settings.to_dict())
     backup_settings.create_backup = True
 
-    assert build_pipeline_signature(ko_settings) != build_pipeline_signature(en_settings)
-    assert build_pipeline_signature(ko_settings) != build_pipeline_signature(backup_settings)
+    assert build_pipeline_signature(ko_settings) != build_pipeline_signature(
+        en_settings
+    )
+    assert build_pipeline_signature(ko_settings) != build_pipeline_signature(
+        backup_settings
+    )

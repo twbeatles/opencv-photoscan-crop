@@ -28,9 +28,7 @@ def create_ai_settings_tab(self):
     class_layout = QVBoxLayout(self.classification_group)
 
     self.classification_enable_check = ModernToggleSwitch("자동 분류 사용")
-    self.classification_enable_check.setToolTip(
-        "이미지를 유형별로 자동 분류하여 저장"
-    )
+    self.classification_enable_check.setToolTip("이미지를 유형별로 자동 분류하여 저장")
     self.classification_enable_check.toggled.connect(self._on_setting_changed)
     class_layout.addWidget(self.classification_enable_check)
 
@@ -39,16 +37,12 @@ def create_ai_settings_tab(self):
     model_row.addWidget(self.classification_model_label)
     self.classification_model_combo = NoScrollComboBox()
     self.classification_model_combo.addItems(["basic", "advanced"])
-    self.classification_model_combo.currentTextChanged.connect(
-        self._on_setting_changed
-    )
+    self.classification_model_combo.currentTextChanged.connect(self._on_setting_changed)
     model_row.addWidget(self.classification_model_combo)
     class_layout.addLayout(model_row)
 
     self.classification_subfolders_check = QCheckBox("분류된 하위 폴더에 저장")
-    self.classification_subfolders_check.stateChanged.connect(
-        self._on_setting_changed
-    )
+    self.classification_subfolders_check.stateChanged.connect(self._on_setting_changed)
     class_layout.addWidget(self.classification_subfolders_check)
 
     self.classification_folder_form = QFormLayout()
@@ -152,15 +146,14 @@ def create_ai_settings_tab(self):
     notif_layout.addWidget(self.notification_sound_check)
 
     self.notification_error_only_check = QCheckBox("오류 시에만 알림")
-    self.notification_error_only_check.stateChanged.connect(
-        self._on_setting_changed
-    )
+    self.notification_error_only_check.stateChanged.connect(self._on_setting_changed)
     notif_layout.addWidget(self.notification_error_only_check)
 
     layout.addWidget(self.notification_group)
     layout.addStretch()
 
     self.tab_widget.addTab(self._make_scrollable_tab(content), "🤖 AI")
+
 
 def schedule_hint_text(schedule_type: str) -> str:
     normalized = str(schedule_type or "").strip().lower()
@@ -171,6 +164,7 @@ def schedule_hint_text(schedule_type: str) -> str:
     if normalized == "hourly":
         return t("settings.schedule_hint.hourly")
     return t("settings.schedule_hint.interval")
+
 
 def on_schedule_type_changed(self, schedule_type: str):
     """Handle schedule type change to show/hide relevant controls."""

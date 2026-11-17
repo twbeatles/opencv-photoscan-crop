@@ -49,7 +49,9 @@ class LibraryRepositoryDuplicateMixin:
                     (group_id,),
                 ).fetchall()
             }
-            conn.execute("DELETE FROM duplicate_group_members WHERE group_id = ?", (group_id,))
+            conn.execute(
+                "DELETE FROM duplicate_group_members WHERE group_id = ?", (group_id,)
+            )
             for asset_id in unique_ids:
                 old = existing_members.get(asset_id, {})
                 preference = preferences.get(asset_id, {})
@@ -60,7 +62,11 @@ class LibraryRepositoryDuplicateMixin:
                     )
                     or 0
                 )
-                role = "representative" if representative_asset_id == asset_id else "member"
+                role = (
+                    "representative"
+                    if representative_asset_id == asset_id
+                    else "member"
+                )
                 conn.execute(
                     """
                     INSERT INTO duplicate_group_members(group_id, asset_id, role, is_excluded)
@@ -70,7 +76,10 @@ class LibraryRepositoryDuplicateMixin:
                 )
             conn.commit()
             return group_id
-    def clear_duplicate_groups_by_kind(self: LibraryRepositoryProtocol, kind: str) -> None:
+
+    def clear_duplicate_groups_by_kind(
+        self: LibraryRepositoryProtocol, kind: str
+    ) -> None:
         with self.store.write_connect() as conn:
             group_ids = [
                 int(row["id"])
@@ -90,8 +99,13 @@ class LibraryRepositoryDuplicateMixin:
                     group_ids,
                 )
             conn.commit()
-    def prune_duplicate_groups(self: LibraryRepositoryProtocol, kind: str, keep_signatures: list[str]) -> int:
-        signatures = sorted({str(item or "") for item in keep_signatures if str(item or "").strip()})
+
+    def prune_duplicate_groups(
+        self: LibraryRepositoryProtocol, kind: str, keep_signatures: list[str]
+    ) -> int:
+        signatures = sorted(
+            {str(item or "") for item in keep_signatures if str(item or "").strip()}
+        )
         with self.store.write_connect() as conn:
             if signatures:
                 placeholders = ", ".join("?" for _ in signatures)
@@ -121,6 +135,7 @@ class LibraryRepositoryDuplicateMixin:
                 )
             conn.commit()
             return len(group_ids)
+
     def get_duplicate_member_preferences(
         self: LibraryRepositoryProtocol,
         kind: str,
@@ -135,6 +150,7 @@ class LibraryRepositoryDuplicateMixin:
                 (str(kind),),
             ).fetchall()
             return {int(row["asset_id"]): dict(row) for row in rows}
+
     def set_duplicate_member_preference(
         self: LibraryRepositoryProtocol,
         kind: str,
@@ -173,7 +189,10 @@ class LibraryRepositoryDuplicateMixin:
                 ),
             )
             conn.commit()
-    def list_duplicate_groups(self: LibraryRepositoryProtocol, *, kind: Optional[str] = None) -> list[dict[str, Any]]:
+
+    def list_duplicate_groups(
+        self: LibraryRepositoryProtocol, *, kind: Optional[str] = None
+    ) -> list[dict[str, Any]]:
         with self.store.connect() as conn:
             if kind:
                 rows = conn.execute(
@@ -210,7 +229,10 @@ class LibraryRepositoryDuplicateMixin:
                     """
                 ).fetchall()
             return [dict(row) for row in rows]
-    def list_duplicate_group_members(self: LibraryRepositoryProtocol, group_id: int) -> list[dict[str, Any]]:
+
+    def list_duplicate_group_members(
+        self: LibraryRepositoryProtocol, group_id: int
+    ) -> list[dict[str, Any]]:
         with self.store.connect() as conn:
             rows = conn.execute(
                 """
@@ -230,7 +252,10 @@ class LibraryRepositoryDuplicateMixin:
                 (int(group_id),),
             ).fetchall()
             return [dict(row) for row in rows]
-    def set_duplicate_representative(self: LibraryRepositoryProtocol, group_id: int, asset_id: int) -> None:
+
+    def set_duplicate_representative(
+        self: LibraryRepositoryProtocol, group_id: int, asset_id: int
+    ) -> None:
         with self.store.write_connect() as conn:
             group = conn.execute(
                 "SELECT kind FROM duplicate_groups WHERE id = ?",
@@ -257,7 +282,10 @@ class LibraryRepositoryDuplicateMixin:
                     int(member["asset_id"]),
                     prefer_representative=int(member["asset_id"]) == int(asset_id),
                 )
-    def set_duplicate_member_excluded(self: LibraryRepositoryProtocol, group_id: int, asset_id: int, excluded: bool) -> None:
+
+    def set_duplicate_member_excluded(
+        self: LibraryRepositoryProtocol, group_id: int, asset_id: int, excluded: bool
+    ) -> None:
         with self.store.write_connect() as conn:
             group = conn.execute(
                 "SELECT kind FROM duplicate_groups WHERE id = ?",

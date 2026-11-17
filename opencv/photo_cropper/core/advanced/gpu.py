@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """Optional CUDA acceleration helpers."""
+
 from __future__ import annotations
 
 import logging
@@ -10,6 +11,7 @@ import cv2
 import numpy as np
 
 logger = logging.getLogger(__name__)
+
 
 class GPUAccelerator:
     """GPU acceleration wrapper using CUDA (optional).
@@ -59,9 +61,13 @@ class GPUAccelerator:
         """Download image from GPU memory."""
         return gpu_mat.download()
 
-    def denoise_gpu(self, image: np.ndarray, h: float = 10,
-                    template_window_size: int = 7,
-                    search_window_size: int = 21) -> np.ndarray:
+    def denoise_gpu(
+        self,
+        image: np.ndarray,
+        h: float = 10,
+        template_window_size: int = 7,
+        search_window_size: int = 21,
+    ) -> np.ndarray:
         """GPU-accelerated denoising."""
         if not self._cuda_available:
             return cv2.fastNlMeansDenoisingColored(
@@ -83,8 +89,7 @@ class GPUAccelerator:
                 image, None, h, h, template_window_size, search_window_size
             )
 
-    def resize_gpu(self, image: np.ndarray,
-                   size: Tuple[int, int]) -> np.ndarray:
+    def resize_gpu(self, image: np.ndarray, size: Tuple[int, int]) -> np.ndarray:
         """GPU-accelerated resize."""
         if not self._cuda_available:
             return cv2.resize(image, size, interpolation=cv2.INTER_LINEAR)
@@ -100,5 +105,6 @@ class GPUAccelerator:
         except Exception as e:
             logger.warning(f"GPU resize failed, falling back to CPU: {e}")
             return cv2.resize(image, size, interpolation=cv2.INTER_LINEAR)
+
 
 __all__ = ["GPUAccelerator"]

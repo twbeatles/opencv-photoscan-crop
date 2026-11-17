@@ -29,8 +29,13 @@ class BatchProcessorRunnerMixin:
         except Exception as e:
             logger.error(f"Callback error: {e}")
             logger.debug(traceback.format_exc())
+
     def _handle_result(
-        self: Any, result: FileResult, input_dir: str, filename: str, processed_index: int
+        self: Any,
+        result: FileResult,
+        input_dir: str,
+        filename: str,
+        processed_index: int,
     ):
         """Handle result updates, logging, and callbacks."""
         input_file_path = (
@@ -108,6 +113,7 @@ class BatchProcessorRunnerMixin:
 
         self._update_progress()
         self._safe_callback(self._on_file_complete, result)
+
     def cleanup(self: Any):
         """Clean up resources and stop threads."""
         self.request_stop()
@@ -116,40 +122,51 @@ class BatchProcessorRunnerMixin:
         if self._processing_thread and self._processing_thread.is_alive():
             # Thread join is blocking, avoid if calling from UI thread
             pass
+
     def _update_progress(self: Any):
         """Send progress update through callback."""
         with self._lock:
             progress_copy = BatchProgress(**self._progress.__dict__)
         self._safe_callback(self._on_progress, progress_copy)
+
     @property
     def is_running(self: Any) -> bool:
         """Check if processing is in progress."""
         with self._lock:
             return self._progress.is_running
+
     @property
     def progress(self: Any) -> BatchProgress:
         """Get current progress."""
         with self._lock:
             return BatchProgress(**self._progress.__dict__)
+
     @property
     def failed_files(self: Any) -> List[str]:
         """Get list of failed files."""
         return self._failed_files.copy()
+
     @property
     def results(self: Any) -> List[FileResult]:
         """Get all processing results."""
         return self._results.copy()
+
     def request_stop(self: Any):
         """Request processing to stop."""
         self._stop_event.set()
         with self._lock:
             self._progress.is_cancelled = True
         self._log("작업 중단 요청됨", "warning")
+
     def _is_stop_requested(self: Any) -> bool:
         """Check if stop was requested."""
         return self._stop_event.is_set()
+
     def start_async(
-        self: Any, input_dir: str, output_dir: str, file_list: Optional[List[str]] = None
+        self: Any,
+        input_dir: str,
+        output_dir: str,
+        file_list: Optional[List[str]] = None,
     ) -> bool:
         """
         Start batch processing in background thread.
@@ -186,6 +203,7 @@ class BatchProcessorRunnerMixin:
         self._processing_thread.start()
 
         return True
+
     def wait_for_completion(self: Any, timeout: Optional[float] = None) -> bool:
         """
         Wait for processing to complete.

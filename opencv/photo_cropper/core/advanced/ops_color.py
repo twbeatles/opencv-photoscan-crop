@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """Automatic color correction operations."""
+
 from __future__ import annotations
 
 import cv2
@@ -11,8 +12,7 @@ class ColorOpsMixin:
     """Color operations for AdvancedImageProcessor."""
 
     @staticmethod
-    def auto_color_correct(image: np.ndarray,
-                          method: str = "gray_world") -> np.ndarray:
+    def auto_color_correct(image: np.ndarray, method: str = "gray_world") -> np.ndarray:
         """
         Automatic color correction.
 
@@ -34,6 +34,7 @@ class ColorOpsMixin:
             return ColorOpsMixin._histogram_correction(image)
         else:
             return image.copy()
+
     @staticmethod
     def _gray_world_correction(image: np.ndarray) -> np.ndarray:
         """Gray World white balance algorithm."""
@@ -56,6 +57,7 @@ class ColorOpsMixin:
             result[:, :, 2] *= avg_gray / avg_r
 
         return np.clip(result, 0, 255).astype(np.uint8)
+
     @staticmethod
     def _white_patch_correction(image: np.ndarray) -> np.ndarray:
         """White Patch (Max-RGB) white balance algorithm."""
@@ -75,6 +77,7 @@ class ColorOpsMixin:
             result[:, :, 2] *= 255.0 / max_r
 
         return np.clip(result, 0, 255).astype(np.uint8)
+
     @staticmethod
     def _histogram_correction(image: np.ndarray) -> np.ndarray:
         """Histogram-based color correction."""
@@ -89,6 +92,7 @@ class ColorOpsMixin:
         # Merge and convert back
         lab = cv2.merge([l_ch, a, b])
         return cv2.cvtColor(lab, cv2.COLOR_LAB2BGR)
+
 
 auto_color_correct = ColorOpsMixin.auto_color_correct
 

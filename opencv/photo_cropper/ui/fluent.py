@@ -59,7 +59,9 @@ _PushButton: Any = None
 
 _loaded = _load_fluent_widgets()
 if _loaded is not None:
-    (_FIF, _InfoBar, _InfoBarPosition, _MessageBox, _PrimaryPushButton, _PushButton) = _loaded
+    (_FIF, _InfoBar, _InfoBarPosition, _MessageBox, _PrimaryPushButton, _PushButton) = (
+        _loaded
+    )
     FLUENT_AVAILABLE = True
 else:
     FLUENT_AVAILABLE = False
@@ -93,7 +95,9 @@ def notify(
         show(
             title,
             str(message),
-            duration=int(duration if duration is not None else NOTIFY_DURATION[normalized]),
+            duration=int(
+                duration if duration is not None else NOTIFY_DURATION[normalized]
+            ),
             position=_InfoBarPosition.TOP,
             parent=parent,
         )
@@ -161,7 +165,9 @@ def new_button(text: str = "", parent=None):
             button = _PushButton(text, parent)
             return button
         except Exception:
-            logger.debug("Fluent PushButton unavailable, using QPushButton", exc_info=True)
+            logger.debug(
+                "Fluent PushButton unavailable, using QPushButton", exc_info=True
+            )
     button = QPushButton(text, parent)
     return button
 

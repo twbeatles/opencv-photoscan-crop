@@ -52,7 +52,9 @@ class UiMessageFactory:
         )
 
     def duplicate_summary(self, duplicates: Mapping[str, list[str]]) -> tuple[int, str]:
-        dup_count = sum(len(paths) - 1 for paths in duplicates.values() if len(paths) > 1)
+        dup_count = sum(
+            len(paths) - 1 for paths in duplicates.values() if len(paths) > 1
+        )
         lines = [t("tools.duplicates.summary", count=dup_count), ""]
         for paths in list(duplicates.values())[:5]:
             if len(paths) > 1:

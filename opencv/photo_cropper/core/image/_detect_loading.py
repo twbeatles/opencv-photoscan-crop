@@ -32,6 +32,7 @@ class ImageLoadAndClaheMixin:
         except Exception as e:
             logger.error(f"Failed to load image: {e}")
             return None
+
     def apply_clahe(self: Any, image: np.ndarray) -> np.ndarray:
         """
         Apply CLAHE (Contrast Limited Adaptive Histogram Equalization).
@@ -60,6 +61,7 @@ class ImageLoadAndClaheMixin:
         # Merge and convert back
         lab = cv2.merge([l_ch, a, b])
         return cv2.cvtColor(lab, cv2.COLOR_LAB2BGR)
+
     def _get_clahe_with_settings(self: Any, clip_limit: float, grid_size: int):
         """Get cached CLAHE object or create new one if settings changed."""
         if (

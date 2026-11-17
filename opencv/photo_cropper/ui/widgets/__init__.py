@@ -26,10 +26,10 @@ except Exception:  # pragma: no cover - optional runtime dependency chain
     HistogramWidget = None  # type: ignore[assignment]
 
 __all__ = [
-    'ToastNotification',
-    'ToastManager',
-    'SettingsPanel',
-    'ImagePreviewWidget',
-    'ProgressDialog',
-    'HistogramWidget',
+    "ToastNotification",
+    "ToastManager",
+    "SettingsPanel",
+    "ImagePreviewWidget",
+    "ProgressDialog",
+    "HistogramWidget",
 ]

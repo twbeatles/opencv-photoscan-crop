@@ -20,7 +20,10 @@ logger = logging.getLogger(__name__)
 
 class BatchProcessorBatchLoopMixin:
     def _process_batch(
-        self: Any, input_dir: str, output_dir: str, file_list: Optional[List[str]] = None
+        self: Any,
+        input_dir: str,
+        output_dir: str,
+        file_list: Optional[List[str]] = None,
     ):
         """Internal batch processing method (runs in thread)."""
         try:
@@ -154,7 +157,9 @@ class BatchProcessorBatchLoopMixin:
                             filename_out = f"{base_name}_{timestamp}{extension}"
                         else:
                             filename_out = f"{base_name}{extension}"
-                        output_path_override = os.path.join(base_output_dir, filename_out)
+                        output_path_override = os.path.join(
+                            base_output_dir, filename_out
+                        )
 
                     if not (
                         self.settings.filter.skip_processed
@@ -184,7 +189,9 @@ class BatchProcessorBatchLoopMixin:
 
                     def submit_next() -> bool:
                         try:
-                            item_index, (filename, output_path_override) = next(work_iter)
+                            item_index, (filename, output_path_override) = next(
+                                work_iter
+                            )
                         except StopIteration:
                             return False
                         future = executor.submit(
@@ -274,7 +281,9 @@ class BatchProcessorBatchLoopMixin:
                                 status=ProcessStatus.CANCELLED,
                                 message="작업 취소됨",
                             )
-                            self._handle_result(cancelled, input_dir, filename, processed)
+                            self._handle_result(
+                                cancelled, input_dir, filename, processed
+                            )
                 finally:
                     for pending_future in list(pending):
                         pending_future.cancel()
@@ -329,7 +338,9 @@ class BatchProcessorBatchLoopMixin:
             )
 
             if progress.partial_success > 0:
-                self._log(f"Partial success files: {progress.partial_success}", "partial")
+                self._log(
+                    f"Partial success files: {progress.partial_success}", "partial"
+                )
 
             if self._failed_files:
                 self._log(f"실패한 파일: {len(self._failed_files)}개", "warning")

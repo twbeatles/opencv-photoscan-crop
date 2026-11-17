@@ -72,9 +72,11 @@ class ManualExtractProcessor:
         if not self.settings.filter.skip_processed:
             return None, ""
 
-        index_outputs, index_usable, index_status = self._batch_processor.lookup_processed_outputs_from_index(
-            path,
-            self.output_path,
+        index_outputs, index_usable, index_status = (
+            self._batch_processor.lookup_processed_outputs_from_index(
+                path,
+                self.output_path,
+            )
         )
         if index_outputs:
             if index_status == "partial":
@@ -180,13 +182,15 @@ class ManualExtractProcessor:
                     raise RuntimeError(auto_result.message or "외곽선 탐지 실패")
                 cropped = auto_result.image
 
-            processed_image, resolved_output_dir = self._batch_processor.apply_post_pipeline(
-                cropped,
-                self._batch_processor.resolve_base_output_dir(
-                    path,
-                    self.output_path,
-                    input_root=self.input_root,
-                ),
+            processed_image, resolved_output_dir = (
+                self._batch_processor.apply_post_pipeline(
+                    cropped,
+                    self._batch_processor.resolve_base_output_dir(
+                        path,
+                        self.output_path,
+                        input_root=self.input_root,
+                    ),
+                )
             )
             out_path = self._batch_processor.build_output_path_in_resolved_dir(
                 path,
@@ -207,7 +211,9 @@ class ManualExtractProcessor:
             if not ok:
                 raise RuntimeError(save_msg or "저장 실패")
 
-            self._batch_processor.record_processed_outputs(path, self.output_path, [out_path])
+            self._batch_processor.record_processed_outputs(
+                path, self.output_path, [out_path]
+            )
 
             mode_label = "수동" if used_manual else "자동"
             result = FileResult(

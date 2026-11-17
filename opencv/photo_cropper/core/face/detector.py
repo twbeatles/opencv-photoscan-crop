@@ -65,10 +65,10 @@ class FaceDetector:
     # Cascade paths (bundled with OpenCV)
     _cv2_data = getattr(cv2, "data", None)
     _haarcascades = getattr(_cv2_data, "haarcascades", "")
-    FACE_CASCADE = _haarcascades + 'haarcascade_frontalface_default.xml'
-    FACE_CASCADE_ALT = _haarcascades + 'haarcascade_frontalface_alt2.xml'
-    EYE_CASCADE = _haarcascades + 'haarcascade_eye.xml'
-    PROFILE_CASCADE = _haarcascades + 'haarcascade_profileface.xml'
+    FACE_CASCADE = _haarcascades + "haarcascade_frontalface_default.xml"
+    FACE_CASCADE_ALT = _haarcascades + "haarcascade_frontalface_alt2.xml"
+    EYE_CASCADE = _haarcascades + "haarcascade_eye.xml"
+    PROFILE_CASCADE = _haarcascades + "haarcascade_profileface.xml"
 
     # DNN model metadata (canonical values live in model_store)
     DNN_PROTOTXT_URL = DNN_PROTOTXT_URL
@@ -177,9 +177,9 @@ class FaceDetector:
                 e,
             )
 
-    def detect(self, image: np.ndarray,
-               detect_eyes: bool = True,
-               suggest_crop: bool = True) -> FaceDetectionResult:
+    def detect(
+        self, image: np.ndarray, detect_eyes: bool = True, suggest_crop: bool = True
+    ) -> FaceDetectionResult:
         """
         Detect faces in image.
 
@@ -220,10 +220,7 @@ class FaceDetector:
                 face.eyes = self._detect_eyes(gray, face)
 
         # Create result
-        result = FaceDetectionResult(
-            faces=faces,
-            image_size=(w, h)
-        )
+        result = FaceDetectionResult(faces=faces, image_size=(w, h))
 
         # Calculate rotation angle from the primary face for stability.
         primary = result.primary_face
@@ -290,8 +287,9 @@ class FaceDetector:
         """
         return calculate_rotation_angle(eyes)
 
-    def _calculate_crop_region(self, faces: List[FaceRect],
-                               image_size: Tuple[int, int]) -> Optional[Tuple[int, int, int, int]]:
+    def _calculate_crop_region(
+        self, faces: List[FaceRect], image_size: Tuple[int, int]
+    ) -> Optional[Tuple[int, int, int, int]]:
         """
         Calculate optimal crop region centered on faces.
 
@@ -309,10 +307,12 @@ class FaceDetector:
             min_crop_ratio=self.MIN_CROP_RATIO,
         )
 
-    def rotate_to_align_eyes(self, image: np.ndarray,
-                             angle: float,
-                             background: Tuple[int, int, int] = (255, 255, 255)
-                             ) -> np.ndarray:
+    def rotate_to_align_eyes(
+        self,
+        image: np.ndarray,
+        angle: float,
+        background: Tuple[int, int, int] = (255, 255, 255),
+    ) -> np.ndarray:
         """
         Rotate image to align eyes horizontally.
 
@@ -326,10 +326,13 @@ class FaceDetector:
         """
         return _rotate_to_align_eyes(image, angle, background)
 
-    def draw_detections(self, image: np.ndarray,
-                        result: FaceDetectionResult,
-                        draw_eyes: bool = True,
-                        draw_crop: bool = True) -> np.ndarray:
+    def draw_detections(
+        self,
+        image: np.ndarray,
+        result: FaceDetectionResult,
+        draw_eyes: bool = True,
+        draw_crop: bool = True,
+    ) -> np.ndarray:
         """
         Draw detection results on image.
 
@@ -342,18 +345,16 @@ class FaceDetector:
         Returns:
             Image with drawn detections
         """
-        return _draw_detections(
-            image, result, draw_eyes=draw_eyes, draw_crop=draw_crop
-        )
+        return _draw_detections(image, result, draw_eyes=draw_eyes, draw_crop=draw_crop)
 
 
 # `get_face_detector` / `reset_face_detector_for_tests` are imported at the
 # top (from .factory) so `face.detector` remains a complete import surface.
 __all__ = [
-    'FaceRect',
-    'EyeRect',
-    'FaceDetectionResult',
-    'FaceDetector',
-    'get_face_detector',
-    'reset_face_detector_for_tests',
+    "FaceRect",
+    "EyeRect",
+    "FaceDetectionResult",
+    "FaceDetector",
+    "get_face_detector",
+    "reset_face_detector_for_tests",
 ]

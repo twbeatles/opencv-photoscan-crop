@@ -102,7 +102,9 @@ def _test_perspective_toggle_warp_vs_axis_crop() -> None:
     )
     proc = ProcessingSettings(auto_contrast=False)
 
-    ip_on = ImageProcessor(algo, proc, AdvancedProcessingSettings(perspective_correct=True))
+    ip_on = ImageProcessor(
+        algo, proc, AdvancedProcessingSettings(perspective_correct=True)
+    )
     ip_off = ImageProcessor(
         algo, proc, AdvancedProcessingSettings(perspective_correct=False)
     )
@@ -372,7 +374,9 @@ def _test_exif_orientation_normalization() -> None:
         pil.save(path, exif=exif)
         loaded = ImageProcessor.load_image(path)
         assert loaded is not None
-        assert loaded.shape[0] > loaded.shape[1], f"Expected portrait after EXIF transpose: {loaded.shape}"
+        assert loaded.shape[0] > loaded.shape[1], (
+            f"Expected portrait after EXIF transpose: {loaded.shape}"
+        )
 
 
 def _test_max_image_size_limit_applied() -> None:

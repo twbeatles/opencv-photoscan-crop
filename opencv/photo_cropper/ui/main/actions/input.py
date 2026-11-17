@@ -77,7 +77,9 @@ class InputActions:
         self._redo = redo
 
     def select_input_folder(self) -> None:
-        start_dir = self.refs.input_path_edit.text() if self.refs.input_path_edit else ""
+        start_dir = (
+            self.refs.input_path_edit.text() if self.refs.input_path_edit else ""
+        )
         path = QFileDialog.getExistingDirectory(
             self.services.host_window,
             t("menu.file.open_input"),
@@ -85,11 +87,16 @@ class InputActions:
         )
         if path and self.refs.input_path_edit is not None:
             self.refs.input_path_edit.setText(path)
-            if self.refs.output_path_edit is not None and not self.refs.output_path_edit.text():
+            if (
+                self.refs.output_path_edit is not None
+                and not self.refs.output_path_edit.text()
+            ):
                 self.refs.output_path_edit.setText(os.path.join(path, "output_cropped"))
 
     def select_output_folder(self) -> None:
-        start_dir = self.refs.output_path_edit.text() if self.refs.output_path_edit else ""
+        start_dir = (
+            self.refs.output_path_edit.text() if self.refs.output_path_edit else ""
+        )
         path = QFileDialog.getExistingDirectory(
             self.services.host_window,
             t("menu.file.open_output"),
@@ -181,7 +188,9 @@ class InputActions:
             t("input.image_filter"),
         )
         if path:
-            open_in_workbench = getattr(self.services.host_window, "open_path_in_workbench", None)
+            open_in_workbench = getattr(
+                self.services.host_window, "open_path_in_workbench", None
+            )
             if callable(open_in_workbench):
                 open_in_workbench(path)
             else:
@@ -190,11 +199,15 @@ class InputActions:
                     self._request_preview()
 
     def refresh_file_list(self) -> None:
-        input_path = self.refs.input_path_edit.text() if self.refs.input_path_edit else ""
+        input_path = (
+            self.refs.input_path_edit.text() if self.refs.input_path_edit else ""
+        )
         if input_path and os.path.isdir(input_path):
             files = get_image_files(input_path)
             if self.refs.file_count_badge is not None:
-                self.refs.file_count_badge.setText(t("status.file_count", count=len(files)))
+                self.refs.file_count_badge.setText(
+                    t("status.file_count", count=len(files))
+                )
             if self.refs.status_label is not None:
                 self.refs.status_label.setText(
                     t("input.refresh.done", count=len(files))
@@ -226,7 +239,9 @@ class InputActions:
         elif os.path.isfile(path):
             ext = os.path.splitext(path)[1].lower()
             if ext in SUPPORTED_IMAGE_FORMATS:
-                open_in_workbench = getattr(self.services.host_window, "open_path_in_workbench", None)
+                open_in_workbench = getattr(
+                    self.services.host_window, "open_path_in_workbench", None
+                )
                 if callable(open_in_workbench):
                     open_in_workbench(path)
                 else:
@@ -247,21 +262,35 @@ class InputActions:
             self._navigate_next()
             event.accept()
             return True
-        if key in (Qt.Key.Key_Return, Qt.Key.Key_Enter) and self._request_preview is not None:
+        if (
+            key in (Qt.Key.Key_Return, Qt.Key.Key_Enter)
+            and self._request_preview is not None
+        ):
             self._request_preview()
             event.accept()
             return True
         if key == Qt.Key.Key_Space and self._start_processing is not None:
             processor = self.services.batch_session.processor
-            if not (processor and processor.is_running) and not self.state.manual_extract_running:
+            if (
+                not (processor and processor.is_running)
+                and not self.state.manual_extract_running
+            ):
                 self._start_processing()
             event.accept()
             return True
-        if key == Qt.Key.Key_R and not event.modifiers() and self._rotate_preview is not None:
+        if (
+            key == Qt.Key.Key_R
+            and not event.modifiers()
+            and self._rotate_preview is not None
+        ):
             self._rotate_preview()
             event.accept()
             return True
-        if key == Qt.Key.Key_C and not event.modifiers() and self._show_compare_dialog is not None:
+        if (
+            key == Qt.Key.Key_C
+            and not event.modifiers()
+            and self._show_compare_dialog is not None
+        ):
             self._show_compare_dialog()
             event.accept()
             return True

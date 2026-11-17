@@ -57,6 +57,7 @@ def _test_sqlite_pragmas_and_ingest_cancel_progress() -> None:
         assert count == 1
         assert progress_calls and progress_calls[0][1] == 2
 
+
 def _test_library_catalog_import_and_duplicates() -> None:
     import os
     import tempfile
@@ -101,6 +102,7 @@ def _test_library_catalog_import_and_duplicates() -> None:
         for asset in assets:
             assert os.path.exists(asset["primary_source_path"])
 
+
 def _test_library_search_and_collections() -> None:
     import os
     import tempfile
@@ -136,6 +138,7 @@ def _test_library_search_and_collections() -> None:
         assert len(assets) == 1
         filtered = query.list_assets(collection_id=int(collection_id), limit=10)
         assert len(filtered) == 1
+
 
 def _test_duplicate_service_near_groups() -> None:
     import os
@@ -175,6 +178,7 @@ def _test_duplicate_service_near_groups() -> None:
         assert duplicate_service.rebuild_near_groups(max_distance=20) >= 1
         groups = duplicate_service.list_groups(kind="near")
         assert len(groups) >= 1
+
 
 def _test_duplicate_preferences_preserved_on_rebuild() -> None:
     import os
@@ -220,6 +224,7 @@ def _test_duplicate_preferences_preserved_on_rebuild() -> None:
         }
         assert int(members[asset_a]["is_excluded"]) == 1
 
+
 def _test_source_relink_unique_and_ambiguous() -> None:
     import os
     import tempfile
@@ -238,7 +243,9 @@ def _test_source_relink_unique_and_ambiguous() -> None:
         )
         ingest = LibraryIngestService(
             repository,
-            thumbnail_service=ThumbnailService(thumbnails_dir=os.path.join(td, "thumbs")),
+            thumbnail_service=ThumbnailService(
+                thumbnails_dir=os.path.join(td, "thumbs")
+            ),
             duplicate_service=DuplicateService(repository),
         )
         image = np.full((100, 140, 3), 220, dtype=np.uint8)
@@ -262,7 +269,9 @@ def _test_source_relink_unique_and_ambiguous() -> None:
         )
         ingest = LibraryIngestService(
             repository,
-            thumbnail_service=ThumbnailService(thumbnails_dir=os.path.join(td, "thumbs")),
+            thumbnail_service=ThumbnailService(
+                thumbnails_dir=os.path.join(td, "thumbs")
+            ),
             duplicate_service=DuplicateService(repository),
         )
         image = np.full((100, 140, 3), 210, dtype=np.uint8)
@@ -285,6 +294,7 @@ def _test_source_relink_unique_and_ambiguous() -> None:
         review_items = repository.list_review_items(limit=10)
         assert review_items
         assert review_items[0]["reason"] == "source_relink_required"
+
 
 def _test_asset_query_filters_and_timeline() -> None:
     import os
@@ -378,6 +388,7 @@ def _test_asset_query_filters_and_timeline() -> None:
         assert "review" in event_types
         assert "variant" in event_types
 
+
 def _test_library_sqlite_pragmas_and_invalid_sources() -> None:
     import os
     import tempfile
@@ -395,13 +406,17 @@ def _test_library_sqlite_pragmas_and_invalid_sources() -> None:
             assert busy_timeout is not None and int(busy_timeout[0]) >= 5000
 
         assert repository.upsert_source("")["ingest_state"] == "invalid_source"
-        assert repository.upsert_source(os.path.join(td, "missing.jpg"))["ingest_state"] == "invalid_source"
+        assert (
+            repository.upsert_source(os.path.join(td, "missing.jpg"))["ingest_state"]
+            == "invalid_source"
+        )
         assert repository.upsert_source(td)["ingest_state"] == "invalid_source"
         text_path = os.path.join(td, "note.txt")
         with open(text_path, "w", encoding="utf-8") as f:
             f.write("hello")
         assert repository.upsert_source(text_path)["ingest_state"] == "invalid_source"
         assert repository.list_assets(limit=10) == []
+
 
 def _test_search_index_dirty_and_rebuild() -> None:
     import os
@@ -430,6 +445,7 @@ def _test_search_index_dirty_and_rebuild() -> None:
         repository.store._fts_enabled = True
         assert repository.rebuild_search_index() >= 1
         assert repository.get_search_index_dirty() is False
+
 
 def _test_timeline_review_query_not_limited_to_5000() -> None:
     import os
@@ -478,9 +494,11 @@ def _test_timeline_review_query_not_limited_to_5000() -> None:
             conn.commit()
         timeline = QueryService(repository).get_asset_timeline(target_asset_id)
         assert any(
-            event.event_type == "review" and event.metadata.get("reason") == "target_review"
+            event.event_type == "review"
+            and event.metadata.get("reason") == "target_review"
             for event in timeline
         )
+
 
 __all__ = [
     "_test_sqlite_pragmas_and_ingest_cancel_progress",

@@ -40,8 +40,6 @@ from .translation import TranslationRuntimeMixin
 logger = logging.getLogger(__name__)
 
 
-
-
 class MainWindow(ManagementRuntimeMixin, TranslationRuntimeMixin, QMainWindow):
     """Thin composition root for the Photo Cropper desktop UI."""
 
@@ -188,13 +186,9 @@ class MainWindow(ManagementRuntimeMixin, TranslationRuntimeMixin, QMainWindow):
         if screen_obj is not None:
             available = screen_obj.availableGeometry()
         if available is not None:
-            width, height = preferred_window_size(
-                available.width(), available.height()
-            )
+            width, height = preferred_window_size(available.width(), available.height())
         else:
-            width, height = preferred_window_size(
-                MIN_WINDOW_WIDTH, MIN_WINDOW_HEIGHT
-            )
+            width, height = preferred_window_size(MIN_WINDOW_WIDTH, MIN_WINDOW_HEIGHT)
         self.resize(width, height)
         self.setMinimumSize(
             min(MIN_WINDOW_WIDTH, width), min(MIN_WINDOW_HEIGHT, height)
@@ -238,8 +232,13 @@ class MainWindow(ManagementRuntimeMixin, TranslationRuntimeMixin, QMainWindow):
         parent_dir = os.path.dirname(normalized)
         if self.refs.input_path_edit is not None:
             self.refs.input_path_edit.setText(parent_dir)
-        if self.refs.output_path_edit is not None and not self.refs.output_path_edit.text().strip():
-            self.refs.output_path_edit.setText(os.path.join(parent_dir, "output_cropped"))
+        if (
+            self.refs.output_path_edit is not None
+            and not self.refs.output_path_edit.text().strip()
+        ):
+            self.refs.output_path_edit.setText(
+                os.path.join(parent_dir, "output_cropped")
+            )
         self.state.current_image_path = normalized
         self.show_page("workbench")
         self.preview_actions.request_preview()

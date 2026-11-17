@@ -46,6 +46,7 @@ class ImagePostprocessMixin:
             debug_dir=debug_dir,
             debug_tag=debug_tag,
         )
+
     def process_preview(
         self: Any,
         image_path: str,
@@ -76,7 +77,9 @@ class ImagePostprocessMixin:
         contour_scale_back = 1.0
 
         if fast_preview:
-            max_mp = max(1.0, float(preview_detection_max_mp or self.PREVIEW_DETECTION_MAX_MP))
+            max_mp = max(
+                1.0, float(preview_detection_max_mp or self.PREVIEW_DETECTION_MAX_MP)
+            )
             current_mp = (h * w) / 1_000_000.0
             if current_mp > max_mp:
                 detect_scale = math.sqrt(max_mp / current_mp)
@@ -137,6 +140,7 @@ class ImagePostprocessMixin:
             crop_result=crop_result,
             message=crop_result.message,
         )
+
     def _apply_post_processing(self: Any, image: np.ndarray) -> np.ndarray:
         """
         Apply post-processing effects to cropped image.
@@ -158,9 +162,7 @@ class ImagePostprocessMixin:
             denoise_strength = float(self.proc.denoise_strength)
             if len(result.shape) == 2:
                 # Use positional args for broad OpenCV Python binding compatibility.
-                result = cv2.fastNlMeansDenoising(
-                    result, None, denoise_strength, 7, 21
-                )
+                result = cv2.fastNlMeansDenoising(result, None, denoise_strength, 7, 21)
             else:
                 # OpenCV 4.13+ rejects some keyword names in this API.
                 result = cv2.fastNlMeansDenoisingColored(
@@ -234,6 +236,7 @@ class ImagePostprocessMixin:
             result = self._advanced_processor.auto_crop_borders(result)
 
         return result
+
     def get_preview_with_contour(
         self: Any, image_path: str, max_size: int = 800
     ) -> Tuple[Optional[np.ndarray], Optional[np.ndarray], str]:

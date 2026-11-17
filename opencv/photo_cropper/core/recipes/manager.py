@@ -35,7 +35,9 @@ class RecipeManager(RecipeManagerMigrationMixin):
         try:
             self._repository = get_library_repository()
         except Exception as exc:
-            logger.warning("Recipe repository unavailable, using JSON fallback: %s", exc)
+            logger.warning(
+                "Recipe repository unavailable, using JSON fallback: %s", exc
+            )
             self._repository = None
 
         self._load_fallback_cache()
@@ -84,9 +86,13 @@ class RecipeManager(RecipeManagerMigrationMixin):
         self._current_recipe_name = str(name or "")
         if self._repository is not None:
             try:
-                self._repository.set_app_state("current_recipe", self._current_recipe_name)
+                self._repository.set_app_state(
+                    "current_recipe", self._current_recipe_name
+                )
             except Exception:
-                logger.debug("Failed to persist current recipe to repository", exc_info=True)
+                logger.debug(
+                    "Failed to persist current recipe to repository", exc_info=True
+                )
         self._save_fallback_cache()
 
     def _get_current_recipe(self) -> str:
@@ -98,7 +104,9 @@ class RecipeManager(RecipeManagerMigrationMixin):
                     "current_recipe", ""
                 )
             except Exception:
-                logger.debug("Failed to read current recipe from repository", exc_info=True)
+                logger.debug(
+                    "Failed to read current recipe from repository", exc_info=True
+                )
         return self._current_recipe_name
 
     def _ensure_defaults(self) -> None:
@@ -112,7 +120,9 @@ class RecipeManager(RecipeManagerMigrationMixin):
             if name == "__meta__":
                 continue
             result.append(RecipeRecord.from_payload(payload))
-        result.sort(key=lambda recipe: (recipe.origin != "default", recipe.name.lower()))
+        result.sort(
+            key=lambda recipe: (recipe.origin != "default", recipe.name.lower())
+        )
         return result
 
     def list_recipes(self) -> list[RecipeRecord]:
@@ -138,7 +148,9 @@ class RecipeManager(RecipeManagerMigrationMixin):
                 if row is not None:
                     return RecipeRecord.from_payload(row)
             except Exception as exc:
-                logger.warning("Recipe repository lookup failed, using fallback: %s", exc)
+                logger.warning(
+                    "Recipe repository lookup failed, using fallback: %s", exc
+                )
                 self._repository = None
         payload = self._fallback_cache.get(str(name or ""))
         if payload is None:
@@ -190,7 +202,9 @@ class RecipeManager(RecipeManagerMigrationMixin):
                     origin=record.origin or "user",
                 )
             except Exception as exc:
-                logger.warning("Recipe repository save failed, switching to fallback: %s", exc)
+                logger.warning(
+                    "Recipe repository save failed, switching to fallback: %s", exc
+                )
                 self._repository = None
 
         self._fallback_cache[record.name] = record.to_dict()
@@ -234,7 +248,9 @@ class RecipeManager(RecipeManagerMigrationMixin):
             recipe.category_rules = _normalize_settings_dict(dict(category_rules or {}))
         return self.save_recipe(recipe)
 
-    def save_preset(self, name: str, settings: AppSettings, description: str = "") -> bool:
+    def save_preset(
+        self, name: str, settings: AppSettings, description: str = ""
+    ) -> bool:
         return self.create_profile(name, settings, description=description)
 
     def _apply_snapshot(self, snapshot: dict[str, Any], settings: AppSettings) -> bool:
@@ -261,11 +277,15 @@ class RecipeManager(RecipeManagerMigrationMixin):
     def apply_preset(self, name: str, settings: AppSettings) -> bool:
         return self.apply_recipe(name, settings)
 
-    def apply_category_rules(self, name: str, category: str, settings: AppSettings) -> bool:
+    def apply_category_rules(
+        self, name: str, category: str, settings: AppSettings
+    ) -> bool:
         recipe = self.get_recipe(name)
         if recipe is None:
             return False
-        rules = dict((recipe.category_rules or {}).get(str(category or "").lower(), {}) or {})
+        rules = dict(
+            (recipe.category_rules or {}).get(str(category or "").lower(), {}) or {}
+        )
         if not rules:
             return False
         base = _normalize_settings_dict(settings.to_dict())
@@ -351,9 +371,14 @@ class RecipeManager(RecipeManagerMigrationMixin):
         try:
             with open(import_path, "r", encoding="utf-8") as handle:
                 payload = json.load(handle)
-            if payload.get("type") not in {"photo_cropper_profile", "photo_cropper_recipe"}:
+            if payload.get("type") not in {
+                "photo_cropper_profile",
+                "photo_cropper_recipe",
+            }:
                 return None
-            recipe = RecipeRecord.from_payload(payload.get("recipe") or payload.get("profile") or {})
+            recipe = RecipeRecord.from_payload(
+                payload.get("recipe") or payload.get("profile") or {}
+            )
             if new_name:
                 recipe.name = str(new_name)
             base_name = recipe.name
@@ -368,7 +393,9 @@ class RecipeManager(RecipeManagerMigrationMixin):
             logger.error("Recipe import failed: %s", exc)
             return None
 
-    def import_profile(self, import_path: str, new_name: Optional[str] = None) -> Optional[RecipeRecord]:
+    def import_profile(
+        self, import_path: str, new_name: Optional[str] = None
+    ) -> Optional[RecipeRecord]:
         return self.import_recipe(import_path, new_name=new_name)
 
     def duplicate_profile(self, name: str, new_name: str) -> bool:

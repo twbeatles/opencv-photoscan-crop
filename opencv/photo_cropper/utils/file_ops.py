@@ -72,7 +72,7 @@ def open_file_explorer(path: str) -> bool:
         if system == "Windows":
             if os.path.isfile(path):
                 # Select file in explorer
-                subprocess.run(['explorer', '/select,', path], check=False)
+                subprocess.run(["explorer", "/select,", path], check=False)
             else:
                 try:
                     startfile = getattr(os, "startfile", None)
@@ -81,11 +81,11 @@ def open_file_explorer(path: str) -> bool:
                     startfile(path)
                 except OSError as e:
                     logger.warning(f"os.startfile failed, trying subprocess: {e}")
-                    subprocess.run(['explorer', path], check=False)
+                    subprocess.run(["explorer", path], check=False)
         elif system == "Darwin":  # macOS
-            subprocess.run(['open', path], check=False)
+            subprocess.run(["open", path], check=False)
         else:  # Linux
-            subprocess.run(['xdg-open', path], check=False)
+            subprocess.run(["xdg-open", path], check=False)
 
         return True
     except Exception as e:
@@ -93,9 +93,9 @@ def open_file_explorer(path: str) -> bool:
         return False
 
 
-def move_to_subfolder(filepath: str,
-                     subfolder_name: str,
-                     copy_instead: bool = False) -> Optional[str]:
+def move_to_subfolder(
+    filepath: str, subfolder_name: str, copy_instead: bool = False
+) -> Optional[str]:
     """
     Move or copy file to a subfolder within its parent directory.
 
@@ -189,7 +189,9 @@ def classify_failed_files(
 
             filename = os.path.basename(filepath)
             rel_parent = relative_parent_dir(filepath, normalized_input_root)
-            dest_dir = os.path.join(failed_folder, rel_parent) if rel_parent else failed_folder
+            dest_dir = (
+                os.path.join(failed_folder, rel_parent) if rel_parent else failed_folder
+            )
             os.makedirs(dest_dir, exist_ok=True)
             dest_path = os.path.join(dest_dir, filename)
 

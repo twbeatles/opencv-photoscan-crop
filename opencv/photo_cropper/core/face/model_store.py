@@ -27,12 +27,8 @@ DNN_MODEL_URL = (
     "dnn_samples_face_detector_20180205_fp16/"
     "res10_300x300_ssd_iter_140000_fp16.caffemodel"
 )
-DNN_PROTOTXT_SHA256 = (
-    "dcd661dc48fc9de0a341db1f666a2164ea63a67265c7f779bc12d6b3f2fa67e9"
-)
-DNN_MODEL_SHA256 = (
-    "510ffd2471bd81e3fcc88a5beb4eae4fb445ccf8333ebc54e7302b83f4158a76"
-)
+DNN_PROTOTXT_SHA256 = "dcd661dc48fc9de0a341db1f666a2164ea63a67265c7f779bc12d6b3f2fa67e9"
+DNN_MODEL_SHA256 = "510ffd2471bd81e3fcc88a5beb4eae4fb445ccf8333ebc54e7302b83f4158a76"
 DNN_PROTOTXT_FILENAME = "deploy.prototxt"
 DNN_MODEL_FILENAME = "res10_300x300_ssd_iter_140000_fp16.caffemodel"
 DNN_CONFIDENCE_THRESHOLD = 0.55
@@ -90,9 +86,10 @@ def download_file_atomic(
     os.close(fd)
     try:
         hasher = hashlib.sha256()
-        with urllib.request.urlopen(url, timeout=timeout) as response, open(
-            tmp_path, "wb"
-        ) as out:
+        with (
+            urllib.request.urlopen(url, timeout=timeout) as response,
+            open(tmp_path, "wb") as out,
+        ):
             while True:
                 chunk = response.read(1024 * 1024)
                 if not chunk:
@@ -168,16 +165,16 @@ def ensure_dnn_models() -> Tuple[str, str]:
 
 
 __all__ = [
-    'DNN_PROTOTXT_URL',
-    'DNN_MODEL_URL',
-    'DNN_PROTOTXT_SHA256',
-    'DNN_MODEL_SHA256',
-    'DNN_PROTOTXT_FILENAME',
-    'DNN_MODEL_FILENAME',
-    'DNN_CONFIDENCE_THRESHOLD',
-    'get_model_cache_dir',
-    'is_valid_model_file',
-    'download_file_atomic',
-    'ensure_model_file',
-    'ensure_dnn_models',
+    "DNN_PROTOTXT_URL",
+    "DNN_MODEL_URL",
+    "DNN_PROTOTXT_SHA256",
+    "DNN_MODEL_SHA256",
+    "DNN_PROTOTXT_FILENAME",
+    "DNN_MODEL_FILENAME",
+    "DNN_CONFIDENCE_THRESHOLD",
+    "get_model_cache_dir",
+    "is_valid_model_file",
+    "download_file_atomic",
+    "ensure_model_file",
+    "ensure_dnn_models",
 ]

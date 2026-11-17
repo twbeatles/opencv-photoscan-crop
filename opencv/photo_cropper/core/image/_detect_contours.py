@@ -44,9 +44,12 @@ class ImageContourSelectionMixin:
         uniq: List[np.ndarray] = []
         for q in candidates:
             qn = np.round(self.order_points(q), 1)
-            if not any(np.allclose(qn, np.round(self.order_points(u), 1)) for u in uniq):
+            if not any(
+                np.allclose(qn, np.round(self.order_points(u), 1)) for u in uniq
+            ):
                 uniq.append(q)
         return uniq
+
     def find_best_contour(
         self: Any,
         edge_image: np.ndarray,
@@ -70,7 +73,11 @@ class ImageContourSelectionMixin:
         if not contours:
             return None, 0.0, []
 
-        top_n = 10 if self.algo.detection_mode == "fast" else (20 if self.algo.detection_mode == "balanced" else 35)
+        top_n = (
+            10
+            if self.algo.detection_mode == "fast"
+            else (20 if self.algo.detection_mode == "balanced" else 35)
+        )
         contours = sorted(contours, key=cv2.contourArea, reverse=True)[:top_n]
 
         best_quad = None
@@ -146,6 +153,7 @@ class ImageContourSelectionMixin:
         self.algo.min_area_ratio = orig_min
         self.algo.max_area_ratio = orig_max
         return best_quad, float(best_score), scored_candidates[:10]
+
     def _min_accept_score_for_stage(self: Any, stage: DetectionStage) -> float:
         """
         Conservative per-stage confidence gate.
@@ -203,9 +211,11 @@ class ImageContourSelectionMixin:
         }.get(self.algo.contour_scoring, 0.0)
 
         return float(max(0.15, min(0.995, threshold + scoring_delta)))
+
     def _accept_stage_candidate(self: Any, stage: DetectionStage, score: float) -> bool:
         """Check whether a candidate score passes stage-specific gate."""
         return float(score) >= self._min_accept_score_for_stage(stage)
+
     def _candidate_passes_stage_filters(
         self: Any,
         stage: DetectionStage,
@@ -239,6 +249,7 @@ class ImageContourSelectionMixin:
                 return False
 
         return True
+
     def _stage_rank(self: Any, stage: DetectionStage) -> int:
         """Stable rank used for tie-breaking during global stage re-ranking."""
         rank_map = {
@@ -253,7 +264,10 @@ class ImageContourSelectionMixin:
             DetectionStage.LSD_RECT: 5,
         }
         return int(rank_map.get(stage, 9))
-    def _quad_iou(self: Any, a: np.ndarray, b: np.ndarray, shape: Tuple[int, int]) -> float:
+
+    def _quad_iou(
+        self: Any, a: np.ndarray, b: np.ndarray, shape: Tuple[int, int]
+    ) -> float:
         """Mask IoU between two quads on a discrete canvas."""
         h, w = int(shape[0]), int(shape[1])
         if h <= 0 or w <= 0:
@@ -363,9 +377,9 @@ class ImageContourSelectionMixin:
         except Exception:
             return None
 
-        fg = np.where(
-            (mask == cv2.GC_FGD) | (mask == cv2.GC_PR_FGD), 255, 0
-        ).astype(np.uint8)
+        fg = np.where((mask == cv2.GC_FGD) | (mask == cv2.GC_PR_FGD), 255, 0).astype(
+            np.uint8
+        )
         fg = cv2.morphologyEx(fg, cv2.MORPH_CLOSE, self._kernel_5x5, iterations=1)
         contours, _ = cv2.findContours(fg, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
         if not contours:
@@ -376,7 +390,9 @@ class ImageContourSelectionMixin:
         quads = self._contour_to_quad_candidates(best)
         if not quads:
             return None
-        refined = self.order_points(np.asarray(quads[0], dtype=np.float32).reshape((4, 2)))
+        refined = self.order_points(
+            np.asarray(quads[0], dtype=np.float32).reshape((4, 2))
+        )
         refined[:, 0] += float(x1)
         refined[:, 1] += float(y1)
         return refined

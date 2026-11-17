@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """Deskew detection and correction operations."""
+
 from __future__ import annotations
 
 import logging
@@ -13,12 +14,13 @@ from .types import DeskewResult
 
 logger = logging.getLogger(__name__)
 
+
 class DeskewOpsMixin:
     """Deskew operations for AdvancedImageProcessor."""
 
-    def auto_deskew(self, image: np.ndarray,
-                    max_angle: float = 45.0,
-                    min_confidence: float = 0.3) -> DeskewResult:
+    def auto_deskew(
+        self, image: np.ndarray, max_angle: float = 45.0, min_confidence: float = 0.3
+    ) -> DeskewResult:
         """
         Automatically detect and correct image skew.
 
@@ -43,7 +45,9 @@ class DeskewOpsMixin:
             scale = max_dim / max(h, w)
             new_w = int(w * scale)
             new_h = int(h * scale)
-            detect_img = cv2.resize(image, (new_w, new_h), interpolation=cv2.INTER_LINEAR)
+            detect_img = cv2.resize(
+                image, (new_w, new_h), interpolation=cv2.INTER_LINEAR
+            )
         else:
             detect_img = image
 
@@ -67,7 +71,7 @@ class DeskewOpsMixin:
             theta=np.pi / 180,
             threshold=100,
             minLineLength=min(gray.shape) // 10,
-            maxLineGap=10
+            maxLineGap=10,
         )
 
         if lines is None or len(lines) == 0:
@@ -126,11 +130,7 @@ class DeskewOpsMixin:
 
         logger.info(f"Auto deskew: {avg_angle:.2f}° (confidence: {confidence:.2f})")
 
-        return DeskewResult(
-            image=corrected,
-            angle=avg_angle,
-            confidence=confidence
-        )
+        return DeskewResult(image=corrected, angle=avg_angle, confidence=confidence)
 
 
 auto_deskew = DeskewOpsMixin.auto_deskew

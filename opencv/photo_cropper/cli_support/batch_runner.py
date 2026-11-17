@@ -23,7 +23,9 @@ try:
     )
     from ..utils.file_helpers import is_output_inside_input
 except ImportError:  # Support direct execution: python photo_cropper/cli.py
-    sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+    sys.path.append(
+        os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    )
     from photo_cropper.core.settings_model.validation import (
         build_validation_summary,
         validate_settings,
@@ -45,7 +47,9 @@ def _configure_logging(level: str) -> None:
     )
 
 
-def _validate_io_paths(input_dir: str, output_dir: str, *, recursive: bool = False) -> None:
+def _validate_io_paths(
+    input_dir: str, output_dir: str, *, recursive: bool = False
+) -> None:
     if not input_dir:
         raise ValueError("Input directory is required")
     if not output_dir:

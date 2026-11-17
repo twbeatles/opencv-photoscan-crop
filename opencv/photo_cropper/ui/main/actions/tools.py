@@ -49,7 +49,9 @@ class ToolActions:
         self._sync_current_settings = sync_current_settings
 
     def rotate_preview(self) -> None:
-        if not self.state.current_image_path or not os.path.exists(self.state.current_image_path):
+        if not self.state.current_image_path or not os.path.exists(
+            self.state.current_image_path
+        ):
             if self.refs.status_label is not None:
                 self.refs.status_label.setText(t("tools.rotate.empty"))
             return
@@ -68,7 +70,9 @@ class ToolActions:
             self.refs.status_label.setText(t("tools.rotate.done"))
 
     def detect_duplicates(self) -> None:
-        input_path = self.refs.input_path_edit.text() if self.refs.input_path_edit else ""
+        input_path = (
+            self.refs.input_path_edit.text() if self.refs.input_path_edit else ""
+        )
         if not input_path or not os.path.isdir(input_path):
             QMessageBox.warning(
                 self.services.host_window,
@@ -179,7 +183,9 @@ class ToolActions:
 
         detector = get_face_detector(
             use_dnn=getattr(self.state.settings.face_detection, "use_dnn", False),
-            min_face_size=getattr(self.state.settings.face_detection, "min_face_size", 30),
+            min_face_size=getattr(
+                self.state.settings.face_detection, "min_face_size", 30
+            ),
         )
         image = load_image_unicode(
             self.state.current_image_path,
@@ -210,7 +216,11 @@ class ToolActions:
 
         enhancer = get_smart_enhancer()
         preset_names = enhancer.get_preset_names()
-        presets = [name for preset, name in preset_names.items() if preset != EnhancementPreset.NONE]
+        presets = [
+            name
+            for preset, name in preset_names.items()
+            if preset != EnhancementPreset.NONE
+        ]
         preset, ok = QInputDialog.getItem(
             self.services.host_window,
             t("tools.smart.dialog_title"),
@@ -238,15 +248,15 @@ class ToolActions:
         effects = ", ".join(result.applied_effects[:3])
         ToastManager.success(t("tools.smart.toast", preset=preset, effects=effects))
         if self.refs.status_label is not None:
-            self.refs.status_label.setText(
-                t("tools.smart.status", preset=preset)
-            )
+            self.refs.status_label.setText(t("tools.smart.status", preset=preset))
 
     def show_multi_compare(self) -> None:
         from ...widgets.multi_compare_window import MultiCompareWindow
 
         if self.state.multi_compare_window is None:
-            self.state.multi_compare_window = MultiCompareWindow(self.services.host_window)
+            self.state.multi_compare_window = MultiCompareWindow(
+                self.services.host_window
+            )
 
         if self.state.last_original is not None:
             self.state.multi_compare_window.add_image(
@@ -306,9 +316,7 @@ class ToolActions:
         if self._sync_current_settings is not None:
             self._sync_current_settings(sync_panel=True, reconfigure_scheduler=True)
         if self.refs.status_label is not None:
-            self.refs.status_label.setText(
-                t("tools.preset.status", preset=preset_name)
-            )
+            self.refs.status_label.setText(t("tools.preset.status", preset=preset_name))
         ToastManager.success(t("tools.preset.toast", preset=preset_name))
         if self.state.settings.ui.auto_preview and self._request_preview is not None:
             self._request_preview()

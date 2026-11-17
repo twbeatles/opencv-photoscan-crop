@@ -51,7 +51,9 @@ class PresetManager:
     def is_default_preset(self, name: str) -> bool:
         return self._recipe_manager.is_default_preset(name)
 
-    def save_preset(self, name: str, settings: AppSettings, description: str = "") -> bool:
+    def save_preset(
+        self, name: str, settings: AppSettings, description: str = ""
+    ) -> bool:
         return self._recipe_manager.save_preset(name, settings, description=description)
 
     def apply_preset(self, name: str, settings: AppSettings) -> bool:
@@ -181,7 +183,9 @@ class PresetManagerWidget(QWidget):
             t("dialog.delete"),
             t("management.presets.delete_confirm", name=name),
         )
-        if reply == QMessageBox.StandardButton.Yes and self._manager.delete_preset(name):
+        if reply == QMessageBox.StandardButton.Yes and self._manager.delete_preset(
+            name
+        ):
             self._refresh_list()
 
     def set_settings(self, settings: AppSettings) -> None:
@@ -197,7 +201,9 @@ class PresetManagerWidget(QWidget):
         self._delete_btn.setText(t("dialog.delete"))
         item = self._preset_list.currentItem()
         if item is not None:
-            self._desc_label.setText(self._manager.get_preset_description(item.text()) or "-")
+            self._desc_label.setText(
+                self._manager.get_preset_description(item.text()) or "-"
+            )
 
 
 class PresetComboBox(QComboBox):

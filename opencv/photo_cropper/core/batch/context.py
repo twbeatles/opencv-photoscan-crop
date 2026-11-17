@@ -35,6 +35,7 @@ class BatchProcessorContextMixin:
         # Auto-calculate: use CPU count but cap at 8 for I/O bound operations
         cpu_count = os.cpu_count() or 4
         return min(max(2, cpu_count - 1), 8)  # Leave one core free, max 8
+
     def set_callbacks(
         self: Any,
         on_progress: Optional[Callable[[BatchProgress], None]] = None,
@@ -47,6 +48,7 @@ class BatchProcessorContextMixin:
         self._on_file_complete = on_file_complete
         self._on_log = on_log
         self._on_complete = on_complete
+
     def update_settings(self: Any, settings: AppSettings):
         """Update processor settings."""
         self.settings = settings
@@ -69,11 +71,13 @@ class BatchProcessorContextMixin:
         self._pipeline_signature_cache = None
         self._thread_count = self._calculate_optimal_threads()
         self._worker_local = threading.local()
+
     def _use_thread_local_context(self) -> bool:
         """Check if per-thread processor context should be used."""
         return (
             self.settings.performance.enable_multithreading and self._thread_count > 1
         )
+
     def _get_worker_context(self) -> Dict[str, Any]:
         """Get or create thread-local worker context."""
         context = getattr(self._worker_local, "context", None)
@@ -81,6 +85,7 @@ class BatchProcessorContextMixin:
             context = {}
             self._worker_local.context = context
         return context
+
     def _get_worker_processor(self: Any) -> ImageProcessor:
         if not self._use_thread_local_context():
             return self.processor
@@ -97,6 +102,7 @@ class BatchProcessorContextMixin:
             )
             context["processor"] = processor
         return processor
+
     def _get_resize_processor(self) -> ResizeProcessor:
         if not self._use_thread_local_context():
             if self._resize_processor is None:
@@ -109,6 +115,7 @@ class BatchProcessorContextMixin:
             processor = ResizeProcessor()
             context["resize_processor"] = processor
         return processor
+
     def _get_watermark_processor(self) -> WatermarkProcessor:
         if not self._use_thread_local_context():
             if self._watermark_processor is None:
@@ -121,6 +128,7 @@ class BatchProcessorContextMixin:
             processor = WatermarkProcessor()
             context["watermark_processor"] = processor
         return processor
+
     def _get_face_detector(self) -> FaceDetector:
         use_dnn = self.settings.face_detection.use_dnn
         min_face_size = int(getattr(self.settings.face_detection, "min_face_size", 30))
@@ -128,7 +136,8 @@ class BatchProcessorContextMixin:
             if (
                 self._face_detector is None
                 or self._face_detector.use_dnn != use_dnn
-                or int(getattr(self._face_detector, "min_face_size", 30)) != min_face_size
+                or int(getattr(self._face_detector, "min_face_size", 30))
+                != min_face_size
             ):
                 self._face_detector = FaceDetector(
                     use_dnn=use_dnn, min_face_size=min_face_size
@@ -145,6 +154,7 @@ class BatchProcessorContextMixin:
             detector = FaceDetector(use_dnn=use_dnn, min_face_size=min_face_size)
             context["face_detector"] = detector
         return detector
+
     def _get_classifier(self) -> ImageClassifier:
         if not self._use_thread_local_context():
             if self._classifier is None:
@@ -157,6 +167,7 @@ class BatchProcessorContextMixin:
             classifier = ImageClassifier()
             context["classifier"] = classifier
         return classifier
+
     def _get_smart_enhancer(self) -> SmartEnhancer:
         if not self._use_thread_local_context():
             if self._smart_enhancer is None:
@@ -169,6 +180,7 @@ class BatchProcessorContextMixin:
             enhancer = SmartEnhancer()
             context["smart_enhancer"] = enhancer
         return enhancer
+
     def _build_multi_photo_detector(self) -> MultiPhotoDetector:
         """Build detector with explicit typed kwargs (avoid mixed dict for pyright)."""
         algo = self.settings.algorithm
@@ -197,6 +209,7 @@ class BatchProcessorContextMixin:
             detector = self._build_multi_photo_detector()
             context["multi_photo_detector"] = detector
         return detector
+
     def _log(self: Any, message: str, level: str = "info"):
         """Send log message through callback."""
         # Validate log level

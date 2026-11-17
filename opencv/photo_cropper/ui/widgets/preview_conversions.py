@@ -9,16 +9,16 @@ from PySide6.QtGui import QImage, QPixmap
 def numpy_to_qimage(image: Optional[np.ndarray]) -> QImage:
     """
     Convert numpy array to QImage.
-    
+
     Args:
         image: OpenCV image (BGR or Grayscale)
-        
+
     Returns:
         QImage
     """
     if image is None:
         return QImage()
-    
+
     if len(image.shape) == 2:
         # Grayscale - make a copy for memory safety
         h, w = image.shape

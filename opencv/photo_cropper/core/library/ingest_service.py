@@ -38,8 +38,12 @@ class LibraryIngestService:
                 action_context={
                     "pending_source_path": str(record.get("source_path", "") or ""),
                     "pending_source_hash": str(record.get("source_hash", "") or ""),
-                    "candidate_source_ids": list(record.get("candidate_source_ids", []) or []),
-                    "candidate_asset_ids": list(record.get("candidate_asset_ids", []) or []),
+                    "candidate_source_ids": list(
+                        record.get("candidate_source_ids", []) or []
+                    ),
+                    "candidate_asset_ids": list(
+                        record.get("candidate_asset_ids", []) or []
+                    ),
                 },
             )
         return record

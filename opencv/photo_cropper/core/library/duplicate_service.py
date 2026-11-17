@@ -254,7 +254,9 @@ class DuplicateService:
         preferred = [
             asset_id
             for asset_id in unique_ids
-            if bool(int(preferences.get(asset_id, {}).get("prefer_representative", 0) or 0))
+            if bool(
+                int(preferences.get(asset_id, {}).get("prefer_representative", 0) or 0)
+            )
         ]
         if len(preferred) == 1:
             return preferred[0]

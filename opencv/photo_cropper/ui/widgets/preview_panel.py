@@ -29,19 +29,19 @@ from .zoomable_view import ZoomableGraphicsView
 class ImagePreviewWidget(QWidget):
     """
     Complete image preview widget with controls.
-    
+
     Features:
         - Zoomable image display
         - Contour overlay toggle
         - Zoom controls
         - Side-by-side comparison mode
     """
-    
+
     contour_edited = Signal(object)  # np.ndarray(4,2) in preview coordinates
 
     def __init__(self, parent=None):
         super().__init__(parent)
-        
+
         self._original_image: Optional[np.ndarray] = None
         self._processed_image: Optional[np.ndarray] = None
         self._contour_overlay: Optional[np.ndarray] = None
@@ -54,9 +54,7 @@ class ImagePreviewWidget(QWidget):
         self._hover_handle_index: Optional[int] = None
         self._handle_pick_radius = 20.0
         self._contour_pen = QPen(QColor(64, 220, 128, 220), 2)
-        self._seed_line_pen = QPen(
-            QColor(251, 191, 36, 230), 2, Qt.PenStyle.DashLine
-        )
+        self._seed_line_pen = QPen(QColor(251, 191, 36, 230), 2, Qt.PenStyle.DashLine)
         self._handle_pen = QPen(QColor(255, 255, 255, 220), 1)
         self._handle_brush = QBrush(QColor(244, 63, 94, 220))
         self._seed_brush = QBrush(QColor(251, 191, 36, 210))
@@ -71,12 +69,12 @@ class ImagePreviewWidget(QWidget):
             "overlay": None,
             "processed": None,
         }
-        
+
         self._placeholder_items: Dict[str, Any] = {}
 
         self._setup_ui()
         self.show_placeholder()
-    
+
     def show_placeholder(self):
         """Show placeholder text in empty views."""
         self._drag_handle_index = None
@@ -112,7 +110,7 @@ class ImagePreviewWidget(QWidget):
         # Reset items references
         self.original_pixmap_item = QGraphicsPixmapItem()
         self.processed_pixmap_item = QGraphicsPixmapItem()
-        
+
         self.original_scene.addItem(self.original_pixmap_item)
         self.processed_scene.addItem(self.processed_pixmap_item)
         for view in (self.original_view, self.processed_view):
@@ -150,7 +148,7 @@ class ImagePreviewWidget(QWidget):
             viewport.installEventFilter(self)
         self.original_pixmap_item = QGraphicsPixmapItem()
         self.original_scene.addItem(self.original_pixmap_item)
-        
+
         original_container = QFrame()
         original_container.setFrameStyle(QFrame.Shape.StyledPanel)
         original_layout = QVBoxLayout(original_container)
@@ -161,14 +159,14 @@ class ImagePreviewWidget(QWidget):
         original_layout.addWidget(self.original_view)
         # views_layout.addWidget(original_container)
         self._splitter.addWidget(original_container)
-        
+
         # Processed image view
         self.processed_scene = QGraphicsScene()
         self.processed_view = ZoomableGraphicsView()
         self.processed_view.setScene(self.processed_scene)
         self.processed_pixmap_item = QGraphicsPixmapItem()
         self.processed_scene.addItem(self.processed_pixmap_item)
-        
+
         processed_container = QFrame()
         processed_container.setFrameStyle(QFrame.Shape.StyledPanel)
         processed_layout = QVBoxLayout(processed_container)
@@ -179,12 +177,12 @@ class ImagePreviewWidget(QWidget):
         processed_layout.addWidget(self.processed_view)
         # views_layout.addWidget(processed_container)
         self._splitter.addWidget(processed_container)
-        
+
         # Set initial sizes (equal)
         self._splitter.setStretchFactor(0, 1)
         self._splitter.setStretchFactor(1, 1)
         self._splitter.setSizes([10000, 10000])
-        
+
         layout.addWidget(self._splitter, 1)
 
         # View controls: area overlay on the left, zoom on the right.
@@ -226,7 +224,7 @@ class ImagePreviewWidget(QWidget):
         # Connect zoom signals
         self.original_view.zoom_changed.connect(self._on_zoom_changed)
         self.processed_view.zoom_changed.connect(self._on_zoom_changed)
-        
+
     def set_original_image(
         self,
         image: Optional[np.ndarray],
@@ -235,7 +233,7 @@ class ImagePreviewWidget(QWidget):
     ):
         """
         Set original image with optional contour overlay.
-        
+
         Args:
             image: Original image
             contour_overlay: Image with contour drawn on it
@@ -270,11 +268,11 @@ class ImagePreviewWidget(QWidget):
         if is_new_image and image is not None:
             # Show the whole scan first; the user can zoom in from there.
             self.original_view.fit_in_view()
-    
+
     def set_processed_image(self, image: Optional[np.ndarray]):
         """
         Set processed image.
-        
+
         Args:
             image: Processed/cropped image
         """
@@ -296,7 +294,7 @@ class ImagePreviewWidget(QWidget):
                 self.processed_view.fit_in_view()
         else:
             self.processed_pixmap_item.setPixmap(QPixmap())
-    
+
     def _update_original_display(self):
         """Update original image display based on contour toggle."""
         if self._show_contour and self._pixmap_cache["overlay"] is not None:
@@ -310,7 +308,7 @@ class ImagePreviewWidget(QWidget):
         else:
             self.original_pixmap_item.setPixmap(QPixmap())
         self._redraw_contour_overlay()
-    
+
     def _on_contour_toggle(self, state):
         """Handle contour overlay toggle."""
         self._show_contour = bool(state)
@@ -453,8 +451,13 @@ class ImagePreviewWidget(QWidget):
                     and not (event.modifiers() & Qt.KeyboardModifier.ControlModifier)
                     and self._show_contour
                 ):
-                    scene_pos = self.original_view.mapToScene(event.position().toPoint())
-                    if self._contour_points is not None and len(self._contour_points) == 4:
+                    scene_pos = self.original_view.mapToScene(
+                        event.position().toPoint()
+                    )
+                    if (
+                        self._contour_points is not None
+                        and len(self._contour_points) == 4
+                    ):
                         idx = self._pick_contour_handle(scene_pos)
                         if idx is not None:
                             self._drag_handle_index = idx
@@ -470,7 +473,9 @@ class ImagePreviewWidget(QWidget):
                     and self._drag_handle_index is not None
                     and self._contour_points is not None
                 ):
-                    scene_pos = self.original_view.mapToScene(event.position().toPoint())
+                    scene_pos = self.original_view.mapToScene(
+                        event.position().toPoint()
+                    )
                     clamped = self._clamp_to_image_bounds(scene_pos)
                     self._contour_points[self._drag_handle_index] = [
                         float(clamped.x()),
@@ -485,7 +490,9 @@ class ImagePreviewWidget(QWidget):
                     and len(self._contour_points) == 4
                     and not (event.modifiers() & Qt.KeyboardModifier.ControlModifier)
                 ):
-                    scene_pos = self.original_view.mapToScene(event.position().toPoint())
+                    scene_pos = self.original_view.mapToScene(
+                        event.position().toPoint()
+                    )
                     idx = self._pick_contour_handle(scene_pos)
                     if idx is not None:
                         if self._hover_handle_index != idx:
@@ -510,7 +517,10 @@ class ImagePreviewWidget(QWidget):
                 ):
                     self._drag_handle_index = None
                     viewport.setCursor(Qt.CursorShape.ArrowCursor)
-                    if self._contour_points is not None and len(self._contour_points) == 4:
+                    if (
+                        self._contour_points is not None
+                        and len(self._contour_points) == 4
+                    ):
                         self.contour_edited.emit(
                             np.array(self._contour_points, dtype=np.float32)
                         )
@@ -535,7 +545,7 @@ class ImagePreviewWidget(QWidget):
         if watched is None:
             return False
         return super().eventFilter(watched, event)
-    
+
     def _on_zoom_changed(self, zoom: float):
         """Handle zoom level change from view."""
         percent = int(zoom * 100)
@@ -544,7 +554,7 @@ class ImagePreviewWidget(QWidget):
         self.zoom_slider.blockSignals(True)
         self.zoom_slider.setValue(min(500, max(10, percent)))
         self.zoom_slider.blockSignals(False)
-    
+
     def _on_zoom_slider_changed(self, value: int):
         """Handle zoom slider change."""
         zoom = value / 100.0
@@ -556,21 +566,21 @@ class ImagePreviewWidget(QWidget):
         self.processed_view.resetTransform()
         self.processed_view.scale(zoom, zoom)
         self.processed_view._zoom = zoom
-    
+
     def _fit_all(self):
         """Fit all views."""
         self.original_view.fit_in_view()
         self.processed_view.fit_in_view()
         # Update slider
         self.zoom_slider.setValue(100)
-    
+
     def _reset_zoom(self):
         """Reset all zooms."""
         self.original_view.reset_zoom()
         self.processed_view.reset_zoom()
         # Update slider
         self.zoom_slider.setValue(100)
-    
+
     def retranslate_ui(self):
         """Refresh texts after a language change."""
         self._original_label.setText(t("preview.title.original"))
@@ -593,14 +603,14 @@ class ImagePreviewWidget(QWidget):
         self._source_cache["original"] = None
         self._source_cache["overlay"] = None
         self._source_cache["processed"] = None
-        
+
         self.show_placeholder()
-    
+
     @property
     def show_contour(self) -> bool:
         """Get contour visibility state."""
         return self._show_contour
-    
+
     @show_contour.setter
     def show_contour(self, value: bool):
         """Set contour visibility."""

@@ -263,6 +263,7 @@ TESTS = [
     _test_job_summary_metadata_warnings_and_near_summary,
 ]
 
+
 def _select_tests(argv: list[str] | None = None) -> list:
     """Filter tests by function name (substring or exact match)."""
     import sys

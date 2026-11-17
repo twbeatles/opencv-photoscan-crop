@@ -15,4 +15,3 @@ class WatchStartResult:
     output_path: str = ""
     error_code: str = ""
     message: str = ""
-

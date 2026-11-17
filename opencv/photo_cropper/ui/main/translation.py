@@ -92,7 +92,9 @@ class TranslationRuntimeMixin:
         label = self.refs.labels.get("toolbar.preset")
         if label is not None:
             label.setText(t("toolbar.preset"))
-        if self.refs.preset_combo is not None and hasattr(self.refs.preset_combo, "retranslate_ui"):
+        if self.refs.preset_combo is not None and hasattr(
+            self.refs.preset_combo, "retranslate_ui"
+        ):
             self.refs.preset_combo.retranslate_ui()
             self.refs.preset_combo.setToolTip(t("toolbar.preset.tooltip"))
         if self.refs.process_btn is not None:
@@ -108,11 +110,11 @@ class TranslationRuntimeMixin:
         if self.refs.input_path_edit is not None:
             self.refs.input_path_edit.setPlaceholderText(t("central.input_placeholder"))
         if self.refs.output_path_edit is not None:
-            self.refs.output_path_edit.setPlaceholderText(t("central.output_placeholder"))
+            self.refs.output_path_edit.setPlaceholderText(
+                t("central.output_placeholder")
+            )
 
-        for label_key, text_key in (
-            ("central.scene_preset_label", "central.scene"),
-        ):
+        for label_key, text_key in (("central.scene_preset_label", "central.scene"),):
             label = self.refs.labels.get(label_key)
             if label is not None:
                 label.setText(t(text_key))
@@ -137,25 +139,35 @@ class TranslationRuntimeMixin:
             self.refs.scene_preset_combo.setToolTip(t("central.scene.tooltip"))
         if self.refs.multi_photo_quick_toggle is not None:
             self.refs.multi_photo_quick_toggle.setText(t("central.multi_photo"))
-            self.refs.multi_photo_quick_toggle.setToolTip(t("central.multi_photo.tooltip"))
+            self.refs.multi_photo_quick_toggle.setToolTip(
+                t("central.multi_photo.tooltip")
+            )
         if self.refs.preview_widget is not None:
             self.refs.preview_widget.retranslate_ui()
 
-        if self.refs.image_info_badge is not None and self.state.current_image_path is None:
+        if (
+            self.refs.image_info_badge is not None
+            and self.state.current_image_path is None
+        ):
             self.refs.image_info_badge.setText(t("status.image_empty"))
         if self.refs.file_count_badge is not None:
             count = len(self.state.image_list or [])
             self.refs.file_count_badge.setText(
                 t("status.file_count", count=count) if count else t("status.file_empty")
             )
-        if self.refs.status_label is not None and not self.refs.status_label.text().strip():
+        if (
+            self.refs.status_label is not None
+            and not self.refs.status_label.text().strip()
+        ):
             self.refs.status_label.setText(f" {t('status.ready')}")
         if self.refs.settings_panel is not None:
             self.refs.settings_panel.retranslate_ui()
         self.batch_actions.update_batch_edit_controls()
         if self.refs.progress_dialog is not None:
             self.refs.progress_dialog.retranslate_ui()
-        if self.fullscreen_manager is not None and hasattr(self.fullscreen_manager, "retranslate_ui"):
+        if self.fullscreen_manager is not None and hasattr(
+            self.fullscreen_manager, "retranslate_ui"
+        ):
             self.fullscreen_manager.retranslate_ui()
         if self.state.multi_compare_window is not None and hasattr(
             self.state.multi_compare_window, "retranslate_ui"

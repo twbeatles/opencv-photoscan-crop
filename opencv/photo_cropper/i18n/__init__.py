@@ -17,13 +17,13 @@ from .catalog import (
 )
 
 __all__ = [
-    'FALLBACK_LANGUAGE',
-    'SUPPORTED_LANGUAGES',
-    'TranslationManager',
-    'detect_system_language',
-    'get_category_folder_defaults',
-    'get_translator',
-    't',
-    'set_language',
-    'get_current_language'
+    "FALLBACK_LANGUAGE",
+    "SUPPORTED_LANGUAGES",
+    "TranslationManager",
+    "detect_system_language",
+    "get_category_folder_defaults",
+    "get_translator",
+    "t",
+    "set_language",
+    "get_current_language",
 ]

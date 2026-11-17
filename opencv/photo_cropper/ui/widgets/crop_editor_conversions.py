@@ -40,5 +40,5 @@ def numpy_to_qpixmap(image: np.ndarray) -> QPixmap:
                 bytes_per_line,
                 QImage.Format.Format_RGB888,
             )
-    
+
     return QPixmap.fromImage(qimage.copy())

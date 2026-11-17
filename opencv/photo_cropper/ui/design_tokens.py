@@ -111,9 +111,7 @@ QFrame#collapsibleHeader {{
 QFrame#collapsibleHeader:hover {{ background: {HOVER_BG}; }}
 """
 
-INVALID_INPUT_QSS = (
-    f"QLineEdit {{ border: 1px solid {STATUS_ERROR}; border-radius: {BADGE_RADIUS}px; }}"
-)
+INVALID_INPUT_QSS = f"QLineEdit {{ border: 1px solid {STATUS_ERROR}; border-radius: {BADGE_RADIUS}px; }}"
 
 
 def status_badge_qss(kind: str = "neutral") -> str:

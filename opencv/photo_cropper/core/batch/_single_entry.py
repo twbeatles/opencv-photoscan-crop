@@ -25,7 +25,9 @@ class BatchProcessorSingleEntryMixin:
         normalized_input_path = os.path.abspath(str(input_path or ""))
         if not normalized_input_path or not os.path.exists(normalized_input_path):
             return FileResult(
-                filename=os.path.basename(normalized_input_path) if normalized_input_path else "",
+                filename=os.path.basename(normalized_input_path)
+                if normalized_input_path
+                else "",
                 status=ProcessStatus.FAILED,
                 source_path=normalized_input_path,
                 message="입력 파일이 존재하지 않습니다",

@@ -67,7 +67,9 @@ class DuplicatesPage(QWidget):
         splitter.addWidget(self.group_table)
 
         self.member_table = QTableWidget(0, 5)
-        self.member_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
+        self.member_table.setSelectionBehavior(
+            QTableWidget.SelectionBehavior.SelectRows
+        )
         self.member_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         _stretch_table(self.member_table)
         splitter.addWidget(self.member_table)
@@ -203,10 +205,14 @@ class DuplicatesPage(QWidget):
         )
         if not ok or not choice:
             return
-        target = next((item for item in collections if str(item["name"]) == str(choice)), None)
+        target = next(
+            (item for item in collections if str(item["name"]) == str(choice)), None
+        )
         if target is None:
             return
-        self.duplicate_service.repository.add_assets_to_collection(asset_ids, int(target["id"]))
+        self.duplicate_service.repository.add_assets_to_collection(
+            asset_ids, int(target["id"])
+        )
 
     def retranslate_ui(self) -> None:
         self.refresh_btn.setText(t("management.duplicates.rebuild_exact"))

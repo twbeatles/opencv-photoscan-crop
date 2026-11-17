@@ -19,8 +19,14 @@ logger = logging.getLogger(__name__)
 
 
 SUPPORTED_IMAGE_FORMATS = (
-    '.png', '.jpg', '.jpeg', '.bmp', '.gif',
-    '.tiff', '.tif', '.webp'
+    ".png",
+    ".jpg",
+    ".jpeg",
+    ".bmp",
+    ".gif",
+    ".tiff",
+    ".tif",
+    ".webp",
 )
 
 
@@ -143,10 +149,7 @@ def ensure_directory(path: str) -> bool:
 
 
 def get_unique_filename(
-    directory: str,
-    base_name: str,
-    extension: str,
-    add_timestamp: bool = False
+    directory: str, base_name: str, extension: str, add_timestamp: bool = False
 ) -> str:
     """
     Generate a unique filename that doesn't exist.
@@ -160,8 +163,8 @@ def get_unique_filename(
     Returns:
         Unique file path
     """
-    if not extension.startswith('.'):
-        extension = '.' + extension
+    if not extension.startswith("."):
+        extension = "." + extension
 
     if add_timestamp:
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -237,13 +240,15 @@ def get_image_files_with_info(
         for path in paths:
             try:
                 stat = os.stat(path)
-                files.append({
-                    'path': path,
-                    'name': os.path.basename(path),
-                    'size_kb': stat.st_size / 1024,
-                    'modified': datetime.fromtimestamp(stat.st_mtime),
-                    'relative_path': os.path.relpath(path, directory)
-                })
+                files.append(
+                    {
+                        "path": path,
+                        "name": os.path.basename(path),
+                        "size_kb": stat.st_size / 1024,
+                        "modified": datetime.fromtimestamp(stat.st_mtime),
+                        "relative_path": os.path.relpath(path, directory),
+                    }
+                )
             except Exception as e:
                 logger.warning(f"Error getting info for {path}: {e}")
 
@@ -272,12 +277,7 @@ def get_folder_stats(
     files = get_image_files(directory, recursive, excluded_roots=excluded_roots)
 
     if not files:
-        return {
-            'total_files': 0,
-            'total_size_mb': 0,
-            'formats': {},
-            'subfolders': 0
-        }
+        return {"total_files": 0, "total_size_mb": 0, "formats": {}, "subfolders": 0}
 
     total_size = 0
     formats = {}
@@ -302,10 +302,10 @@ def get_folder_stats(
             pass
 
     return {
-        'total_files': len(files),
-        'total_size_mb': total_size / (1024 * 1024),
-        'formats': formats,
-        'subfolders': len(subfolders)
+        "total_files": len(files),
+        "total_size_mb": total_size / (1024 * 1024),
+        "formats": formats,
+        "subfolders": len(subfolders),
     }
 
 

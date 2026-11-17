@@ -59,8 +59,9 @@ def _test_cli_cancel_exit_code_130() -> None:
 
         parser = cli_mod.create_parser()
         args = parser.parse_args(["-i", in_dir, "-o", out_dir])
-        with patch.object(batch_mod, "BatchProcessor", FakeProcessor), patch.object(
-            cli_mod.time, "sleep", _raise_keyboard_interrupt
+        with (
+            patch.object(batch_mod, "BatchProcessor", FakeProcessor),
+            patch.object(cli_mod.time, "sleep", _raise_keyboard_interrupt),
         ):
             code = cli_mod.process_batch(args)
         assert code == 130
@@ -120,9 +121,11 @@ def _test_cli_cancel_with_failed_still_returns_130() -> None:
         parser = cli_mod.create_parser()
         args = parser.parse_args(["-i", in_dir, "-o", out_dir])
         buffer = io.StringIO()
-        with patch.object(batch_mod, "BatchProcessor", FakeProcessor), patch.object(
-            cli_mod.time, "sleep", _raise_keyboard_interrupt
-        ), redirect_stdout(buffer):
+        with (
+            patch.object(batch_mod, "BatchProcessor", FakeProcessor),
+            patch.object(cli_mod.time, "sleep", _raise_keyboard_interrupt),
+            redirect_stdout(buffer),
+        ):
             code = cli_mod.process_batch(args)
         assert code == 130
         assert "failed=2" in buffer.getvalue()
@@ -173,8 +176,9 @@ def _test_cli_partial_exit_code_rules() -> None:
         parser = cli_mod.create_parser()
         args = parser.parse_args(["-i", in_dir, "-o", out_dir])
         buffer = io.StringIO()
-        with patch.object(batch_mod, "BatchProcessor", FakeProcessor), redirect_stdout(
-            buffer
+        with (
+            patch.object(batch_mod, "BatchProcessor", FakeProcessor),
+            redirect_stdout(buffer),
         ):
             code = cli_mod.process_batch(args)
         assert code == 0
@@ -250,8 +254,9 @@ def _test_batch_fatal_error_and_cli_exit_code() -> None:
         parser = cli_mod.create_parser()
         args = parser.parse_args(["-i", in_dir, "-o", out_dir])
         error_buffer = io.StringIO()
-        with patch.object(batch_mod, "BatchProcessor", FakeProcessor), redirect_stderr(
-            error_buffer
+        with (
+            patch.object(batch_mod, "BatchProcessor", FakeProcessor),
+            redirect_stderr(error_buffer),
         ):
             code = cli_mod.process_batch(args)
         assert code == 1

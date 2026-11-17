@@ -21,7 +21,13 @@ from .shared import _selected_row_payload, _stretch_table
 class CollectionsPage(QWidget):
     open_requested = Signal(str)
 
-    def __init__(self, query_service, repository, history_manager: HistoryManager | None = None, parent=None):
+    def __init__(
+        self,
+        query_service,
+        repository,
+        history_manager: HistoryManager | None = None,
+        parent=None,
+    ):
         super().__init__(parent)
         self.query_service = query_service
         self.repository = repository
@@ -51,7 +57,9 @@ class CollectionsPage(QWidget):
         layout.addWidget(splitter, 1)
 
         self.collection_table = QTableWidget(0, 3)
-        self.collection_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
+        self.collection_table.setSelectionBehavior(
+            QTableWidget.SelectionBehavior.SelectRows
+        )
         self.collection_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         self.collection_table.itemSelectionChanged.connect(self._load_assets)
         _stretch_table(self.collection_table)
@@ -119,7 +127,9 @@ class CollectionsPage(QWidget):
         self.repository.create_collection(collection_name, description)
         self._record_history(
             t("history.collections.create"),
-            undo=lambda collection_name=collection_name: self._delete_collection_by_name(collection_name),
+            undo=lambda collection_name=collection_name: (
+                self._delete_collection_by_name(collection_name)
+            ),
             redo=lambda collection_name=collection_name, description=description: (
                 self.repository.create_collection(collection_name, description)
                 or self.refresh()
@@ -142,12 +152,18 @@ class CollectionsPage(QWidget):
         collection_id = int(collection["id"])
         collection_snapshot = dict(collection)
         assets = self.query_service.list_assets(collection_id=collection_id, limit=5000)
-        asset_ids = [int(asset.get("id", 0) or 0) for asset in assets if int(asset.get("id", 0) or 0) > 0]
+        asset_ids = [
+            int(asset.get("id", 0) or 0)
+            for asset in assets
+            if int(asset.get("id", 0) or 0) > 0
+        ]
         self.repository.delete_collection(collection_id)
         redo_name = str(collection_snapshot.get("name", ""))
         self._record_history(
             t("history.collections.delete"),
-            undo=lambda snapshot=collection_snapshot, asset_ids=asset_ids: self._restore_collection(snapshot, asset_ids),
+            undo=lambda snapshot=collection_snapshot, asset_ids=asset_ids: (
+                self._restore_collection(snapshot, asset_ids)
+            ),
             redo=lambda name=redo_name: self._delete_collection_by_name(name),
         )
         self.refresh()

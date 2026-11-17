@@ -73,7 +73,6 @@ class LibraryPage(QWidget):
             )
         )
 
-
     def _build_search_widget(self) -> QWidget:
         wrapper = QWidget()
         layout = QHBoxLayout(wrapper)
@@ -140,7 +139,9 @@ class LibraryPage(QWidget):
         self._building_filters = True
         self.collection_filter.blockSignals(True)
         self.collection_filter.clear()
-        self.collection_filter.addItem(t("management.library.collection_filter.all"), None)
+        self.collection_filter.addItem(
+            t("management.library.collection_filter.all"), None
+        )
         for collection in collections:
             self.collection_filter.addItem(
                 f"{collection['name']} ({collection['asset_count']})",
@@ -170,7 +171,9 @@ class LibraryPage(QWidget):
 
         query = self._current_query()
         self._total_assets = self.query_service.count_assets(query)
-        total_pages = max(1, math.ceil(self._total_assets / max(query.normalized_page_size, 1)))
+        total_pages = max(
+            1, math.ceil(self._total_assets / max(query.normalized_page_size, 1))
+        )
         if self._current_page > total_pages:
             self._current_page = total_pages
             query = self._current_query()
@@ -178,10 +181,14 @@ class LibraryPage(QWidget):
         self._assets = self.query_service.list_assets(query)
         self.asset_list.clear()
         for asset in self._assets:
-            thumb_path = self.thumbnail_service.ensure_thumbnail(
-                asset["primary_source_path"]
-            ) if asset.get("primary_source_path") else ""
-            item = QListWidgetItem(QIcon(thumb_path) if thumb_path else QIcon(), asset["display_name"])
+            thumb_path = (
+                self.thumbnail_service.ensure_thumbnail(asset["primary_source_path"])
+                if asset.get("primary_source_path")
+                else ""
+            )
+            item = QListWidgetItem(
+                QIcon(thumb_path) if thumb_path else QIcon(), asset["display_name"]
+            )
             item.setToolTip(asset["primary_source_path"])
             item.setData(Qt.ItemDataRole.UserRole, asset)
             self.asset_list.addItem(item)
@@ -236,7 +243,9 @@ class LibraryPage(QWidget):
         source = detail.get("sources", [])
         if source:
             first = source[0]
-            self.size_label.setText(f"{int(first.get('width', 0))} x {int(first.get('height', 0))}")
+            self.size_label.setText(
+                f"{int(first.get('width', 0))} x {int(first.get('height', 0))}"
+            )
         else:
             self.size_label.setText("-")
         tags = [
@@ -244,9 +253,15 @@ class LibraryPage(QWidget):
             for tag in detail.get("tags", [])
         ]
         self.tag_label.setText(", ".join(tag for tag in tags if tag) or "-")
-        collections = [str(item.get("name", "")) for item in detail.get("collections", [])]
-        self.collections_label.setText(", ".join(item for item in collections if item) or "-")
-        self.review_label.setText(_translated_review_status(asset.get("review_status", "")))
+        collections = [
+            str(item.get("name", "")) for item in detail.get("collections", [])
+        ]
+        self.collections_label.setText(
+            ", ".join(item for item in collections if item) or "-"
+        )
+        self.review_label.setText(
+            _translated_review_status(asset.get("review_status", ""))
+        )
         self.note_edit.setPlainText(str(detail.get("note", "")))
         self._render_timeline(detail)
         self._render_ocr(detail)
@@ -299,10 +314,14 @@ class LibraryPage(QWidget):
             self._record_history(
                 t("history.library.note"),
                 undo=lambda asset_id=asset_id, previous=previous: (
-                    self.repository.set_asset_note(asset_id, previous) or self.refresh() or True
+                    self.repository.set_asset_note(asset_id, previous)
+                    or self.refresh()
+                    or True
                 ),
                 redo=lambda asset_id=asset_id, next_note=next_note: (
-                    self.repository.set_asset_note(asset_id, next_note) or self.refresh() or True
+                    self.repository.set_asset_note(asset_id, next_note)
+                    or self.refresh()
+                    or True
                 ),
             )
         self.refresh()
@@ -355,7 +374,11 @@ class LibraryPage(QWidget):
 
     def _add_selected_to_collection(self) -> None:
         selected_assets = self._selected_assets()
-        asset_ids = [int(asset.get("id", 0) or 0) for asset in selected_assets if int(asset.get("id", 0) or 0) > 0]
+        asset_ids = [
+            int(asset.get("id", 0) or 0)
+            for asset in selected_assets
+            if int(asset.get("id", 0) or 0) > 0
+        ]
         if not asset_ids and self._asset_detail is not None:
             asset_ids = [int(self._asset_detail["id"])]
         if not asset_ids:
@@ -379,7 +402,9 @@ class LibraryPage(QWidget):
         )
         if not ok or not choice:
             return
-        target = next((item for item in collections if str(item["name"]) == str(choice)), None)
+        target = next(
+            (item for item in collections if str(item["name"]) == str(choice)), None
+        )
         if target is None:
             return
         collection_id = int(target["id"])
@@ -390,7 +415,9 @@ class LibraryPage(QWidget):
                 t("history.library.collection_add"),
                 undo=lambda tracked_ids=tracked_ids, collection_id=collection_id: (
                     [
-                        self.repository.remove_asset_from_collection(asset_id, collection_id)
+                        self.repository.remove_asset_from_collection(
+                            asset_id, collection_id
+                        )
                         for asset_id in tracked_ids
                     ]
                     and self.refresh()
@@ -425,10 +452,14 @@ class LibraryPage(QWidget):
         self._record_history(
             t("history.library.tag_add"),
             undo=lambda asset_id=asset_id, tag_text=tag_text: (
-                self.repository.remove_asset_tag(asset_id, tag_text) or self.refresh() or True
+                self.repository.remove_asset_tag(asset_id, tag_text)
+                or self.refresh()
+                or True
             ),
             redo=lambda asset_id=asset_id, tag_text=tag_text: (
-                self.repository.add_asset_tag(asset_id, tag_text) or self.refresh() or True
+                self.repository.add_asset_tag(asset_id, tag_text)
+                or self.refresh()
+                or True
             ),
         )
         self.refresh()
@@ -436,7 +467,11 @@ class LibraryPage(QWidget):
     def _remove_tag(self) -> None:
         if self._asset_detail is None:
             return
-        tags = [tag for tag in self._asset_detail.get("tags", []) if str(tag.get("source", "user")) == "user"]
+        tags = [
+            tag
+            for tag in self._asset_detail.get("tags", [])
+            if str(tag.get("source", "user")) == "user"
+        ]
         if not tags:
             QMessageBox.information(
                 self,
@@ -460,10 +495,14 @@ class LibraryPage(QWidget):
         self._record_history(
             t("history.library.tag_remove"),
             undo=lambda asset_id=asset_id, choice=choice: (
-                self.repository.add_asset_tag(asset_id, choice) or self.refresh() or True
+                self.repository.add_asset_tag(asset_id, choice)
+                or self.refresh()
+                or True
             ),
             redo=lambda asset_id=asset_id, choice=choice: (
-                self.repository.remove_asset_tag(asset_id, choice) or self.refresh() or True
+                self.repository.remove_asset_tag(asset_id, choice)
+                or self.refresh()
+                or True
             ),
         )
         self.refresh()
@@ -530,7 +569,11 @@ class LibraryPage(QWidget):
                 self.people_status_label.setText(t("management.library.people.none"))
         else:
             self.people_status_label.setText(
-                t("management.library.people.summary", faces=len(faces), people=len(people))
+                t(
+                    "management.library.people.summary",
+                    faces=len(faces),
+                    people=len(people),
+                )
             )
         self.faces_table.setRowCount(len(faces))
         for row_index, face in enumerate(faces):
@@ -565,7 +608,9 @@ class LibraryPage(QWidget):
         self.refresh_btn.setText(t("management.common.refresh"))
         self.prev_page_btn.setText(t("management.common.previous"))
         self.next_page_btn.setText(t("management.common.next"))
-        self.bulk_collection_btn.setText(t("management.library.add_selected_to_collection"))
+        self.bulk_collection_btn.setText(
+            t("management.library.add_selected_to_collection")
+        )
         self.add_tag_btn.setText(t("management.library.add_tag"))
         self.remove_tag_btn.setText(t("management.library.remove_tag"))
         self.open_btn.setText(t("management.common.open_in_workbench"))

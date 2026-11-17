@@ -30,6 +30,7 @@ LEGACY_CATEGORY_FOLDER_DEFAULTS = {
     "other": "기타",
 }
 
+
 def _filter_dataclass_kwargs(dataclass_type, value: Any) -> Dict[str, Any]:
     """
     Filter a dict to only the keys accepted by the given dataclass.
@@ -44,6 +45,7 @@ def _filter_dataclass_kwargs(dataclass_type, value: Any) -> Dict[str, Any]:
 
 class ContourScoringMethod(Enum):
     """Contour scoring method enumeration."""
+
     BASIC = "basic"
     ENHANCED = "enhanced"
     STRICT = "strict"
@@ -51,6 +53,7 @@ class ContourScoringMethod(Enum):
 
 class OutputFormat(Enum):
     """Output image format enumeration."""
+
     JPG = "jpg"
     PNG = "png"
     WEBP = "webp"
@@ -76,27 +79,27 @@ class AlgorithmSettings:
     # Adaptive threshold fallback tuning
     adaptive_block_size: int = 15  # Must be odd
     adaptive_c: float = 4.0
-    
+
     # CLAHE (Contrast Limited Adaptive Histogram Equalization)
     use_clahe: bool = True
     clahe_clip_limit: float = 2.0
     clahe_grid_size: int = 8
-    
+
     # Multi-scale edge detection
     multi_scale_edge: bool = True
-    
+
     # Corner detection
     use_corner_detection: bool = False
     corner_block_size: int = 2
     corner_k: float = 0.04
-    
+
     # Contour scoring
     contour_scoring: str = "enhanced"
-    
+
     # Area ratios
     min_area_ratio: float = 0.1
     max_area_ratio: float = 0.95
-    
+
     def __post_init__(self):
         """Validate and clamp settings to valid ranges."""
         if self.detection_mode not in ("fast", "balanced", "accurate"):
@@ -116,19 +119,19 @@ class AlgorithmSettings:
             if self.adaptive_block_size > 61:
                 self.adaptive_block_size = 61
         self.adaptive_c = max(-20.0, min(20.0, float(self.adaptive_c)))
-        
+
         # CLAHE: clip_limit > 0, grid_size >= 2
         self.clahe_clip_limit = max(0.1, min(10.0, self.clahe_clip_limit))
         self.clahe_grid_size = max(2, min(16, self.clahe_grid_size))
-        
+
         # Corner detection: block_size >= 2, k > 0
         self.corner_block_size = max(2, min(10, self.corner_block_size))
         self.corner_k = max(0.01, min(0.1, self.corner_k))
-        
+
         # Contour scoring: must be valid option
         if self.contour_scoring not in ("basic", "enhanced", "strict"):
             self.contour_scoring = "enhanced"
-        
+
         # Area ratios: 0 < min < max <= 1
         self.min_area_ratio = max(0.01, min(0.9, self.min_area_ratio))
         self.max_area_ratio = max(0.1, min(1.0, self.max_area_ratio))
@@ -139,13 +142,14 @@ class AlgorithmSettings:
 @dataclass
 class ProcessingSettings:
     """Image processing settings."""
+
     auto_contrast: bool = True
     to_grayscale: bool = False
     apply_sharpening: bool = False
     sharpening_strength: float = 1.0
     denoise: bool = False
     denoise_strength: int = 10
-    
+
     def __post_init__(self):
         """Validate and clamp settings to valid ranges."""
         # Sharpening strength: 0.1-5.0
@@ -157,13 +161,14 @@ class ProcessingSettings:
 @dataclass
 class OutputSettings:
     """Output file settings."""
+
     output_format: str = "JPG"
     jpg_quality: int = 95
     png_compression: int = 6
     webp_quality: int = 90
     add_timestamp: bool = False
     preserve_metadata: bool = False
-    
+
     def __post_init__(self):
         """Validate and clamp settings to valid ranges."""
         # Output format: must be valid
@@ -179,6 +184,7 @@ class OutputSettings:
 @dataclass
 class FilterSettings:
     """Image filtering settings."""
+
     skip_small_images: bool = True
     min_image_size: int = 100
     max_image_size: int = 0  # 0 = no limit
@@ -188,6 +194,7 @@ class FilterSettings:
 @dataclass
 class UISettings:
     """UI-related settings."""
+
     theme: str = "dark"
     language: str = "ko"
     preview_quality: int = 80
@@ -214,23 +221,24 @@ class DebugSettings:
 @dataclass
 class AdvancedProcessingSettings:
     """Advanced image processing settings for v8.0."""
+
     # Auto corrections
     auto_deskew: bool = False
     auto_color_correct: bool = False
     color_correct_method: str = "gray_world"  # gray_world, white_patch, histogram
-    
+
     # Perspective
     perspective_correct: bool = True
-    
+
     # Enhanced processing
     enhanced_denoise: bool = False
     enhanced_denoise_strength: int = 10
     restore_old_photo: bool = False
-    
+
     # Sharpening
     enhanced_sharpen: bool = False
     sharpen_strength: float = 1.0
-    
+
     # Border removal
     auto_crop_borders: bool = False
     border_color: str = "auto"  # auto, white, black
@@ -239,9 +247,10 @@ class AdvancedProcessingSettings:
 @dataclass
 class FileManagementSettings:
     """File management settings for v8.0."""
+
     # Recursive processing
     recursive_search: bool = False
-    
+
     # Naming rules
     use_naming_rules: bool = False
     naming_prefix: str = ""
@@ -251,12 +260,12 @@ class FileManagementSettings:
     naming_use_date: bool = False
     naming_date_format: str = "%Y%m%d"
     naming_preserve_original: bool = True
-    
+
     # Failed file handling
     move_failed_files: bool = False
     failed_folder_name: str = "_failed"
     copy_failed_instead_of_move: bool = True
-    
+
     # Logging
     enable_logging: bool = True
     log_format: str = "json"  # json, csv
@@ -266,14 +275,15 @@ class FileManagementSettings:
 @dataclass
 class PerformanceSettings:
     """Performance and optimization settings for v8.0."""
+
     # GPU acceleration
     use_gpu: bool = False
     gpu_device_id: int = 0
-    
+
     # Multithreading
     enable_multithreading: bool = True
     thread_count: int = 4  # 0 = auto (CPU count)
-    
+
     # Memory management
     max_image_size_mb: int = 100  # Skip images larger than this
     downscale_large_images: bool = True
@@ -283,28 +293,31 @@ class PerformanceSettings:
 @dataclass
 class WatermarkSettings:
     """Watermark settings for v8.5."""
+
     # Enable
     enabled: bool = False
-    
+
     # Text watermark
     text: str = ""
-    text_font_path: str = ""  # Optional .ttf/.otf path for Unicode text rendering (Pillow)
+    text_font_path: str = (
+        ""  # Optional .ttf/.otf path for Unicode text rendering (Pillow)
+    )
     text_font_scale: float = 1.0
     # Stored as RGB (OpenCV processing paths convert to BGR internally).
     text_color_r: int = 255
     text_color_g: int = 255
     text_color_b: int = 255
     text_shadow: bool = True
-    
+
     # Image watermark
     image_path: str = ""
     image_scale: float = 0.2
-    
+
     # Common settings
     position: str = "bottom_right"  # top_left, top_center, top_right, etc.
     opacity: float = 0.5
     margin: int = 20
-    
+
     # Tiled watermark
     tiled: bool = False
     tile_spacing: int = 200
@@ -314,8 +327,11 @@ class WatermarkSettings:
 @dataclass
 class ResizeSettings:
     """Resize settings for v8.5."""
+
     enabled: bool = False
-    mode: str = "none"  # none, fit, fill, stretch, width, height, percentage, max_dimension
+    mode: str = (
+        "none"  # none, fit, fill, stretch, width, height, percentage, max_dimension
+    )
     width: int = 0
     height: int = 0
     percentage: float = 100.0
@@ -328,6 +344,7 @@ class ResizeSettings:
 @dataclass
 class WatchModeSettings:
     """Folder watch mode settings for v8.5."""
+
     enabled: bool = False
     watch_path: str = ""
     output_path: str = ""
@@ -335,17 +352,20 @@ class WatchModeSettings:
     auto_process: bool = True
     debounce_ms: int = 500
     max_wait_seconds: float = 30.0
-    
+
     # Scheduler
     scheduler_enabled: bool = False
-    schedule_type: str = "interval"  # once(next upcoming HH:MM), daily, interval, hourly
+    schedule_type: str = (
+        "interval"  # once(next upcoming HH:MM), daily, interval, hourly
+    )
     schedule_time: str = "00:00"  # HH:MM format for daily/once(next upcoming time)
     schedule_interval_minutes: int = 60
 
 
-@dataclass 
+@dataclass
 class MultiPhotoSettings:
     """Multi-photo detection settings for v8.5."""
+
     enabled: bool = False
     min_photos: int = 1
     max_photos: int = 20
@@ -362,26 +382,34 @@ class MultiPhotoSettings:
         self.min_photos = max(1, min(100, int(self.min_photos)))
         self.max_photos = max(self.min_photos, min(200, int(self.max_photos)))
         self.min_area_ratio = max(0.001, min(0.95, float(self.min_area_ratio)))
-        self.max_area_ratio = max(self.min_area_ratio, min(1.0, float(self.max_area_ratio)))
+        self.max_area_ratio = max(
+            self.min_area_ratio, min(1.0, float(self.max_area_ratio))
+        )
         self.merge_distance = max(0, min(1000, int(self.merge_distance)))
-        self.refine_padding_ratio = max(0.0, min(0.35, float(self.refine_padding_ratio)))
+        self.refine_padding_ratio = max(
+            0.0, min(0.35, float(self.refine_padding_ratio))
+        )
 
 
 # v9.0 Settings
 
+
 @dataclass
 class ClassificationSettings:
     """Image classification settings for v9.0."""
+
     enabled: bool = False
     model: str = "basic"  # basic, advanced (legacy custom aliases to advanced)
     auto_folder: bool = True  # Create category folders automatically
-    categories_enabled: dict[str, bool] = field(default_factory=lambda: {
-        "portrait": True,
-        "landscape": True,
-        "document": True,
-        "blackwhite": True,
-        "other": True
-    })
+    categories_enabled: dict[str, bool] = field(
+        default_factory=lambda: {
+            "portrait": True,
+            "landscape": True,
+            "document": True,
+            "blackwhite": True,
+            "other": True,
+        }
+    )
     category_folders: dict[str, str] = field(
         default_factory=lambda: {key: "" for key in CLASSIFICATION_CATEGORY_KEYS}
     )
@@ -418,6 +446,7 @@ class ClassificationSettings:
 @dataclass
 class FaceDetectionSettings:
     """Face detection settings for v9.0."""
+
     enabled: bool = False
     use_dnn: bool = False  # Use DNN for more accurate detection
     auto_center_crop: bool = True  # Adjust crop to center on faces
@@ -433,6 +462,7 @@ class FaceDetectionSettings:
 @dataclass
 class SmartEnhancementSettings:
     """Smart enhancement settings for v9.0."""
+
     enabled: bool = False
     auto_preset: bool = True  # Automatically select preset based on classification
     default_preset: str = "none"  # Default preset if auto is off
@@ -448,6 +478,7 @@ class SmartEnhancementSettings:
 @dataclass
 class NotificationSettings:
     """System notification settings for v9.0."""
+
     enabled: bool = True
     play_sound: bool = True
     on_batch_complete: bool = True
@@ -458,6 +489,7 @@ class NotificationSettings:
 @dataclass
 class AppSettings:
     """Complete application settings."""
+
     # Core settings
     algorithm: AlgorithmSettings = field(default_factory=AlgorithmSettings)
     processing: ProcessingSettings = field(default_factory=ProcessingSettings)
@@ -465,29 +497,37 @@ class AppSettings:
     filter: FilterSettings = field(default_factory=FilterSettings)
     ui: UISettings = field(default_factory=UISettings)
     debug: DebugSettings = field(default_factory=DebugSettings)
-    
+
     # v8.0 settings
-    advanced: AdvancedProcessingSettings = field(default_factory=AdvancedProcessingSettings)
-    file_management: FileManagementSettings = field(default_factory=FileManagementSettings)
+    advanced: AdvancedProcessingSettings = field(
+        default_factory=AdvancedProcessingSettings
+    )
+    file_management: FileManagementSettings = field(
+        default_factory=FileManagementSettings
+    )
     performance: PerformanceSettings = field(default_factory=PerformanceSettings)
-    
+
     # v8.5 settings
     watermark: WatermarkSettings = field(default_factory=WatermarkSettings)
     resize: ResizeSettings = field(default_factory=ResizeSettings)
     watch_mode: WatchModeSettings = field(default_factory=WatchModeSettings)
     multi_photo: MultiPhotoSettings = field(default_factory=MultiPhotoSettings)
-    
+
     # v9.0 settings
-    classification: ClassificationSettings = field(default_factory=ClassificationSettings)
+    classification: ClassificationSettings = field(
+        default_factory=ClassificationSettings
+    )
     face_detection: FaceDetectionSettings = field(default_factory=FaceDetectionSettings)
-    smart_enhancement: SmartEnhancementSettings = field(default_factory=SmartEnhancementSettings)
+    smart_enhancement: SmartEnhancementSettings = field(
+        default_factory=SmartEnhancementSettings
+    )
     notification: NotificationSettings = field(default_factory=NotificationSettings)
-    
+
     # Path settings
     last_input_path: str = ""
     last_output_path: str = ""
     create_backup: bool = False
-    
+
     def to_dict(self) -> Dict[str, Any]:
         """Convert settings to dictionary."""
         return {
@@ -512,9 +552,9 @@ class AppSettings:
             "last_output_path": self.last_output_path,
             "create_backup": self.create_backup,
         }
-    
+
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> 'AppSettings':
+    def from_dict(cls, data: Dict[str, Any]) -> "AppSettings":
         """Create settings from dictionary with defaults fallback."""
         try:
             algorithm = AlgorithmSettings(
@@ -522,32 +562,32 @@ class AppSettings:
             )
         except TypeError:
             algorithm = AlgorithmSettings()
-            
+
         try:
             processing = ProcessingSettings(
-                **_filter_dataclass_kwargs(ProcessingSettings, data.get("processing", {}))
+                **_filter_dataclass_kwargs(
+                    ProcessingSettings, data.get("processing", {})
+                )
             )
         except TypeError:
             processing = ProcessingSettings()
-            
+
         try:
             output = OutputSettings(
                 **_filter_dataclass_kwargs(OutputSettings, data.get("output", {}))
             )
         except TypeError:
             output = OutputSettings()
-            
+
         try:
             filter_settings = FilterSettings(
                 **_filter_dataclass_kwargs(FilterSettings, data.get("filter", {}))
             )
         except TypeError:
             filter_settings = FilterSettings()
-            
+
         try:
-            ui = UISettings(
-                **_filter_dataclass_kwargs(UISettings, data.get("ui", {}))
-            )
+            ui = UISettings(**_filter_dataclass_kwargs(UISettings, data.get("ui", {})))
         except TypeError:
             ui = UISettings()
 
@@ -557,7 +597,7 @@ class AppSettings:
             )
         except TypeError:
             debug = DebugSettings()
-        
+
         # v8.0 settings
         try:
             advanced = AdvancedProcessingSettings(
@@ -567,7 +607,7 @@ class AppSettings:
             )
         except TypeError:
             advanced = AdvancedProcessingSettings()
-        
+
         try:
             file_management = FileManagementSettings(
                 **_filter_dataclass_kwargs(
@@ -576,7 +616,7 @@ class AppSettings:
             )
         except TypeError:
             file_management = FileManagementSettings()
-        
+
         try:
             performance = PerformanceSettings(
                 **_filter_dataclass_kwargs(
@@ -585,7 +625,7 @@ class AppSettings:
             )
         except TypeError:
             performance = PerformanceSettings()
-        
+
         # v8.5 settings
         try:
             watermark = WatermarkSettings(
@@ -593,21 +633,23 @@ class AppSettings:
             )
         except TypeError:
             watermark = WatermarkSettings()
-        
+
         try:
             resize = ResizeSettings(
                 **_filter_dataclass_kwargs(ResizeSettings, data.get("resize", {}))
             )
         except TypeError:
             resize = ResizeSettings()
-        
+
         try:
             watch_mode = WatchModeSettings(
-                **_filter_dataclass_kwargs(WatchModeSettings, data.get("watch_mode", {}))
+                **_filter_dataclass_kwargs(
+                    WatchModeSettings, data.get("watch_mode", {})
+                )
             )
         except TypeError:
             watch_mode = WatchModeSettings()
-        
+
         try:
             multi_photo = MultiPhotoSettings(
                 **_filter_dataclass_kwargs(
@@ -616,7 +658,7 @@ class AppSettings:
             )
         except TypeError:
             multi_photo = MultiPhotoSettings()
-        
+
         # v9.0 settings
         try:
             classification = ClassificationSettings(
@@ -626,7 +668,7 @@ class AppSettings:
             )
         except TypeError:
             classification = ClassificationSettings()
-        
+
         try:
             face_detection = FaceDetectionSettings(
                 **_filter_dataclass_kwargs(
@@ -635,7 +677,7 @@ class AppSettings:
             )
         except TypeError:
             face_detection = FaceDetectionSettings()
-        
+
         try:
             smart_enhancement = SmartEnhancementSettings(
                 **_filter_dataclass_kwargs(
@@ -644,7 +686,7 @@ class AppSettings:
             )
         except TypeError:
             smart_enhancement = SmartEnhancementSettings()
-        
+
         try:
             notification = NotificationSettings(
                 **_filter_dataclass_kwargs(
@@ -653,7 +695,7 @@ class AppSettings:
             )
         except TypeError:
             notification = NotificationSettings()
-        
+
         return cls(
             algorithm=algorithm,
             processing=processing,

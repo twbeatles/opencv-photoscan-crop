@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """Restoration, denoise, border-crop, and sharpen operations."""
+
 from __future__ import annotations
 
 from typing import Any, cast
@@ -12,11 +13,14 @@ import numpy as np
 class RestorationOpsMixin:
     """Restoration operations for AdvancedImageProcessor."""
 
-    def restore_old_photo(self, image: np.ndarray,
-                         enhance_contrast: bool = True,
-                         reduce_noise: bool = True,
-                         restore_colors: bool = True,
-                         remove_scratches: bool = True) -> np.ndarray:
+    def restore_old_photo(
+        self,
+        image: np.ndarray,
+        enhance_contrast: bool = True,
+        reduce_noise: bool = True,
+        restore_colors: bool = True,
+        remove_scratches: bool = True,
+    ) -> np.ndarray:
         """
         Restore old/damaged photos.
 
@@ -68,6 +72,7 @@ class RestorationOpsMixin:
             result = self._remove_scratches(result)
 
         return result
+
     def _remove_scratches(self, image: np.ndarray) -> np.ndarray:
         """
         Attempt to detect and remove scratches/damage.
@@ -105,9 +110,10 @@ class RestorationOpsMixin:
         result = cv2.inpaint(image, mask, inpaintRadius=3, flags=cv2.INPAINT_TELEA)
 
         return result
-    def denoise_enhanced(self, image: np.ndarray,
-                        strength: int = 10,
-                        preserve_details: bool = True) -> np.ndarray:
+
+    def denoise_enhanced(
+        self, image: np.ndarray, strength: int = 10, preserve_details: bool = True
+    ) -> np.ndarray:
         """
         Enhanced denoising with detail preservation.
 
@@ -127,8 +133,7 @@ class RestorationOpsMixin:
             # Grayscale
             if use_gpu and gpu is not None and gpu.is_available:
                 return gpu.denoise_gpu(
-                    cv2.cvtColor(image, cv2.COLOR_GRAY2BGR),
-                    h=strength
+                    cv2.cvtColor(image, cv2.COLOR_GRAY2BGR), h=strength
                 )[:, :, 0]
             return cv2.fastNlMeansDenoising(image, None, strength, 7, 21)
 
@@ -145,10 +150,11 @@ class RestorationOpsMixin:
             result = cv2.bilateralFilter(result, 5, 50, 50)
 
         return result
+
     @staticmethod
-    def auto_crop_borders(image: np.ndarray,
-                         border_color: str = "auto",
-                         threshold: int = 20) -> np.ndarray:
+    def auto_crop_borders(
+        image: np.ndarray, border_color: str = "auto", threshold: int = 20
+    ) -> np.ndarray:
         """
         Automatically crop uniform borders.
 
@@ -169,10 +175,7 @@ class RestorationOpsMixin:
 
         if border_color == "auto":
             # Detect border color from corners
-            corners = [
-                gray[0, 0], gray[0, -1],
-                gray[-1, 0], gray[-1, -1]
-            ]
+            corners = [gray[0, 0], gray[0, -1], gray[-1, 0], gray[-1, -1]]
             avg_corner = np.mean(corners)
             is_white = avg_corner > 127
         else:
@@ -199,7 +202,8 @@ class RestorationOpsMixin:
         y_max = min(h - 1, y_max + padding)
         x_max = min(w - 1, x_max + padding)
 
-        return image[y_min:y_max+1, x_min:x_max+1]
+        return image[y_min : y_max + 1, x_min : x_max + 1]
+
     @staticmethod
     def sharpen(image: np.ndarray, strength: float = 1.0) -> np.ndarray:
         """
@@ -212,11 +216,7 @@ class RestorationOpsMixin:
         Returns:
             Sharpened image
         """
-        kernel = np.array([
-            [-1, -1, -1],
-            [-1,  9, -1],
-            [-1, -1, -1]
-        ]) * strength
+        kernel = np.array([[-1, -1, -1], [-1, 9, -1], [-1, -1, -1]]) * strength
 
         # Normalize kernel
         kernel[1, 1] = 9 * strength - 8 * strength + 8
@@ -228,6 +228,7 @@ class RestorationOpsMixin:
         result = cv2.addWeighted(image, 1 - alpha, sharpened, alpha, 0)
 
         return result
+
 
 restore_old_photo = RestorationOpsMixin.restore_old_photo
 denoise_enhanced = RestorationOpsMixin.denoise_enhanced

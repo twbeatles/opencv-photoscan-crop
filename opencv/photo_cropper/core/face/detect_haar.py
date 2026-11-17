@@ -68,7 +68,7 @@ def detect_faces_cascade(
         scaleFactor=scale_factor,
         minNeighbors=min_neighbors,
         minSize=(min_face_size, min_face_size),
-        flags=cv2.CASCADE_SCALE_IMAGE
+        flags=cv2.CASCADE_SCALE_IMAGE,
     )
 
     # Try alternate cascade if no detections
@@ -77,7 +77,7 @@ def detect_faces_cascade(
             gray_resized,
             scaleFactor=1.15,
             minNeighbors=4,
-            minSize=(min_face_size, min_face_size)
+            minSize=(min_face_size, min_face_size),
         )
 
     # Try profile face if still no detections
@@ -86,23 +86,27 @@ def detect_faces_cascade(
             gray_resized,
             scaleFactor=1.1,
             minNeighbors=3,
-            minSize=(min_face_size, min_face_size)
+            minSize=(min_face_size, min_face_size),
         )
 
     # Convert to FaceRect objects and scale back
     faces = []
-    for (x, y, w_face, h_face) in detections:
+    for x, y, w_face, h_face in detections:
         if scale != 1.0:
             x = int(x / scale)
             y = int(y / scale)
             w_face = int(w_face / scale)
             h_face = int(h_face / scale)
 
-        faces.append(FaceRect(
-            x=x, y=y,
-            width=w_face, height=h_face,
-            confidence=0.9  # Cascade doesn't provide confidence
-        ))
+        faces.append(
+            FaceRect(
+                x=x,
+                y=y,
+                width=w_face,
+                height=h_face,
+                confidence=0.9,  # Cascade doesn't provide confidence
+            )
+        )
 
     return faces
 
@@ -142,22 +146,14 @@ def detect_eyes(gray: np.ndarray, face: FaceRect, eye_cascade: Any) -> List[EyeR
 
     # Detect eyes
     eye_detections = eye_cascade.detectMultiScale(
-        roi,
-        scaleFactor=1.1,
-        minNeighbors=5,
-        minSize=(20, 20)
+        roi, scaleFactor=1.1, minNeighbors=5, minSize=(20, 20)
     )
 
     eyes = []
-    for (ex, ey, ew, eh) in eye_detections[:2]:  # Max 2 eyes
-        eyes.append(EyeRect(
-            x=x_start + ex,
-            y=y_start + ey,
-            width=ew,
-            height=eh
-        ))
+    for ex, ey, ew, eh in eye_detections[:2]:  # Max 2 eyes
+        eyes.append(EyeRect(x=x_start + ex, y=y_start + ey, width=ew, height=eh))
 
     return eyes
 
 
-__all__ = ['detect_faces_cascade', 'detect_eyes']
+__all__ = ["detect_faces_cascade", "detect_eyes"]

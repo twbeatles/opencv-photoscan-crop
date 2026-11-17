@@ -145,9 +145,7 @@ def rotate_to_align_eyes(
 
     # Rotate
     rotated = cv2.warpAffine(
-        image, M, (w, h),
-        borderMode=cv2.BORDER_CONSTANT,
-        borderValue=background
+        image, M, (w, h), borderMode=cv2.BORDER_CONSTANT, borderValue=background
     )
 
     return rotated
@@ -180,7 +178,8 @@ def draw_detections(
             output,
             (face.x, face.y),
             (face.x + face.width, face.y + face.height),
-            (0, 255, 0), 2
+            (0, 255, 0),
+            2,
         )
 
         # Face center point
@@ -193,7 +192,8 @@ def draw_detections(
                     output,
                     (eye.x, eye.y),
                     (eye.x + eye.width, eye.y + eye.height),
-                    (255, 0, 0), 1
+                    (255, 0, 0),
+                    1,
                 )
 
     # Draw suggested crop (red dashed)
@@ -205,8 +205,8 @@ def draw_detections(
 
 
 __all__ = [
-    'calculate_rotation_angle',
-    'calculate_crop_region',
-    'rotate_to_align_eyes',
-    'draw_detections',
+    "calculate_rotation_angle",
+    "calculate_crop_region",
+    "rotate_to_align_eyes",
+    "draw_detections",
 ]

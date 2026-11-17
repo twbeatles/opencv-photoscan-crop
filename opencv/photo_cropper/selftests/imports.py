@@ -14,6 +14,7 @@ def _test_crop_editor_import_smoke() -> None:
 
     assert CropEditorWidget is not None
 
+
 def _test_preview_worker_import_smoke() -> None:
     try:
         from ..ui.main.preview_worker import PreviewWorker
@@ -21,6 +22,7 @@ def _test_preview_worker_import_smoke() -> None:
         raise AssertionError(f"Preview worker import failed: {e}") from e
 
     assert PreviewWorker is not None
+
 
 def _test_ui_action_modules_import_smoke() -> None:
     try:
@@ -43,6 +45,7 @@ def _test_ui_action_modules_import_smoke() -> None:
     assert InputActions is not None
     assert SettingsActions is not None
     assert WatchActions is not None
+
 
 def _test_ui_canonical_package_import_smoke() -> None:
     try:
@@ -94,6 +97,7 @@ def _test_ui_canonical_package_import_smoke() -> None:
     assert WindowSignals is not None
     assert WindowState is not None
 
+
 def _test_main_window_import_smoke() -> None:
     try:
         from ..ui.main import MainWindow
@@ -101,6 +105,7 @@ def _test_main_window_import_smoke() -> None:
         raise AssertionError(f"MainWindow import failed: {e}") from e
 
     assert MainWindow is not None
+
 
 def _test_manual_extract_service_import_smoke() -> None:
     try:
@@ -110,6 +115,7 @@ def _test_manual_extract_service_import_smoke() -> None:
 
     assert ManualExtractProcessor is not None
     assert ManualExtractOutcome is not None
+
 
 def _test_image_save_io_module_smoke() -> None:
     try:
@@ -122,6 +128,7 @@ def _test_image_save_io_module_smoke() -> None:
     assert fmt == "PNG"
     assert save_image_unicode is not None
 
+
 def _test_watch_mode_coordinator_import_smoke() -> None:
     try:
         from ..core.watch_mode import WatchModeCoordinator, WatchStartResult
@@ -130,6 +137,7 @@ def _test_watch_mode_coordinator_import_smoke() -> None:
 
     assert WatchModeCoordinator is not None
     assert WatchStartResult is not None
+
 
 __all__ = [
     "_test_crop_editor_import_smoke",

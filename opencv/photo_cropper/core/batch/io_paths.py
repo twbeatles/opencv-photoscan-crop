@@ -54,6 +54,7 @@ class BatchProcessorIoPathsMixin:
             return file_entry, relative_display_path(file_entry, display_root)
 
         return candidate, relative_display_path(candidate, display_root)
+
     def _resolve_base_output_dir(
         self: Any,
         input_path: str,
@@ -66,6 +67,7 @@ class BatchProcessorIoPathsMixin:
         resolved = os.path.join(output_dir, rel_parent) if rel_parent else output_dir
         os.makedirs(resolved, exist_ok=True)
         return resolved
+
     def _ensure_naming_engine(self: Any) -> Optional[NamingRuleEngine]:
         """Initialize naming engine if enabled in settings."""
         if not self.settings.file_management.use_naming_rules:
@@ -85,6 +87,7 @@ class BatchProcessorIoPathsMixin:
             self._naming_engine = NamingRuleEngine(rule)
 
         return self._naming_engine
+
     def _resolve_multi_photo_output_dir(
         self: Any,
         input_path: str,
@@ -110,7 +113,10 @@ class BatchProcessorIoPathsMixin:
 
         os.makedirs(resolved, exist_ok=True)
         return resolved
-    def _build_output_path(self: Any, input_path: str, output_dir: str, suffix: str) -> str:
+
+    def _build_output_path(
+        self: Any, input_path: str, output_dir: str, suffix: str
+    ) -> str:
         """Build output path using naming rules or default scheme."""
         os.makedirs(output_dir, exist_ok=True)
 
@@ -143,6 +149,7 @@ class BatchProcessorIoPathsMixin:
         if self._pipeline_signature_cache is None:
             self._pipeline_signature_cache = build_pipeline_signature(self.settings)
         return self._pipeline_signature_cache
+
     def _get_processed_index_store(self: Any, output_dir: str) -> ProcessedIndexStore:
         key = os.path.normcase(os.path.abspath(str(output_dir or "")))
         store = self._processed_index_stores.get(key)
@@ -150,6 +157,7 @@ class BatchProcessorIoPathsMixin:
             store = ProcessedIndexStore(key)
             self._processed_index_stores[key] = store
         return store
+
     def _warn_processed_index_issue(self: Any, output_dir: str, message: str) -> None:
         key = os.path.normcase(os.path.abspath(str(output_dir or "")))
         if key in self._processed_index_warned_roots:
@@ -159,6 +167,7 @@ class BatchProcessorIoPathsMixin:
             f"처리 이력 인덱스 사용 불가({os.path.join(key, '.photocropper', 'processed_index.json')}): {message}",
             "warning",
         )
+
     @staticmethod
     def _source_stat_signature(source_path: str) -> Optional[Tuple[int, int]]:
         try:
@@ -168,6 +177,7 @@ class BatchProcessorIoPathsMixin:
         size = int(st.st_size)
         mtime_ns = int(getattr(st, "st_mtime_ns", int(st.st_mtime * 1e9)))
         return size, mtime_ns
+
     def lookup_processed_outputs_from_index(
         self: Any, source_path: str, output_dir: str
     ) -> Tuple[Optional[List[str]], bool, str]:
@@ -187,6 +197,7 @@ class BatchProcessorIoPathsMixin:
         if not usable and store.last_error:
             self._warn_processed_index_issue(output_dir, store.last_error)
         return outputs, usable, status
+
     def record_processed_outputs(
         self: Any,
         source_path: str,
@@ -215,6 +226,7 @@ class BatchProcessorIoPathsMixin:
         )
         if not ok and store.last_error:
             self._warn_processed_index_issue(output_dir, store.last_error)
+
     def _resolve_output_dir_for_classification(
         self: Any,
         image: np.ndarray,
@@ -253,6 +265,7 @@ class BatchProcessorIoPathsMixin:
         except Exception as e:
             self._log(f"  이미지 분류 오류: {e}", "warning")
             return output_dir
+
     def _resolve_category_folder_name(self: Any, category: ImageCategory) -> str:
         cls_settings = self.settings.classification
         key = getattr(category, "value", str(category or "")).lower()
@@ -274,6 +287,7 @@ class BatchProcessorIoPathsMixin:
                 "other": "기타",
             }
             return fallback.get(key, "기타")
+
     def _iter_candidate_output_dirs(
         self: Any,
         output_dir: str,
@@ -319,7 +333,9 @@ class BatchProcessorIoPathsMixin:
                 if enabled_map.get(category.value, True):
                     for root in roots:
                         dirs.append(
-                            os.path.join(root, self._resolve_category_folder_name(category))
+                            os.path.join(
+                                root, self._resolve_category_folder_name(category)
+                            )
                         )
         except Exception:
             # Best-effort: keep base output_dir only.
@@ -327,6 +343,7 @@ class BatchProcessorIoPathsMixin:
 
         # Preserve order while removing duplicates.
         return list(dict.fromkeys(dirs))
+
     def _find_existing_output(
         self: Any,
         base_name: str,
@@ -366,6 +383,7 @@ class BatchProcessorIoPathsMixin:
                 except Exception:
                     pass
         return None
+
     def find_existing_output(
         self: Any,
         base_name: str,
@@ -385,7 +403,10 @@ class BatchProcessorIoPathsMixin:
             input_path=input_path,
             input_root=input_root,
         )
-    def get_image_files(self: Any, input_dir: str, *, raise_errors: bool = False) -> List[str]:
+
+    def get_image_files(
+        self: Any, input_dir: str, *, raise_errors: bool = False
+    ) -> List[str]:
         """
         Get list of image files in directory.
 

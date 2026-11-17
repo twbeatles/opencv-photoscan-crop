@@ -29,17 +29,17 @@ class AdvancedImageProcessor(
 
     def __init__(self, use_gpu: bool = False):
         """Initialize processor.
-        
+
         Args:
             use_gpu: Whether to use GPU acceleration when available
         """
         self._use_gpu = use_gpu
         self._gpu: Optional[GPUAccelerator] = GPUAccelerator() if use_gpu else None
-        
+
         # Performance: Cached CLAHE objects
         self._clahe_default = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
         self._clahe_strong = cv2.createCLAHE(clipLimit=3.0, tileGridSize=(8, 8))
-        
+
         # Performance: Cached morphology kernels
         self._kernel_3x3 = np.ones((3, 3), np.uint8)
         self._kernel_line_v = cv2.getStructuringElement(cv2.MORPH_RECT, (1, 15))

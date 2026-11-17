@@ -38,7 +38,9 @@ def field_label(text: str = "", parent: QWidget | None = None) -> QLabel:
     return label
 
 
-def themed_splitter(orientation: Qt.Orientation, parent: QWidget | None = None) -> QSplitter:
+def themed_splitter(
+    orientation: Qt.Orientation, parent: QWidget | None = None
+) -> QSplitter:
     """Splitter with an invisible, comfortably wide grab handle."""
     splitter = QSplitter(orientation, parent)
     splitter.setHandleWidth(SPLITTER_HANDLE_WIDTH)

@@ -36,7 +36,11 @@ def retranslate_panel(panel) -> None:
         (self.output_form, self.quality_spin, "settings.jpg_quality"),
         (self.output_form, self.png_compression_spin, "settings.png_compression"),
         (self.ui_form, self.theme_combo, "settings.theme"),
-        (self.file_management_form, self.use_naming_rules_check, "settings.naming_rules"),
+        (
+            self.file_management_form,
+            self.use_naming_rules_check,
+            "settings.naming_rules",
+        ),
         (self.file_management_form, self.naming_prefix_edit, "settings.naming_prefix"),
         (self.file_management_form, self.naming_suffix_edit, "settings.naming_suffix"),
         (self.log_form, self.enable_log_check, "settings.enable_log"),
@@ -103,9 +107,13 @@ def retranslate_panel(panel) -> None:
     if hasattr(self, "font_browse_btn"):
         self.font_browse_btn.setText(t("dialog.browse"))
     if hasattr(self, "debug_output_dir_edit"):
-        self.debug_output_dir_edit.setPlaceholderText(t("settings.debug_output_dir.placeholder"))
+        self.debug_output_dir_edit.setPlaceholderText(
+            t("settings.debug_output_dir.placeholder")
+        )
     if hasattr(self, "watermark_font_path_edit"):
-        self.watermark_font_path_edit.setPlaceholderText(t("settings.watermark_font.placeholder"))
+        self.watermark_font_path_edit.setPlaceholderText(
+            t("settings.watermark_font.placeholder")
+        )
 
     populate_theme_choices(self.theme_combo)
     self.simple_mode_check.setText(t("settings.simple_mode"))

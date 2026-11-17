@@ -50,7 +50,13 @@ class DetectionPipeline(
         object.__setattr__(self, "_host", host)
 
     def __getattribute__(self, name: str) -> Any:
-        if name in ("_host", "__class__", "__dict__", "__weakref__", "_HOST_CALLABLE_SKIP"):
+        if name in (
+            "_host",
+            "__class__",
+            "__dict__",
+            "__weakref__",
+            "_HOST_CALLABLE_SKIP",
+        ):
             return object.__getattribute__(self, name)
 
         host = object.__getattribute__(self, "_host")
@@ -59,11 +65,7 @@ class DetectionPipeline(
         # except facade wrappers that would recurse into this pipeline.
         try:
             host_dict = object.__getattribute__(host, "__dict__")
-            if (
-                name in host_dict
-                and callable(host_dict[name])
-                and name not in skip
-            ):
+            if name in host_dict and callable(host_dict[name]) and name not in skip:
                 return host_dict[name]
         except Exception:
             pass

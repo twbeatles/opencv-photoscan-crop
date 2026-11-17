@@ -7,9 +7,9 @@ from .controls import (
 from .panel import SettingsPanel
 
 __all__ = [
-    'NoScrollSpinBox',
-    'NoScrollDoubleSpinBox',
-    'NoScrollComboBox',
-    'NoScrollSlider',
-    'SettingsPanel',
+    "NoScrollSpinBox",
+    "NoScrollDoubleSpinBox",
+    "NoScrollComboBox",
+    "NoScrollSlider",
+    "SettingsPanel",
 ]

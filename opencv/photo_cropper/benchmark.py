@@ -149,7 +149,9 @@ def run_benchmark(
         predicted_has_photo = bool(result.success and result.contour_points is not None)
 
         stage_name = (
-            result.detection_stage.value if result.detection_stage is not None else "None"
+            result.detection_stage.value
+            if result.detection_stage is not None
+            else "None"
         )
         stage_distribution[stage_name] = stage_distribution.get(stage_name, 0) + 1
 
@@ -176,7 +178,9 @@ def run_benchmark(
             if predicted_has_photo:
                 success_on_photo += 1
                 gt_quad = item["quad"]
-                pred_quad = np.array(result.contour_points, dtype=np.float32).reshape((4, 2))
+                pred_quad = np.array(result.contour_points, dtype=np.float32).reshape(
+                    (4, 2)
+                )
                 image = processor.load_image(image_path)
                 if image is not None:
                     h, w = image.shape[:2]
@@ -198,7 +202,9 @@ def run_benchmark(
     false_positive_rate = (false_positives / no_photo_total) if no_photo_total else 0.0
     mean_iou = float(sum(ious) / len(ious)) if ious else 0.0
     median_iou = float(statistics.median(ious)) if ious else 0.0
-    p90_iou = float(np.percentile(np.array(ious, dtype=np.float32), 90)) if ious else 0.0
+    p90_iou = (
+        float(np.percentile(np.array(ious, dtype=np.float32), 90)) if ious else 0.0
+    )
 
     report: Dict[str, Any] = {
         "summary": {
@@ -254,7 +260,9 @@ def _compare_baseline(report: Dict[str, Any], baseline_path: str) -> Dict[str, A
 
 def create_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="PhotoCropper benchmark harness")
-    parser.add_argument("--images", required=True, help="Directory with benchmark images")
+    parser.add_argument(
+        "--images", required=True, help="Directory with benchmark images"
+    )
     parser.add_argument("--labels", required=True, help="Labels JSON path")
     parser.add_argument("--report", required=False, help="Output report JSON path")
     parser.add_argument(
